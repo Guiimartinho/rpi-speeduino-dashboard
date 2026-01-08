@@ -36,18 +36,19 @@ Window {
         property bool overheat: false
         property bool canConnected: true
         property int currentScreen: 0  // 0=Home, 1=Dash, 2=Config, 3=OpenAuto
+    }
 
-        Timer {
-            interval: 50
-            running: true
-            repeat: true
-            onTriggered: {
-                // Add some variation
-                mockData.rpm += (Math.random() - 0.5) * 30
-                mockData.rpm = Math.max(700, Math.min(900, mockData.rpm))
-                mockData.coolantTemp += (Math.random() - 0.5) * 0.5
-                mockData.mapKpa += (Math.random() - 0.5) * 2
-            }
+    // Timer must be outside QtObject
+    Timer {
+        interval: 50
+        running: true
+        repeat: true
+        onTriggered: {
+            // Add some variation
+            mockData.rpm += (Math.random() - 0.5) * 30
+            mockData.rpm = Math.max(700, Math.min(900, mockData.rpm))
+            mockData.coolantTemp += (Math.random() - 0.5) * 0.5
+            mockData.mapKpa += (Math.random() - 0.5) * 2
         }
     }
 
