@@ -1,0 +1,66 @@
+# Speeduino CAN Signal Definitions
+
+# Use built-in signal definitions
+# Options: haltech, bmw, vag
+use_builtin: haltech
+
+# Custom signal overrides or additions
+# These will be added to (or override) the built-in signals
+signals:
+  # Example: Custom wideband O2 sensor
+  # - name: wideband_afr
+  #   can_id: 0x180        # AEM X-Series
+  #   start_byte: 0
+  #   length_bits: 16
+  #   big_endian: true
+  #   signed: false
+  #   scale: 0.001         # Lambda x 1000
+  #   offset: 0
+  #   unit: "lambda"
+
+# ===========================================
+# Built-in Signal Reference (Haltech)
+# ===========================================
+#
+# DATA1 (0x360) @ 50Hz:
+#   rpm:           bytes 0-1, BE, scale=1
+#   map:           bytes 2-3, BE, scale=0.1 (kPa)
+#   tps:           bytes 4-5, BE, scale=0.1 (%)
+#
+# DATA2 (0x361) @ 50Hz:
+#   fuel_pressure: bytes 0-1, BE, scale=0.1 (kPa)
+#   oil_pressure:  bytes 2-3, BE, scale=0.1 (kPa)
+#
+# DATA3 (0x362) @ 50Hz:
+#   injector_duty: bytes 0-1, BE, scale=0.1 (%)
+#   ign_advance:   bytes 4-5, BE, signed, scale=0.1 (deg)
+#
+# LAMBDA (0x368) @ 15Hz:
+#   lambda1:       bytes 0-1, BE, scale=0.001
+#   lambda2:       bytes 2-3, BE, scale=0.001
+#
+# VSS (0x370) @ 15Hz:
+#   vehicle_speed: bytes 0-1, BE, scale=0.1 (km/h)
+#   gear:          byte 3, scale=1
+#
+# DATA5 (0x3E0) @ 10Hz:
+#   coolant_temp:  bytes 0-1, BE, scale=0.1, offset=-273 (Kelvin->C)
+#   intake_temp:   bytes 2-3, BE, scale=0.1, offset=-273 (Kelvin->C)
+#   fuel_temp:     bytes 4-5, BE, scale=0.1, offset=-273 (Kelvin->C)
+#
+# ===========================================
+# Built-in Signal Reference (BMW PT-CAN)
+# ===========================================
+#
+# DME1 (0x316) @ 30Hz:
+#   rpm:           bytes 2-3, LE, scale=0.15625 (x6.4)
+#   torque:        byte 1, scale=1 (%)
+#
+# DME2 (0x329) @ 30Hz:
+#   coolant_temp:  byte 1, scale=0.75, offset=-48.373 (C)
+#   baro:          byte 2, scale=1 (kPa)
+#   tps:           byte 5, scale=0.392157 (0-254 -> 0-100%)
+#
+# DME4 (0x545) @ 10Hz:
+#   fuel_cons:     bytes 1-2, LE, scale=0.01 (L/h)
+#   oil_temp:      byte 4, scale=0.75, offset=-48 (C)

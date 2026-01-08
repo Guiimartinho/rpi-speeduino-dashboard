@@ -1,0 +1,113 @@
+# Steering Wheel Button Configuration
+
+# CAN-based steering wheel buttons
+# Configure based on your vehicle's CAN protocol
+
+# Example for BMW E46 steering wheel
+buttons:
+  - id: 1
+    name: "Volume Up"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x01
+    action: volume_up
+
+  - id: 2
+    name: "Volume Down"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x02
+    action: volume_down
+
+  - id: 3
+    name: "Next Track"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x04
+    action: next_track
+
+  - id: 4
+    name: "Previous Track"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x08
+    action: prev_track
+
+  - id: 5
+    name: "Mute"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x10
+    action: mute
+
+  - id: 6
+    name: "Voice"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x20
+    action: voice
+
+  - id: 7
+    name: "Phone"
+    can_id: 0x1D6
+    byte_index: 0
+    bit_mask: 0x40
+    action: phone
+
+# Analog steering wheel (resistor ladder)
+# Uncomment if using ADC input for steering controls
+# analog:
+#   enabled: false
+#   adc_device: /sys/bus/iio/devices/iio:device0/in_voltage0_raw
+#   voltage_ref: 3.3
+#   tolerance: 0.1  # +/- tolerance in volts
+#   buttons:
+#     - name: "Volume Up"
+#       voltage: 0.5
+#       action: volume_up
+#     - name: "Volume Down"
+#       voltage: 1.0
+#       action: volume_down
+#     - name: "Next"
+#       voltage: 1.5
+#       action: next_track
+#     - name: "Prev"
+#       voltage: 2.0
+#       action: prev_track
+
+# Action mappings
+# Maps action names to system commands or ZMQ messages
+actions:
+  volume_up:
+    type: dbus
+    service: org.mpris.MediaPlayer2.%active%
+    method: VolumeUp
+
+  volume_down:
+    type: dbus
+    service: org.mpris.MediaPlayer2.%active%
+    method: VolumeDown
+
+  next_track:
+    type: dbus
+    service: org.mpris.MediaPlayer2.%active%
+    method: Next
+
+  prev_track:
+    type: dbus
+    service: org.mpris.MediaPlayer2.%active%
+    method: Previous
+
+  mute:
+    type: command
+    command: pactl set-sink-mute @DEFAULT_SINK@ toggle
+
+  voice:
+    type: zmq
+    topic: STEERING
+    message: voice_activate
+
+  phone:
+    type: zmq
+    topic: STEERING
+    message: phone_toggle

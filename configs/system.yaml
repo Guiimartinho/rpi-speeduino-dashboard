@@ -1,0 +1,63 @@
+# Speeduino UI System Configuration
+
+# CAN Bus settings
+can:
+  interface: can0
+  bitrate: 500000
+  protocol: haltech  # Options: haltech, bmw, vag
+  timeout_ms: 500
+
+# ZeroMQ IPC settings
+zmq:
+  publish_rate_hz: 50  # Engine data publish rate
+
+# Reverse camera settings
+camera:
+  device: /dev/video0
+  width: 640
+  height: 480
+  fps: 30
+
+# OpenAuto settings
+openauto:
+  path: /usr/local/bin/openauto
+
+# Reverse gear detection
+reverse:
+  # CAN-based detection (primary)
+  can_enabled: true
+  can_id: 0x370      # Haltech VSS frame
+  byte_index: 3       # Gear byte
+  bit_mask: 0xFF      # Full byte
+  expected_value: 0x00  # Gear 0 = reverse (adjust for your setup)
+  debounce_ms: 100
+
+  # GPIO fallback (optional)
+  # Connects to reverse lamp signal via optocoupler
+  gpio_enabled: false
+  gpio_chip: gpiochip0
+  gpio_line: 17       # GPIO17 (pin 11)
+  gpio_active_low: false
+
+# Allowed CAN commands (whitelist)
+# Only these CAN IDs can be sent from the UI
+allowed_commands:
+  - id: 0x7DF
+    rate_limit: 10    # Max 10 requests/second
+    description: "OBD-II broadcast request"
+
+  - id: 0x7E0
+    rate_limit: 5
+    description: "ECU-specific OBD-II request"
+
+# Display settings
+display:
+  width: 800
+  height: 480
+  fullscreen: true
+  hide_cursor: true
+
+# Logging
+logging:
+  level: info         # trace, debug, info, warn, error
+  to_journald: true
