@@ -12,16 +12,41 @@ qt_add_qml_module(hmi_launcher
     URI SpeeduinoUI
     VERSION 1.0
     QML_FILES
+        # Main entry point
         qml/main.qml
+
+        # Styles module (singleton)
+        qml/styles/qmldir
+        qml/styles/Theme.qml
+
+        # State module (singleton)
+        qml/state/qmldir
+        qml/state/AppState.qml
+
+        # Components module
+        qml/components/qmldir
+        qml/components/TabBar.qml
+        qml/components/TabButton.qml
+        qml/components/StatusBar.qml
+        qml/components/SafeGauge.qml
+        qml/components/StatusIndicator.qml
+        qml/components/Gauge.qml
+        qml/components/WarningIndicator.qml
+        qml/components/IconButton.qml
+
+        # Screens module
+        qml/screens/qmldir
+        qml/screens/HomeScreen.qml
+        qml/screens/DashScreen.qml
+        qml/screens/ConfigScreen.qml
+        qml/screens/OpenAutoScreen.qml
+        qml/screens/ReverseOverlay.qml
+
+        # Legacy screens (to be removed after migration)
         qml/Home.qml
         qml/Dash.qml
         qml/ReverseCamera.qml
         qml/Settings.qml
-        qml/components/Gauge.qml
-        qml/components/WarningIndicator.qml
-        qml/components/IconButton.qml
-        qml/components/SafeGauge.qml
-        qml/components/StatusIndicator.qml
 )
 
 target_include_directories(hmi_launcher PRIVATE
