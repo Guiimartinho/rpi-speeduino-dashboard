@@ -3,28 +3,71 @@ Description=Speeduino Reverse Gear Detection Service
 Documentation=https://github.com/speeduino/speeduino-ui
 After=can_service.service
 Wants=can_service.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 ExecStart=/usr/local/bin/reverse_service --interface=can0 --config=/etc/speeduino-ui
 Restart=always
 RestartSec=3
+TimeoutStartSec=30
 TimeoutStopSec=5
+
+# Watchdog support
+WatchdogSec=10
 
 # GPIO access (if using GPIO fallback)
 SupplementaryGroups=gpio
 
-# Security hardening
+# Security hardening - filesystem
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
 ReadOnlyPaths=/
-ReadWritePaths=/tmp
+ReadWritePaths=/tmp /run
 
-# Allow GPIO device access
+# Security hardening - network
+RestrictAddressFamilies=AF_UNIX AF_CAN AF_NETLINK
+PrivateNetwork=false
+
+# Security hardening - capabilities
+CapabilityBoundingSet=CAP_SYS_NICE
+AmbientCapabilities=CAP_SYS_NICE
+
+# Security hardening - syscall filtering
+SystemCallFilter=@system-service @network-io
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @reboot @swap
+SystemCallArchitectures=native
+
+# Security hardening - misc
+RestrictRealtime=false
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0077
+
+# Device access for GPIO (if needed)
+DevicePolicy=closed
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/urandom r
 DeviceAllow=/dev/gpiochip0 rw
+DeviceAllow=/dev/gpiochip1 rw
 DeviceAllow=/dev/gpiomem rw
+
+# IPC paths for ZeroMQ
+ReadWritePaths=/tmp/reverse_trigger.ipc
 
 # Logging
 StandardOutput=journal
@@ -33,7 +76,17 @@ SyslogIdentifier=reverse_service
 
 # Resource limits
 MemoryMax=32M
+MemoryHigh=24M
 CPUQuota=10%
+TasksMax=8
+LimitNOFILE=256
+LimitMEMLOCK=32M
+
+# Real-time scheduling
+Nice=-5
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=40
+CPUAffinity=3
 
 [Install]
 WantedBy=multi-user.target

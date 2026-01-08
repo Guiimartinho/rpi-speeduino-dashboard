@@ -3,22 +3,67 @@ Description=Speeduino CAN Service
 Documentation=https://github.com/speeduino/speeduino-ui
 After=network.target sys-subsystem-net-devices-can0.device
 Wants=sys-subsystem-net-devices-can0.device
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 ExecStartPre=/bin/sleep 1
 ExecStart=/usr/local/bin/can_service --interface=can0 --config=/etc/speeduino-ui
 Restart=always
 RestartSec=3
+TimeoutStartSec=30
 TimeoutStopSec=5
 
-# Security hardening
+# Watchdog support (service must call sd_notify("WATCHDOG=1") periodically)
+WatchdogSec=10
+
+# Security hardening - filesystem
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
 ReadOnlyPaths=/
-ReadWritePaths=/tmp
+ReadWritePaths=/tmp /run
+
+# Security hardening - network
+RestrictAddressFamilies=AF_UNIX AF_CAN AF_NETLINK
+PrivateNetwork=false
+
+# Security hardening - capabilities
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+
+# Security hardening - syscall filtering
+SystemCallFilter=@system-service @network-io
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @raw-io @reboot @swap
+SystemCallArchitectures=native
+
+# Security hardening - misc
+RestrictRealtime=false
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+UMask=0077
+
+# Device access for CAN
+DevicePolicy=closed
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/urandom r
+
+# IPC paths for ZeroMQ
+ReadWritePaths=/tmp/speeduino_data.ipc
+ReadWritePaths=/tmp/speeduino_cmd.ipc
 
 # Logging
 StandardOutput=journal
@@ -27,7 +72,17 @@ SyslogIdentifier=can_service
 
 # Resource limits
 MemoryMax=64M
+MemoryHigh=48M
 CPUQuota=25%
+TasksMax=16
+LimitNOFILE=1024
+LimitMEMLOCK=64M
+
+# Real-time scheduling (requires CAP_SYS_NICE)
+Nice=-10
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=50
+CPUAffinity=2 3
 
 [Install]
 WantedBy=multi-user.target

@@ -1,35 +1,93 @@
 [Unit]
 Description=OpenAuto (Android Auto)
 Documentation=https://github.com/nicl38/openauto
-After=graphical.target
-PartOf=hmi_launcher.service
+After=graphical.target hmi_launcher.service
+BindsTo=hmi_launcher.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
 
 [Service]
 Type=simple
 User=pi
 Group=pi
 
-# Environment for Qt/Wayland
+# Environment for Qt/Wayland/EGLFS
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=QML_DISK_CACHE_PATH=/tmp/openauto_qml_cache
+
+# Performance optimizations
+Environment=QSG_RENDER_LOOP=threaded
 
 ExecStart=/usr/local/bin/openauto --fullscreen
 Restart=on-failure
 RestartSec=5
+TimeoutStartSec=60
 TimeoutStopSec=10
 
 # Allow access to USB, display, audio
-SupplementaryGroups=video input audio plugdev
+SupplementaryGroups=video input audio plugdev dialout
+
+# Security hardening - filesystem (relaxed for USB/media access)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ReadOnlyPaths=/
+ReadWritePaths=/tmp /run /var/tmp
+
+# Security hardening - network (needs USB networking for AA)
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_BLUETOOTH
+PrivateNetwork=false
+
+# Security hardening - misc
+RestrictRealtime=false
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+UMask=0022
+
+# Device access for display, USB, audio
+DevicePolicy=auto
+DeviceAllow=/dev/dri/* rw
+DeviceAllow=/dev/input/* rw
+DeviceAllow=/dev/tty* rw
+DeviceAllow=/dev/fb* rw
+DeviceAllow=/dev/video* rw
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/urandom r
+DeviceAllow=/dev/snd/* rw
+DeviceAllow=/dev/bus/usb/* rw
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
+
+# QML cache
+ReadWritePaths=/tmp/openauto_qml_cache
 
 # Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=openauto
 
-# Resource limits
-MemoryMax=512M
+# Resource limits (high for Android Auto)
+MemoryMax=768M
+MemoryHigh=512M
 CPUQuota=100%
+TasksMax=128
+LimitNOFILE=4096
+IOWeight=100
+
+# Scheduling
+Nice=0
+CPUAffinity=0 1 2 3
 
 [Install]
 WantedBy=graphical.target
