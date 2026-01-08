@@ -1,5 +1,9 @@
 # RPi Speeduino Dashboard
 
+[![CI Lint](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-lint.yml/badge.svg)](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-lint.yml)
+[![CI Build](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-build.yml/badge.svg)](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 5. Inspired by FuelTech FT600 interface.
 
 ## Features
@@ -203,9 +207,22 @@ pre-commit run clang-format --all-files
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 
+## CI/CD
+
+The project uses GitHub Actions for continuous integration:
+
+| Workflow | Trigger | Runner |
+|----------|---------|--------|
+| CI Lint | All branches, PRs | GitHub-hosted |
+| CI Build | Push to `main` | Self-hosted (Pi5) |
+| Release | Tags `v*.*.*` | Self-hosted (Pi5) |
+
+See [docs/ci-cd.md](docs/ci-cd.md) for setup instructions.
+
 ## Documentation
 
 - [Bring-up Guide](docs/bring_up.md) - Hardware setup and installation
+- [CI/CD Pipeline](docs/ci-cd.md) - GitHub Actions and self-hosted runner
 - [Contributing](CONTRIBUTING.md) - Development setup and code style
 
 ## License
