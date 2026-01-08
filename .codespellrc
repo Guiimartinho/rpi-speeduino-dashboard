@@ -1,0 +1,24 @@
+# Codespell Configuration for RPi Speeduino Dashboard
+# https://github.com/codespell-project/codespell
+
+[codespell]
+# Skip these files/directories
+skip = .git,build,*.svg,*.png,*.jpg,*.ico,*.pdf,.secrets.baseline
+
+# Ignore these file patterns
+ignore-regex = ^\s*#.*$
+
+# Words to ignore (technical terms, abbreviations, proper nouns)
+ignore-words-list = ba,crate,ser,te,ue,nd,ot,fo,hass,uint,dout,amin,arange,socio,wil
+
+# Builtin dictionaries to use
+builtin = clear,rare,informal,names
+
+# Count mode (show total count)
+count =
+
+# Interactive mode (disabled for CI)
+interactive = 0
+
+# Quiet mode (only show errors)
+quiet-level = 2
