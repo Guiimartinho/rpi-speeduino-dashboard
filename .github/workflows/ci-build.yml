@@ -1,0 +1,284 @@
+# =============================================================================
+# CI Build - Full Build on Raspberry Pi 5 (Self-hosted)
+# =============================================================================
+# Runs ONLY on push to main branch (after merge)
+# Uses self-hosted runner on Raspberry Pi 5 for native ARM64 build
+# ~5-10 minutes
+# =============================================================================
+
+name: CI Build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/workflows/ci-lint.yml'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: 'Enable debug mode'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel main builds
+
+env:
+  BUILD_TYPE: Release
+  CMAKE_GENERATOR: Ninja
+
+jobs:
+  # ===========================================================================
+  # Build on Raspberry Pi 5
+  # ===========================================================================
+  build:
+    name: Build (ARM64)
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for versioning
+
+      - name: System info
+        run: |
+          echo "=== System Information ==="
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: $(uname -a)"
+          echo "Architecture: $(uname -m)"
+          echo "CPU: $(cat /proc/cpuinfo | grep 'model name' | head -1)"
+          echo "Memory: $(free -h | grep Mem)"
+          echo "Disk: $(df -h / | tail -1)"
+          echo ""
+          echo "=== Tool Versions ==="
+          cmake --version | head -1
+          ninja --version
+          g++ --version | head -1
+          echo ""
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-arm64-${{ hashFiles('CMakeLists.txt', 'src/**/CMakeLists.txt') }}
+          restore-keys: |
+            build-arm64-
+
+      - name: Configure CMake
+        run: |
+          echo "=== Configuring CMake ==="
+          cmake -B build \
+            -G "$CMAKE_GENERATOR" \
+            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: |
+          echo "=== Building ==="
+          cmake --build build --parallel $(nproc)
+
+      - name: Verify binaries
+        run: |
+          echo "=== Verifying Binaries ==="
+          echo ""
+          echo "Executables:"
+          ls -la build/src/can_service/can_service || echo "can_service not found"
+          ls -la build/src/reverse_service/reverse_service || echo "reverse_service not found"
+          ls -la build/src/hmi_launcher/hmi_launcher || echo "hmi_launcher not found"
+          echo ""
+          echo "Libraries:"
+          ls -la build/src/common/*.a 2>/dev/null || echo "No static libraries"
+          ls -la build/src/common/*.so 2>/dev/null || echo "No shared libraries"
+          echo ""
+          echo "Binary info:"
+          file build/src/can_service/can_service || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ github.sha }}
+          path: |
+            build/src/can_service/can_service
+            build/src/reverse_service/reverse_service
+            build/src/hmi_launcher/hmi_launcher
+            build/compile_commands.json
+          retention-days: 7
+
+  # ===========================================================================
+  # Unit Tests
+  # ===========================================================================
+  test-unit:
+    name: Unit Tests
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    needs: build
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-arm64-${{ hashFiles('CMakeLists.txt', 'src/**/CMakeLists.txt') }}
+
+      - name: Run C++ unit tests
+        run: |
+          echo "=== Running Unit Tests ==="
+          cd build
+
+          # Run CTest if available
+          if [ -f "CTestTestfile.cmake" ]; then
+            ctest --output-on-failure --parallel $(nproc)
+          fi
+
+          # Run individual test executables
+          if [ -f "src/can_service/tests/test_can_parser" ]; then
+            echo ""
+            echo "=== CAN Parser Tests ==="
+            ./src/can_service/tests/test_can_parser --gtest_color=yes
+          fi
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "=== Test Summary ==="
+          if [ -f "build/Testing/Temporary/LastTest.log" ]; then
+            cat build/Testing/Temporary/LastTest.log
+          fi
+
+  # ===========================================================================
+  # Integration Tests (with vcan)
+  # ===========================================================================
+  test-integration:
+    name: Integration Tests
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    needs: build
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-arm64-${{ hashFiles('CMakeLists.txt', 'src/**/CMakeLists.txt') }}
+
+      - name: Setup virtual CAN
+        run: |
+          echo "=== Setting up vcan0 ==="
+          sudo modprobe vcan || true
+          sudo ip link add dev vcan0 type vcan 2>/dev/null || true
+          sudo ip link set up vcan0 || true
+          ip link show vcan0
+
+      - name: Setup Python environment
+        run: |
+          python3 -m pip install --user pytest pyzmq msgpack
+
+      - name: Run integration tests
+        run: |
+          echo "=== Running Integration Tests ==="
+          export PATH="$HOME/.local/bin:$PATH"
+
+          # Test can_service startup
+          echo "Testing can_service startup..."
+          timeout 5 ./build/src/can_service/can_service \
+            --interface=vcan0 \
+            --config=./configs \
+            --verbose &
+          CAN_PID=$!
+          sleep 2
+
+          # Check if still running
+          if kill -0 $CAN_PID 2>/dev/null; then
+            echo "✓ can_service started successfully"
+            kill $CAN_PID 2>/dev/null || true
+          else
+            echo "✗ can_service failed to start"
+            exit 1
+          fi
+
+          # Test reverse_service startup
+          echo ""
+          echo "Testing reverse_service startup..."
+          timeout 5 ./build/src/reverse_service/reverse_service \
+            --interface=vcan0 \
+            --config=./configs \
+            --verbose &
+          REV_PID=$!
+          sleep 2
+
+          if kill -0 $REV_PID 2>/dev/null; then
+            echo "✓ reverse_service started successfully"
+            kill $REV_PID 2>/dev/null || true
+          else
+            echo "✗ reverse_service failed to start"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Integration Tests Passed ==="
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Kill any remaining test processes
+          pkill -f can_service || true
+          pkill -f reverse_service || true
+          # Remove vcan interface
+          sudo ip link del vcan0 2>/dev/null || true
+
+  # ===========================================================================
+  # Build Summary
+  # ===========================================================================
+  build-summary:
+    name: Build Summary
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    needs: [build, test-unit, test-integration]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "========================================"
+          echo "         BUILD SUMMARY"
+          echo "========================================"
+          echo ""
+          echo "Build:            ${{ needs.build.result }}"
+          echo "Unit Tests:       ${{ needs.test-unit.result }}"
+          echo "Integration:      ${{ needs.test-integration.result }}"
+          echo ""
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "========================================"
+
+          if [ "${{ needs.build.result }}" != "success" ] || \
+             [ "${{ needs.test-unit.result }}" != "success" ] || \
+             [ "${{ needs.test-integration.result }}" != "success" ]; then
+            echo ""
+            echo "::error::Build pipeline failed!"
+            exit 1
+          fi
+
+          echo ""
+          echo "All checks passed!"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::warning::Build failed on main branch. Check logs for details."
+          # Add notification integration here (Slack, Discord, email, etc.)

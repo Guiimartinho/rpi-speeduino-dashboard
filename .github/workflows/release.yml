@@ -1,0 +1,417 @@
+# =============================================================================
+# Release - Build and Package (Self-hosted)
+# =============================================================================
+# Runs on tag push (v*.*.*)
+# Creates release artifacts and GitHub Release
+# ~10-15 minutes
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'  # Pre-releases like v1.0.0-beta.1
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  BUILD_TYPE: Release
+  CMAKE_GENERATOR: Ninja
+
+jobs:
+  # ===========================================================================
+  # Prepare Release
+  # ===========================================================================
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            # Check if pre-release (contains -)
+            if [[ "$TAG" == *"-"* ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+          echo "=== Release Info ==="
+          echo "Tag: $TAG"
+          echo "Version: $VERSION"
+          echo "Pre-release: $IS_PRERELEASE"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "=== Generating Changelog ==="
+
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Previous tag: $PREV_TAG"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+          else
+            echo "No previous tag, using all commits"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~20..HEAD)
+          fi
+
+          # Save to file for later use
+          echo "$CHANGELOG" > CHANGELOG_GENERATED.md
+          cat CHANGELOG_GENERATED.md
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG_GENERATED.md
+
+  # ===========================================================================
+  # Build Release
+  # ===========================================================================
+  build-release:
+    name: Build Release
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    needs: prepare
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure CMake
+        run: |
+          echo "=== Configuring Release Build ==="
+          cmake -B build \
+            -G "$CMAKE_GENERATOR" \
+            -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DPROJECT_VERSION=${{ needs.prepare.outputs.version }} \
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: |
+          echo "=== Building Release ==="
+          cmake --build build --parallel $(nproc)
+
+      - name: Run tests
+        run: |
+          echo "=== Running Tests ==="
+          cd build
+          ctest --output-on-failure --parallel $(nproc) || true
+
+      - name: Install to staging
+        run: |
+          echo "=== Installing to staging directory ==="
+          DESTDIR=$(pwd)/staging cmake --install build
+
+          echo ""
+          echo "Installed files:"
+          find staging -type f | head -50
+
+      - name: Upload staged installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging
+          path: staging/
+
+  # ===========================================================================
+  # Create Packages
+  # ===========================================================================
+  package:
+    name: Create Packages
+    runs-on: [self-hosted, linux, arm64, rpi5]
+    needs: [prepare, build-release]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download staging
+        uses: actions/download-artifact@v4
+        with:
+          name: staging
+          path: staging/
+
+      - name: Create tarball
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          TARBALL="speeduino-dash-${VERSION}-arm64.tar.gz"
+
+          echo "=== Creating tarball: $TARBALL ==="
+
+          # Create release directory structure
+          mkdir -p release/speeduino-dash-${VERSION}
+
+          # Copy binaries
+          cp -r staging/usr/local/* release/speeduino-dash-${VERSION}/ 2>/dev/null || true
+
+          # Copy configs
+          mkdir -p release/speeduino-dash-${VERSION}/etc/speeduino-ui
+          cp -r configs/* release/speeduino-dash-${VERSION}/etc/speeduino-ui/
+
+          # Copy systemd units
+          mkdir -p release/speeduino-dash-${VERSION}/lib/systemd/system
+          cp systemd/*.service release/speeduino-dash-${VERSION}/lib/systemd/system/
+
+          # Copy scripts
+          mkdir -p release/speeduino-dash-${VERSION}/opt/speeduino-ui/scripts
+          cp scripts/*.sh release/speeduino-dash-${VERSION}/opt/speeduino-ui/scripts/
+
+          # Copy documentation
+          mkdir -p release/speeduino-dash-${VERSION}/share/doc/speeduino-dash
+          cp README.md LICENSE release/speeduino-dash-${VERSION}/share/doc/speeduino-dash/
+          cp docs/*.md release/speeduino-dash-${VERSION}/share/doc/speeduino-dash/ 2>/dev/null || true
+
+          # Create install script
+          cat > release/speeduino-dash-${VERSION}/install.sh << 'INSTALL_EOF'
+          #!/bin/bash
+          set -e
+          echo "Installing Speeduino Dashboard ${VERSION}..."
+          sudo cp -r bin/* /usr/local/bin/ 2>/dev/null || true
+          sudo cp -r lib/* /usr/local/lib/ 2>/dev/null || true
+          sudo cp -r etc/* /etc/ 2>/dev/null || true
+          sudo cp -r lib/systemd/system/* /etc/systemd/system/ 2>/dev/null || true
+          sudo systemctl daemon-reload
+          echo "Installation complete!"
+          echo "Enable services with: sudo systemctl enable speeduino-can can_service hmi_launcher"
+          INSTALL_EOF
+          chmod +x release/speeduino-dash-${VERSION}/install.sh
+
+          # Create tarball
+          cd release
+          tar -czvf ../$TARBALL speeduino-dash-${VERSION}
+
+          echo ""
+          echo "Tarball contents:"
+          tar -tzvf ../$TARBALL | head -30
+          echo ""
+          echo "Tarball size: $(du -h ../$TARBALL | cut -f1)"
+
+      - name: Create DEB package
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          DEB_NAME="speeduino-dash_${VERSION}_arm64"
+
+          echo "=== Creating DEB package: ${DEB_NAME}.deb ==="
+
+          # Create DEB directory structure
+          mkdir -p ${DEB_NAME}/DEBIAN
+          mkdir -p ${DEB_NAME}/usr/local/bin
+          mkdir -p ${DEB_NAME}/etc/speeduino-ui
+          mkdir -p ${DEB_NAME}/lib/systemd/system
+          mkdir -p ${DEB_NAME}/opt/speeduino-ui/scripts
+          mkdir -p ${DEB_NAME}/usr/share/doc/speeduino-dash
+
+          # Copy files
+          cp -r staging/usr/local/bin/* ${DEB_NAME}/usr/local/bin/ 2>/dev/null || true
+          cp -r configs/* ${DEB_NAME}/etc/speeduino-ui/
+          cp systemd/*.service ${DEB_NAME}/lib/systemd/system/
+          cp scripts/*.sh ${DEB_NAME}/opt/speeduino-ui/scripts/
+          cp README.md LICENSE ${DEB_NAME}/usr/share/doc/speeduino-dash/
+
+          # Calculate installed size
+          INSTALLED_SIZE=$(du -sk ${DEB_NAME} | cut -f1)
+
+          # Create control file
+          cat > ${DEB_NAME}/DEBIAN/control << EOF
+          Package: speeduino-dash
+          Version: ${VERSION}
+          Section: embedded
+          Priority: optional
+          Architecture: arm64
+          Installed-Size: ${INSTALLED_SIZE}
+          Depends: libc6, libstdc++6, libzmq5, libyaml-cpp0.8, libqt6core6, libqt6gui6, libqt6qml6, can-utils
+          Maintainer: Guilherme Martinho <guiimartinho@github.com>
+          Description: Speeduino ECU Dashboard for Raspberry Pi
+           Real-time engine data display with Android Auto integration.
+           Features CAN bus communication, reverse camera support,
+           and Qt6/QML touchscreen interface.
+          Homepage: https://github.com/Guiimartinho/rpi-speeduino-dashboard
+          EOF
+
+          # Create postinst script
+          cat > ${DEB_NAME}/DEBIAN/postinst << 'EOF'
+          #!/bin/bash
+          set -e
+          systemctl daemon-reload
+          echo ""
+          echo "Speeduino Dashboard installed successfully!"
+          echo ""
+          echo "To enable services:"
+          echo "  sudo systemctl enable speeduino-can can_service reverse_service hmi_launcher"
+          echo ""
+          echo "To start services:"
+          echo "  sudo systemctl start speeduino-can can_service reverse_service hmi_launcher"
+          echo ""
+          EOF
+          chmod 755 ${DEB_NAME}/DEBIAN/postinst
+
+          # Create prerm script
+          cat > ${DEB_NAME}/DEBIAN/prerm << 'EOF'
+          #!/bin/bash
+          set -e
+          systemctl stop hmi_launcher can_service reverse_service speeduino-can 2>/dev/null || true
+          systemctl disable hmi_launcher can_service reverse_service speeduino-can 2>/dev/null || true
+          EOF
+          chmod 755 ${DEB_NAME}/DEBIAN/prerm
+
+          # Build DEB
+          dpkg-deb --build --root-owner-group ${DEB_NAME}
+
+          echo ""
+          echo "DEB package info:"
+          dpkg-deb --info ${DEB_NAME}.deb
+          echo ""
+          echo "DEB size: $(du -h ${DEB_NAME}.deb | cut -f1)"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: |
+            *.tar.gz
+            *.deb
+
+  # ===========================================================================
+  # Create GitHub Release
+  # ===========================================================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [prepare, package]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: packages/
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: ./
+
+      - name: List artifacts
+        run: |
+          echo "=== Release Artifacts ==="
+          ls -la packages/
+
+      - name: Create release notes
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+
+          cat > RELEASE_NOTES.md << EOF
+          # Speeduino Dashboard v${VERSION}
+
+          ## Installation
+
+          ### Option 1: DEB Package (Recommended)
+          \`\`\`bash
+          sudo dpkg -i speeduino-dash_${VERSION}_arm64.deb
+          sudo apt-get install -f  # Install dependencies if needed
+          \`\`\`
+
+          ### Option 2: Tarball
+          \`\`\`bash
+          tar -xzvf speeduino-dash-${VERSION}-arm64.tar.gz
+          cd speeduino-dash-${VERSION}
+          sudo ./install.sh
+          \`\`\`
+
+          ## Changes
+
+          $(cat CHANGELOG_GENERATED.md)
+
+          ## Checksums
+
+          \`\`\`
+          $(cd packages && sha256sum *)
+          \`\`\`
+
+          ## Requirements
+
+          - Raspberry Pi 5 (4GB+ RAM)
+          - Raspberry Pi OS 64-bit (Bookworm)
+          - Qt6 runtime libraries
+          - SocketCAN support
+          - MCP2515/MCP2518FD CAN module
+
+          ## Documentation
+
+          See [README.md](https://github.com/Guiimartinho/rpi-speeduino-dashboard/blob/main/README.md) for full documentation.
+          EOF
+
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Speeduino Dashboard v${{ needs.prepare.outputs.version }}"
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          files: |
+            packages/*.tar.gz
+            packages/*.deb
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "========================================"
+          echo "      RELEASE COMPLETE"
+          echo "========================================"
+          echo ""
+          echo "Version: v${{ needs.prepare.outputs.version }}"
+          echo "Pre-release: ${{ needs.prepare.outputs.is_prerelease }}"
+          echo ""
+          echo "Artifacts:"
+          ls -la packages/
+          echo ""
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.prepare.outputs.version }}"
+          echo "========================================"
