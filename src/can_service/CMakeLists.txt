@@ -5,6 +5,7 @@ add_executable(can_service
     src/can_writer.cpp
     src/signal_database.cpp
     src/zmq_publisher.cpp
+    src/can_error_handler.cpp
 )
 
 target_include_directories(can_service PRIVATE
@@ -16,6 +17,11 @@ target_link_libraries(can_service PRIVATE
     common
     ${ZMQ_LIBRARIES}
     Threads::Threads
+)
+
+# Enable real-time capabilities (requires CAP_SYS_NICE)
+target_compile_definitions(can_service PRIVATE
+    ENABLE_REALTIME_SCHEDULING
 )
 
 # Install
@@ -37,4 +43,18 @@ if(BUILD_TESTS AND GTest_FOUND)
         GTest::gtest_main
     )
     add_test(NAME test_can_parser COMMAND test_can_parser)
+
+    add_executable(test_can_error_handler
+        tests/test_can_error_handler.cpp
+        src/can_error_handler.cpp
+    )
+    target_include_directories(test_can_error_handler PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(test_can_error_handler PRIVATE
+        common
+        GTest::gtest
+        GTest::gtest_main
+    )
+    add_test(NAME test_can_error_handler COMMAND test_can_error_handler)
 endif()

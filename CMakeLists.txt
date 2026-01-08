@@ -18,6 +18,11 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 
+# Platform-specific optimizations for Raspberry Pi 5
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=cortex-a76 -mtune=cortex-a76")
+endif()
+
 # Warning flags
 add_compile_options(
     -Wall
@@ -25,7 +30,25 @@ add_compile_options(
     -Wpedantic
     -Werror=return-type
     -Wno-unused-parameter
+    -Wshadow
+    -Wconversion
+    -Wdouble-promotion
+    -Wformat=2
+    -Wformat-security
 )
+
+# Security hardening flags
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(
+        -fstack-protector-strong
+        -D_FORTIFY_SOURCE=2
+    )
+    add_link_options(
+        -Wl,-z,relro
+        -Wl,-z,now
+        -Wl,-z,noexecstack
+    )
+endif()
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
@@ -36,6 +59,12 @@ pkg_check_modules(ZMQ REQUIRED libzmq)
 
 # yaml-cpp
 pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
+
+# libsystemd (for watchdog and sd_notify)
+pkg_check_modules(SYSTEMD libsystemd)
+if(SYSTEMD_FOUND)
+    add_compile_definitions(HAVE_SYSTEMD)
+endif()
 
 # MessagePack (header-only, check if available)
 find_path(MSGPACK_INCLUDE_DIR msgpack.hpp
@@ -79,8 +108,10 @@ message(STATUS "")
 message(STATUS "=== Speeduino UI Build Configuration ===")
 message(STATUS "Build type:     ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler:   ${CMAKE_CXX_COMPILER}")
+message(STATUS "Processor:      ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS "ZeroMQ:         ${ZMQ_VERSION}")
 message(STATUS "yaml-cpp:       ${YAML_CPP_VERSION}")
+message(STATUS "libsystemd:     ${SYSTEMD_FOUND}")
 message(STATUS "Qt6:            ${Qt6_FOUND}")
 message(STATUS "GTest:          ${GTest_FOUND}")
 message(STATUS "Build tests:    ${BUILD_TESTS}")

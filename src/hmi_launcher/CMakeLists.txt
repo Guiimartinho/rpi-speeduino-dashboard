@@ -20,6 +20,8 @@ qt_add_qml_module(hmi_launcher
         qml/components/Gauge.qml
         qml/components/WarningIndicator.qml
         qml/components/IconButton.qml
+        qml/components/SafeGauge.qml
+        qml/components/StatusIndicator.qml
 )
 
 target_include_directories(hmi_launcher PRIVATE
@@ -35,5 +37,13 @@ target_link_libraries(hmi_launcher PRIVATE
     ${ZMQ_LIBRARIES}
 )
 
+# Qt Quick Compiler for release builds (precompiles QML)
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    qt_add_qml_module(hmi_launcher
+        PRECOMPILE
+    )
+endif()
+
 # Install
 install(TARGETS hmi_launcher RUNTIME DESTINATION /usr/local/bin)
+install(DIRECTORY qml/ DESTINATION /usr/share/speeduino-ui/qml)
