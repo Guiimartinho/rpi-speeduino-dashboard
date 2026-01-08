@@ -1,0 +1,272 @@
+#include "common/config_loader.hpp"
+#include "common/logger.hpp"
+#include <yaml-cpp/yaml.h>
+#include <filesystem>
+#include <fstream>
+
+namespace speeduino {
+
+// Static members
+SystemConfig ConfigLoader::s_systemConfig;
+std::vector<CanSignalDef> ConfigLoader::s_signals;
+std::vector<CanCommandDef> ConfigLoader::s_allowedCommands;
+std::vector<SteeringButtonDef> ConfigLoader::s_steeringButtons;
+ReverseConfig ConfigLoader::s_reverseConfig;
+bool ConfigLoader::s_loaded = false;
+
+namespace {
+
+// Helper to parse hex strings like "0x360"
+uint32_t parseHexOrDec(const YAML::Node& node) {
+    if (!node.IsDefined() || node.IsNull()) return 0;
+
+    std::string value = node.as<std::string>();
+    if (value.substr(0, 2) == "0x" || value.substr(0, 2) == "0X") {
+        return std::stoul(value, nullptr, 16);
+    }
+    return node.as<uint32_t>();
+}
+
+void loadHaltechSignals(std::vector<CanSignalDef>& signals) {
+    // DATA1 (0x360) - RPM, MAP, TPS @ 50Hz
+    signals.push_back({"rpm", 0x360, 0, 0, 16, true, false, 1.0, 0, "rpm"});
+    signals.push_back({"map", 0x360, 2, 0, 16, true, false, 0.1, 0, "kPa"});
+    signals.push_back({"tps", 0x360, 4, 0, 16, true, false, 0.1, 0, "%"});
+
+    // DATA2 (0x361) - Fuel/Oil Pressure @ 50Hz
+    signals.push_back({"fuel_pressure", 0x361, 0, 0, 16, true, false, 0.1, 0, "kPa"});
+    signals.push_back({"oil_pressure", 0x361, 2, 0, 16, true, false, 0.1, 0, "kPa"});
+
+    // DATA3 (0x362) - Injector Duty, Ignition @ 50Hz
+    signals.push_back({"injector_duty", 0x362, 0, 0, 16, true, false, 0.1, 0, "%"});
+    signals.push_back({"ignition_advance", 0x362, 4, 0, 16, true, true, 0.1, 0, "deg"});
+
+    // LAMBDA (0x368) - Lambda @ 15Hz
+    signals.push_back({"lambda1", 0x368, 0, 0, 16, true, false, 0.001, 0, ""});
+    signals.push_back({"lambda2", 0x368, 2, 0, 16, true, false, 0.001, 0, ""});
+
+    // VSS (0x370) - Speed, Gear @ 15Hz
+    signals.push_back({"vehicle_speed", 0x370, 0, 0, 16, true, false, 0.1, 0, "km/h"});
+    signals.push_back({"gear", 0x370, 3, 0, 8, true, false, 1.0, 0, ""});
+
+    // DATA5 (0x3E0) - Temps @ 10Hz
+    signals.push_back({"coolant_temp", 0x3E0, 0, 0, 16, true, false, 0.1, -273.0, "C"});
+    signals.push_back({"intake_temp", 0x3E0, 2, 0, 16, true, false, 0.1, -273.0, "C"});
+    signals.push_back({"fuel_temp", 0x3E0, 4, 0, 16, true, false, 0.1, -273.0, "C"});
+}
+
+void loadBMWSignals(std::vector<CanSignalDef>& signals) {
+    // DME1 (0x316) - RPM @ 30Hz
+    // RPM is bytes 2-3, little endian, divided by 6.4
+    signals.push_back({"rpm", 0x316, 2, 0, 16, false, false, 0.15625, 0, "rpm"});
+    signals.push_back({"torque", 0x316, 1, 0, 8, true, false, 1.0, 0, "%"});
+
+    // DME2 (0x329) - CLT, TPS @ 30Hz
+    signals.push_back({"coolant_temp", 0x329, 1, 0, 8, true, false, 0.75, -48.373, "C"});
+    signals.push_back({"baro", 0x329, 2, 0, 8, true, false, 1.0, 0, "kPa"});
+    signals.push_back({"tps", 0x329, 5, 0, 8, true, false, 0.392157, 0, "%"});
+
+    // DME4 (0x545) - CEL, Fuel, Oil @ 10Hz
+    signals.push_back({"fuel_consumption", 0x545, 1, 0, 16, false, false, 0.01, 0, "L/h"});
+    signals.push_back({"oil_temp", 0x545, 4, 0, 8, true, false, 0.75, -48, "C"});
+}
+
+} // anonymous namespace
+
+bool ConfigLoader::loadFromDirectory(std::string_view config_dir) {
+    std::filesystem::path dir(config_dir);
+
+    bool success = true;
+
+    auto system_path = dir / "system.yaml";
+    if (std::filesystem::exists(system_path)) {
+        success &= loadSystemConfig(system_path.string());
+    } else {
+        LOG_WARN("system.yaml not found, using defaults");
+    }
+
+    auto signals_path = dir / "can_signals.yaml";
+    if (std::filesystem::exists(signals_path)) {
+        success &= loadSignalsConfig(signals_path.string());
+    } else {
+        LOG_WARN("can_signals.yaml not found, loading default Haltech signals");
+        loadHaltechSignals(s_signals);
+    }
+
+    auto steering_path = dir / "steering_wheel.yaml";
+    if (std::filesystem::exists(steering_path)) {
+        success &= loadSteeringConfig(steering_path.string());
+    }
+
+    s_loaded = success;
+    return success;
+}
+
+bool ConfigLoader::loadSystemConfig(std::string_view path) {
+    try {
+        YAML::Node config = YAML::LoadFile(std::string(path));
+
+        if (config["can"]) {
+            auto can = config["can"];
+            if (can["interface"]) s_systemConfig.can_interface = can["interface"].as<std::string>();
+            if (can["bitrate"]) s_systemConfig.can_bitrate = can["bitrate"].as<uint32_t>();
+            if (can["protocol"]) s_systemConfig.can_protocol = can["protocol"].as<std::string>();
+            if (can["timeout_ms"]) s_systemConfig.can_timeout_ms = can["timeout_ms"].as<uint32_t>();
+        }
+
+        if (config["zmq"]) {
+            auto zmq = config["zmq"];
+            if (zmq["publish_rate_hz"]) s_systemConfig.zmq_publish_rate_hz = zmq["publish_rate_hz"].as<uint32_t>();
+        }
+
+        if (config["camera"]) {
+            auto cam = config["camera"];
+            if (cam["device"]) s_systemConfig.camera_device = cam["device"].as<std::string>();
+            if (cam["width"]) s_systemConfig.camera_width = cam["width"].as<uint32_t>();
+            if (cam["height"]) s_systemConfig.camera_height = cam["height"].as<uint32_t>();
+            if (cam["fps"]) s_systemConfig.camera_fps = cam["fps"].as<uint32_t>();
+        }
+
+        if (config["openauto"]) {
+            auto oa = config["openauto"];
+            if (oa["path"]) s_systemConfig.openauto_path = oa["path"].as<std::string>();
+        }
+
+        if (config["reverse"]) {
+            auto rev = config["reverse"];
+            if (rev["can_enabled"]) s_reverseConfig.can_enabled = rev["can_enabled"].as<bool>();
+            if (rev["can_id"]) s_reverseConfig.can_id = parseHexOrDec(rev["can_id"]);
+            if (rev["byte_index"]) s_reverseConfig.byte_index = rev["byte_index"].as<uint8_t>();
+            if (rev["bit_mask"]) s_reverseConfig.bit_mask = parseHexOrDec(rev["bit_mask"]);
+            if (rev["expected_value"]) s_reverseConfig.expected_value = parseHexOrDec(rev["expected_value"]);
+            if (rev["gpio_enabled"]) s_reverseConfig.gpio_enabled = rev["gpio_enabled"].as<bool>();
+            if (rev["gpio_chip"]) s_reverseConfig.gpio_chip = rev["gpio_chip"].as<std::string>();
+            if (rev["gpio_line"]) s_reverseConfig.gpio_line = rev["gpio_line"].as<uint32_t>();
+            if (rev["gpio_active_low"]) s_reverseConfig.gpio_active_low = rev["gpio_active_low"].as<bool>();
+            if (rev["debounce_ms"]) s_systemConfig.reverse_debounce_ms = rev["debounce_ms"].as<uint32_t>();
+        }
+
+        if (config["allowed_commands"]) {
+            for (const auto& cmd : config["allowed_commands"]) {
+                CanCommandDef def;
+                def.can_id = parseHexOrDec(cmd["id"]);
+                if (cmd["rate_limit"]) def.rate_limit_hz = cmd["rate_limit"].as<uint32_t>();
+                if (cmd["description"]) def.description = cmd["description"].as<std::string>();
+                s_allowedCommands.push_back(def);
+            }
+        }
+
+        LOG_INFO("Loaded system config from " + std::string(path));
+        return true;
+    } catch (const YAML::Exception& e) {
+        LOG_ERROR("Failed to load system config: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ConfigLoader::loadSignalsConfig(std::string_view path) {
+    try {
+        YAML::Node config = YAML::LoadFile(std::string(path));
+
+        // Check if we should use built-in signals
+        if (config["use_builtin"]) {
+            std::string builtin = config["use_builtin"].as<std::string>();
+            if (builtin == "haltech") {
+                loadHaltechSignals(s_signals);
+            } else if (builtin == "bmw") {
+                loadBMWSignals(s_signals);
+            }
+        }
+
+        // Load custom signals (can override or add to builtins)
+        if (config["signals"]) {
+            for (const auto& sig : config["signals"]) {
+                CanSignalDef def;
+                def.name = sig["name"].as<std::string>();
+                def.can_id = parseHexOrDec(sig["can_id"]);
+                def.start_byte = sig["start_byte"].as<uint8_t>();
+                if (sig["start_bit"]) def.start_bit = sig["start_bit"].as<uint8_t>();
+                def.length_bits = sig["length_bits"].as<uint8_t>();
+                if (sig["big_endian"]) def.is_big_endian = sig["big_endian"].as<bool>();
+                if (sig["signed"]) def.is_signed = sig["signed"].as<bool>();
+                if (sig["scale"]) def.scale = sig["scale"].as<double>();
+                if (sig["offset"]) def.offset = sig["offset"].as<double>();
+                if (sig["unit"]) def.unit = sig["unit"].as<std::string>();
+                s_signals.push_back(def);
+            }
+        }
+
+        LOG_INFO("Loaded " + std::to_string(s_signals.size()) + " CAN signals");
+        return true;
+    } catch (const YAML::Exception& e) {
+        LOG_ERROR("Failed to load signals config: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool ConfigLoader::loadSteeringConfig(std::string_view path) {
+    try {
+        YAML::Node config = YAML::LoadFile(std::string(path));
+
+        if (config["buttons"]) {
+            for (const auto& btn : config["buttons"]) {
+                SteeringButtonDef def;
+                def.button_id = btn["id"].as<uint8_t>();
+                def.can_id = parseHexOrDec(btn["can_id"]);
+                def.byte_index = btn["byte_index"].as<uint8_t>();
+                def.bit_mask = parseHexOrDec(btn["bit_mask"]);
+                def.action = btn["action"].as<std::string>();
+                s_steeringButtons.push_back(def);
+            }
+        }
+
+        LOG_INFO("Loaded " + std::to_string(s_steeringButtons.size()) + " steering buttons");
+        return true;
+    } catch (const YAML::Exception& e) {
+        LOG_ERROR("Failed to load steering config: " + std::string(e.what()));
+        return false;
+    }
+}
+
+const SystemConfig& ConfigLoader::getSystemConfig() {
+    return s_systemConfig;
+}
+
+const std::vector<CanSignalDef>& ConfigLoader::getSignals() {
+    return s_signals;
+}
+
+const std::vector<CanCommandDef>& ConfigLoader::getAllowedCommands() {
+    return s_allowedCommands;
+}
+
+const std::vector<SteeringButtonDef>& ConfigLoader::getSteeringButtons() {
+    return s_steeringButtons;
+}
+
+const ReverseConfig& ConfigLoader::getReverseConfig() {
+    return s_reverseConfig;
+}
+
+std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
+    for (const auto& sig : s_signals) {
+        if (sig.name == name) return sig;
+    }
+    return std::nullopt;
+}
+
+bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
+    for (const auto& cmd : s_allowedCommands) {
+        if (cmd.can_id == can_id) return true;
+    }
+    return false;
+}
+
+uint32_t ConfigLoader::getCommandRateLimit(uint32_t can_id) {
+    for (const auto& cmd : s_allowedCommands) {
+        if (cmd.can_id == can_id) return cmd.rate_limit_hz;
+    }
+    return 0;
+}
+
+} // namespace speeduino
