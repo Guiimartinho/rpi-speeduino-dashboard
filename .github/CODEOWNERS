@@ -1,0 +1,29 @@
+# =============================================================================
+# Code Owners - RPi Speeduino Dashboard
+# =============================================================================
+# These owners will be requested for review when someone opens a PR
+# that modifies code that they own.
+#
+# Order matters: later rules override earlier ones.
+# =============================================================================
+
+# Default owner for everything
+* @Guiimartinho
+
+# Core services
+/src/can_service/       @Guiimartinho
+/src/reverse_service/   @Guiimartinho
+/src/hmi_launcher/      @Guiimartinho
+/src/common/            @Guiimartinho
+
+# CI/CD
+/.github/               @Guiimartinho
+/.hooks/                @Guiimartinho
+
+# Configuration
+/configs/               @Guiimartinho
+/systemd/               @Guiimartinho
+
+# Documentation
+/docs/                  @Guiimartinho
+*.md                    @Guiimartinho

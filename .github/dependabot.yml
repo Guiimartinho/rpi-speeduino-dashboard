@@ -1,0 +1,37 @@
+# =============================================================================
+# Dependabot Configuration
+# =============================================================================
+# Automatically updates dependencies and GitHub Actions
+# =============================================================================
+
+version: 2
+
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
+    open-pull-requests-limit: 5
+
+  # Python (for test dependencies)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 3
+    # Only if we add requirements.txt
+    allow:
+      - dependency-type: "direct"
