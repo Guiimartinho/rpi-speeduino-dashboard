@@ -1,0 +1,6 @@
+module Components
+TabBar 1.0 TabBar.qml
+TabButton 1.0 TabButton.qml
+StatusBar 1.0 StatusBar.qml
+SafeGauge 1.0 SafeGauge.qml
+StatusIndicator 1.0 StatusIndicator.qml
