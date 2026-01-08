@@ -1,0 +1,36 @@
+[Unit]
+Description=Speeduino HMI Launcher (Dashboard UI)
+Documentation=https://github.com/speeduino/speeduino-ui
+After=graphical.target can_service.service reverse_service.service
+Wants=can_service.service reverse_service.service
+Requires=graphical.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# Environment for Qt/Wayland
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+ExecStart=/usr/local/bin/hmi_launcher --fullscreen --config=/etc/speeduino-ui
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+# Allow access to display and input devices
+SupplementaryGroups=video input render
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hmi_launcher
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=80%
+
+[Install]
+WantedBy=graphical.target

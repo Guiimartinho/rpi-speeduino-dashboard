@@ -1,0 +1,25 @@
+[Unit]
+Description=Setup SocketCAN interface for Speeduino
+Documentation=https://github.com/speeduino/speeduino-ui
+Before=can_service.service reverse_service.service
+DefaultDependencies=no
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Load CAN modules
+ExecStartPre=/sbin/modprobe can
+ExecStartPre=/sbin/modprobe can_raw
+ExecStartPre=/sbin/modprobe can_dev
+
+# Configure can0 interface
+ExecStart=/sbin/ip link set can0 type can bitrate 500000 restart-ms 100
+ExecStart=/sbin/ip link set can0 up
+
+# Shutdown
+ExecStop=/sbin/ip link set can0 down
+
+[Install]
+WantedBy=multi-user.target

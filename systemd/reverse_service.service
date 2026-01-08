@@ -1,0 +1,39 @@
+[Unit]
+Description=Speeduino Reverse Gear Detection Service
+Documentation=https://github.com/speeduino/speeduino-ui
+After=can_service.service
+Wants=can_service.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/reverse_service --interface=can0 --config=/etc/speeduino-ui
+Restart=always
+RestartSec=3
+TimeoutStopSec=5
+
+# GPIO access (if using GPIO fallback)
+SupplementaryGroups=gpio
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/
+ReadWritePaths=/tmp
+
+# Allow GPIO device access
+DeviceAllow=/dev/gpiochip0 rw
+DeviceAllow=/dev/gpiomem rw
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=reverse_service
+
+# Resource limits
+MemoryMax=32M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenAuto (Android Auto)
+Documentation=https://github.com/nicl38/openauto
+After=graphical.target
+PartOf=hmi_launcher.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# Environment for Qt/Wayland
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_HIDECURSOR=1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+ExecStart=/usr/local/bin/openauto --fullscreen
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Allow access to USB, display, audio
+SupplementaryGroups=video input audio plugdev
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openauto
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=graphical.target

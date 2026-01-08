@@ -1,0 +1,33 @@
+[Unit]
+Description=Speeduino CAN Service
+Documentation=https://github.com/speeduino/speeduino-ui
+After=network.target sys-subsystem-net-devices-can0.device
+Wants=sys-subsystem-net-devices-can0.device
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/local/bin/can_service --interface=can0 --config=/etc/speeduino-ui
+Restart=always
+RestartSec=3
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/
+ReadWritePaths=/tmp
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=can_service
+
+# Resource limits
+MemoryMax=64M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target
