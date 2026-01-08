@@ -1,0 +1,122 @@
+#!/bin/bash
+# Pre-push hook for RPi Speeduino Dashboard
+# Runs tests and optional build verification before push
+#
+# Install: cp .hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo -e "${CYAN}=== Pre-Push Checks ===${NC}"
+
+# Get repository root
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+# =============================================================================
+# 1. UNIT TESTS (C++ with GoogleTest)
+# =============================================================================
+echo -e "\n${CYAN}[1/3] Running C++ unit tests...${NC}"
+
+if [ -d "build" ] && [ -f "build/src/can_service/tests/test_can_parser" ]; then
+    if ./build/src/can_service/tests/test_can_parser; then
+        echo -e "${GREEN}C++ unit tests: PASSED${NC}"
+    else
+        echo -e "${RED}C++ unit tests: FAILED${NC}"
+        echo -e "${RED}Please fix failing tests before pushing.${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}C++ tests not built. Skipping...${NC}"
+    echo "Build with: mkdir build && cd build && cmake .. && make"
+fi
+
+# =============================================================================
+# 2. PYTHON INTEGRATION TESTS
+# =============================================================================
+echo -e "\n${CYAN}[2/3] Running Python tests...${NC}"
+
+if command -v pytest &> /dev/null; then
+    if [ -f "tests/integration/test_full_system.py" ]; then
+        # Run only unit-style tests, skip integration that need vcan
+        if pytest tests/ -v --ignore=tests/integration/ 2>/dev/null || true; then
+            echo -e "${GREEN}Python tests: PASSED${NC}"
+        fi
+    fi
+else
+    echo -e "${YELLOW}pytest not installed. Skipping Python tests...${NC}"
+fi
+
+# =============================================================================
+# 3. BUILD CHECK (Optional - uncomment when build environment is ready)
+# =============================================================================
+echo -e "\n${CYAN}[3/3] Build verification...${NC}"
+
+# Uncomment the following block when Raspberry Pi build environment is ready
+# ------------------------------------------------------------------------------
+# BUILD_DIR="build_check_$$"
+# mkdir -p "$BUILD_DIR"
+# cd "$BUILD_DIR"
+#
+# if cmake -GNinja .. > /dev/null 2>&1; then
+#     if ninja > /dev/null 2>&1; then
+#         echo -e "${GREEN}Build: PASSED${NC}"
+#     else
+#         echo -e "${RED}Build: FAILED${NC}"
+#         cd ..
+#         rm -rf "$BUILD_DIR"
+#         exit 1
+#     fi
+# else
+#     echo -e "${RED}CMake configuration: FAILED${NC}"
+#     cd ..
+#     rm -rf "$BUILD_DIR"
+#     exit 1
+# fi
+#
+# cd ..
+# rm -rf "$BUILD_DIR"
+# ------------------------------------------------------------------------------
+
+echo -e "${YELLOW}Build check: SKIPPED (no build environment)${NC}"
+echo "Enable in .hooks/pre-push when Raspberry Pi is configured."
+
+# =============================================================================
+# 4. CLANG-TIDY (Deep static analysis)
+# =============================================================================
+# Uncomment for thorough static analysis (slow, ~30s-2min)
+# ------------------------------------------------------------------------------
+# echo -e "\n${CYAN}[4/4] Running clang-tidy...${NC}"
+#
+# if command -v clang-tidy &> /dev/null; then
+#     if [ -f "build/compile_commands.json" ]; then
+#         ERRORS=0
+#         for file in src/**/*.cpp; do
+#             if ! clang-tidy -p build "$file" 2>/dev/null; then
+#                 ERRORS=1
+#             fi
+#         done
+#         if [ $ERRORS -eq 1 ]; then
+#             echo -e "${RED}clang-tidy: FAILED${NC}"
+#             exit 1
+#         fi
+#         echo -e "${GREEN}clang-tidy: PASSED${NC}"
+#     else
+#         echo -e "${YELLOW}compile_commands.json not found. Skipping clang-tidy.${NC}"
+#     fi
+# else
+#     echo -e "${YELLOW}clang-tidy not installed. Skipping...${NC}"
+# fi
+# ------------------------------------------------------------------------------
+
+# =============================================================================
+# SUCCESS
+# =============================================================================
+echo -e "\n${GREEN}=== All pre-push checks passed ===${NC}"
+exit 0

@@ -1,0 +1,185 @@
+# Pre-commit configuration for RPi Speeduino Dashboard
+# Install: pip install pre-commit && pre-commit install
+# Run all: pre-commit run --all-files
+
+default_language_version:
+  python: python3
+
+repos:
+  # =============================================================================
+  # GENERAL FILE HYGIENE
+  # =============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+        name: "trim trailing whitespace"
+        args: [--markdown-linebreak-ext=md]
+
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+        name: "fix end of files"
+        exclude: ^(.*\.qml|.*\.svg)$
+
+      # Convert to LF line endings
+      - id: mixed-line-ending
+        name: "fix line endings (LF)"
+        args: [--fix=lf]
+
+      # Validate YAML syntax
+      - id: check-yaml
+        name: "check YAML syntax"
+        args: [--allow-multiple-documents]
+
+      # Validate JSON syntax
+      - id: check-json
+        name: "check JSON syntax"
+
+      # Validate XML syntax
+      - id: check-xml
+        name: "check XML syntax"
+
+      # Block large files (>500KB)
+      - id: check-added-large-files
+        name: "check for large files"
+        args: [--maxkb=500]
+
+      # Detect merge conflict markers
+      - id: check-merge-conflict
+        name: "check merge conflicts"
+
+      # Check for broken symlinks
+      - id: check-symlinks
+        name: "check symlinks"
+
+      # Detect private keys
+      - id: detect-private-key
+        name: "detect private keys"
+
+      # Check executables have shebangs
+      - id: check-executables-have-shebangs
+        name: "check shebangs"
+
+      # Check shell script syntax
+      - id: check-shebang-scripts-are-executable
+        name: "check scripts executable"
+
+  # =============================================================================
+  # SPELLING & DOCUMENTATION
+  # =============================================================================
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        name: "check spelling"
+        args:
+          - --config=.codespellrc
+        exclude: ^(configs/|docs/requirements\.md)$
+
+  # =============================================================================
+  # SHELL SCRIPTS
+  # =============================================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        name: "shellcheck"
+        args: [--severity=warning]
+        files: ^scripts/.*\.sh$
+
+  # =============================================================================
+  # PYTHON (test files)
+  # =============================================================================
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        name: "black (python formatter)"
+        files: ^tests/.*\.py$
+        language_version: python3
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        name: "flake8 (python linter)"
+        files: ^tests/.*\.py$
+        args: [--max-line-length=100, --ignore=E501]
+
+  # =============================================================================
+  # SECRETS DETECTION
+  # =============================================================================
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: "detect secrets"
+        args: [--baseline, .secrets.baseline]
+        exclude: ^(\.secrets\.baseline|configs/.*\.yaml)$
+
+  # =============================================================================
+  # C++ FORMATTING (clang-format)
+  # =============================================================================
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v17.0.6
+    hooks:
+      - id: clang-format
+        name: "clang-format"
+        types_or: [c, c++]
+        args: [--style=file]
+
+  # =============================================================================
+  # C++ STATIC ANALYSIS (quick checks for pre-commit)
+  # =============================================================================
+  - repo: local
+    hooks:
+      # Quick cppcheck on staged files only
+      - id: cppcheck-quick
+        name: "cppcheck (quick)"
+        entry: .hooks/cppcheck-quick.sh
+        language: script
+        files: \.(cpp|hpp|c|h)$
+        pass_filenames: true
+        stages: [commit]
+
+      # MISRA 15.6 nesting depth check
+      - id: check-nesting-depth
+        name: "MISRA 15.6 nesting check"
+        entry: .hooks/check-nesting.py
+        language: python
+        files: \.(cpp|hpp|c|h)$
+        pass_filenames: true
+        stages: [commit]
+
+      # Check for TODO/FIXME with deadline
+      - id: check-todos
+        name: "check TODO markers"
+        entry: .hooks/check-todos.sh
+        language: script
+        files: \.(cpp|hpp|c|h|py|sh|qml)$
+        pass_filenames: true
+        stages: [commit]
+
+  # =============================================================================
+  # QML LINTING
+  # =============================================================================
+  - repo: local
+    hooks:
+      - id: qmllint
+        name: "qmllint"
+        entry: .hooks/qmllint-check.sh
+        language: script
+        files: \.qml$
+        pass_filenames: true
+        stages: [commit]
+
+# =============================================================================
+# CI CONFIGURATION
+# =============================================================================
+ci:
+  autofix_commit_msg: "style: auto-fix from pre-commit hooks"
+  autofix_prs: true
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  autoupdate_schedule: monthly
+  skip: [cppcheck-quick, check-nesting-depth, qmllint]
