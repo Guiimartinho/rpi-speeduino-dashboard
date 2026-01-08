@@ -171,9 +171,42 @@ rpi-speeduino-dashboard/
 - Overheat/CEL warning indicators
 - Automatic camera failover
 
+## Development
+
+### Setup Git Hooks
+
+```bash
+# Install pre-commit and hooks
+./.hooks/install-hooks.sh
+```
+
+### Code Quality Tools
+
+| Tool | Purpose | Config |
+|------|---------|--------|
+| clang-format | C++ formatting | `.clang-format` |
+| clang-tidy | C++ static analysis | `.clang-tidy` |
+| cppcheck | C++ linting | `.hooks/cppcheck-quick.sh` |
+| MISRA check | Nesting depth (max 3) | `.hooks/check-nesting.py` |
+| shellcheck | Shell script linting | Built-in |
+| codespell | Spelling check | `.codespellrc` |
+
+### Pre-Commit Hooks
+
+```bash
+# Run all hooks manually
+pre-commit run --all-files
+
+# Run specific hook
+pre-commit run clang-format --all-files
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
+
 ## Documentation
 
-See [docs/bring_up.md](docs/bring_up.md) for detailed installation instructions.
+- [Bring-up Guide](docs/bring_up.md) - Hardware setup and installation
+- [Contributing](CONTRIBUTING.md) - Development setup and code style
 
 ## License
 
