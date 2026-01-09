@@ -1,0 +1,8 @@
+module components
+ArcGauge 1.0 ArcGauge.qml
+CompactGauge 1.0 CompactGauge.qml
+ShiftLightBar 1.0 ShiftLightBar.qml
+WarningIndicator 1.0 WarningIndicator.qml
+GearIndicator 1.0 GearIndicator.qml
+StatusBar 1.0 StatusBar.qml
+NavBar 1.0 NavBar.qml
