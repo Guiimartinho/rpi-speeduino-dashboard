@@ -31,6 +31,18 @@ ApplicationWindow {
     title: "Speeduino UI"
     color: Styles.Theme.backgroundPrimary
 
+    // ═══════════════════════════════════════════════════════════════
+    // C++ CONTEXT PROPERTIES (injected by main.cpp, null in preview)
+    // ═══════════════════════════════════════════════════════════════
+    property var dataProvider: null
+    property var systemMonitor: null
+    property var cameraController: null
+    property var openAutoController: null
+    property var canService: null
+
+    // Fullscreen property
+    property bool isFullscreen: false
+
     // Fullscreen mode (can be toggled)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
 
@@ -45,35 +57,39 @@ ApplicationWindow {
     // DATA PROVIDER CONNECTIONS
     // ═══════════════════════════════════════════════════════════════
 
-    // Engine data object (updated by DataProvider C++ class)
-    property var engineData: ({
-        rpm: dataProvider ? dataProvider.rpm : 0,
-        coolantTemp: dataProvider ? dataProvider.coolantTemp : 0,
-        intakeTemp: dataProvider ? dataProvider.intakeTemp : 0,
-        tps: dataProvider ? dataProvider.tps : 0,
-        mapKpa: dataProvider ? dataProvider.mapKpa : 0,
-        lambda: dataProvider ? dataProvider.lambda : 1.0,
-        ignitionAdvance: dataProvider ? dataProvider.ignitionAdvance : 0,
-        injectorDuty: dataProvider ? dataProvider.injectorDuty : 0,
-        vehicleSpeed: dataProvider ? dataProvider.vehicleSpeed : 0,
-        gear: dataProvider ? dataProvider.gear : 0,
-        canOk: dataProvider ? dataProvider.canConnected : false,
-        celOn: dataProvider ? dataProvider.celOn : false,
-        overheat: dataProvider ? dataProvider.overheat : false
-    })
+    // Engine data object with reactive properties
+    property alias engineData: engineDataObj
+    QtObject {
+        id: engineDataObj
+        property real rpm: dataProvider ? dataProvider.rpm : 0
+        property real coolantTemp: dataProvider ? dataProvider.coolantTemp : 0
+        property real intakeTemp: dataProvider ? dataProvider.intakeTemp : 0
+        property real tps: dataProvider ? dataProvider.tps : 0
+        property real mapKpa: dataProvider ? dataProvider.mapKpa : 0
+        property real lambda: dataProvider ? dataProvider.lambda : 1.0
+        property real ignitionAdvance: dataProvider ? dataProvider.ignitionAdvance : 0
+        property real injectorDuty: dataProvider ? dataProvider.injectorDuty : 0
+        property real vehicleSpeed: dataProvider ? dataProvider.vehicleSpeed : 0
+        property int gear: dataProvider ? dataProvider.gear : 0
+        property bool canOk: dataProvider ? dataProvider.canConnected : false
+        property bool celOn: dataProvider ? dataProvider.celOn : false
+        property bool overheat: dataProvider ? dataProvider.overheat : false
+    }
 
-    // System info object
-    property var systemInfo: ({
-        canInterface: "can0",
-        canBitrate: "500000",
-        canRxCount: dataProvider ? dataProvider.canRxCount : 0,
-        canTxCount: dataProvider ? dataProvider.canTxCount : 0,
-        canErrorCount: dataProvider ? dataProvider.canErrorCount : 0,
-        cpuTemp: systemMonitor ? systemMonitor.cpuTemp : 0,
-        cpuUsage: systemMonitor ? systemMonitor.cpuUsage : 0,
-        memUsage: systemMonitor ? systemMonitor.memUsage : 0,
-        uptime: systemMonitor ? systemMonitor.uptime : "0:00:00"
-    })
+    // System info object with reactive properties
+    property alias systemInfo: systemInfoObj
+    QtObject {
+        id: systemInfoObj
+        property string canInterface: "can0"
+        property string canBitrate: "500000"
+        property int canRxCount: dataProvider ? dataProvider.canRxCount : 0
+        property int canTxCount: dataProvider ? dataProvider.canTxCount : 0
+        property int canErrorCount: dataProvider ? dataProvider.canErrorCount : 0
+        property real cpuTemp: systemMonitor ? systemMonitor.cpuTemp : 0
+        property real cpuUsage: systemMonitor ? systemMonitor.cpuUsage : 0
+        property real memUsage: systemMonitor ? systemMonitor.memUsage : 0
+        property string uptime: systemMonitor ? systemMonitor.uptime : "0:00:00"
+    }
 
     // Sync AppState with DataProvider
     Connections {
@@ -141,16 +157,16 @@ ApplicationWindow {
 
             // Load the appropriate screen
             switch (newScreen) {
-                case State.AppState.Screen.Home:
+                case State.AppState.screenHome:
                     contentLoader.sourceComponent = homeScreenComponent
                     break
-                case State.AppState.Screen.Dash:
+                case State.AppState.screenDash:
                     contentLoader.sourceComponent = dashScreenComponent
                     break
-                case State.AppState.Screen.Config:
+                case State.AppState.screenConfig:
                     contentLoader.sourceComponent = configScreenComponent
                     break
-                case State.AppState.Screen.OpenAuto:
+                case State.AppState.screenOpenAuto:
                     contentLoader.sourceComponent = openAutoScreenComponent
                     break
             }
@@ -160,9 +176,9 @@ ApplicationWindow {
             console.log("Main: Overlay changed to", newOverlay)
 
             // Handle camera overlay
-            if (newOverlay === State.AppState.Overlay.ReverseCamera) {
+            if (newOverlay === State.AppState.overlayReverseCamera) {
                 if (cameraController) cameraController.start()
-            } else if (oldOverlay === State.AppState.Overlay.ReverseCamera) {
+            } else if (oldOverlay === State.AppState.overlayReverseCamera) {
                 if (cameraController) cameraController.stop()
             }
         }
@@ -316,8 +332,8 @@ ApplicationWindow {
     Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (State.AppState.currentOverlay !== State.AppState.Overlay.None) {
-                if (State.AppState.currentOverlay !== State.AppState.Overlay.ReverseCamera ||
+            if (State.AppState.currentOverlay !== State.AppState.overlayNone) {
+                if (State.AppState.currentOverlay !== State.AppState.overlayReverseCamera ||
                     !State.AppState.reverseEngaged) {
                     State.AppState.hideOverlay()
                 }

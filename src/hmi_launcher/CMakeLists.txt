@@ -34,6 +34,15 @@ qt_add_qml_module(hmi_launcher
         qml/components/WarningIndicator.qml
         qml/components/IconButton.qml
 
+        # Core gauges
+        qml/components/ArcGauge.qml
+        qml/components/CompactGauge.qml
+
+        # Display components
+        qml/components/ShiftLightBar.qml
+        qml/components/GearIndicator.qml
+        qml/components/NavBar.qml
+
         # Advanced gauges and displays
         qml/components/GForceMeter.qml
         qml/components/ChartGauge.qml
@@ -51,6 +60,7 @@ qt_add_qml_module(hmi_launcher
         # Singleton managers
         qml/components/NightModeManager.qml
         qml/components/WarningManager.qml
+        qml/components/DisplayModeManager.qml
 
         # Screens module
         qml/screens/qmldir

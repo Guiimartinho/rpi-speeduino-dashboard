@@ -18,7 +18,7 @@ Item {
     id: reverseOverlay
 
     // Visibility controlled by AppState overlay
-    visible: State.AppState.currentOverlay === State.AppState.Overlay.ReverseCamera
+    visible: State.AppState.currentOverlay === State.AppState.overlayReverseCamera
     z: 1000  // Highest z-index to overlay everything
 
     // Camera status
