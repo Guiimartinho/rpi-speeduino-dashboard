@@ -117,3 +117,36 @@ configs/local/
 *.key
 credentials.json
 secrets.yaml
+
+# Test and debug files
+**/test_*.qml
+**/test*.qml
+**/*Test.qml
+**/Debug*.qml
+**/Simple*.qml
+**/*_backup*.qml
+**/*_working.qml
+**/*_full.qml
+**/TestSingleton.qml
+**/FileLogTest.qml
+**/DiagnosticTest.qml
+
+# Preview experimental components (not production)
+preview/components/ChartGauge.qml
+preview/components/DataLogger.qml
+preview/components/DisplayModeManager.qml
+preview/components/GForceMeter.qml
+preview/components/LapTimer.qml
+preview/components/NightModeManager.qml
+preview/components/PeakRecall.qml
+preview/components/PerformanceMeter.qml
+preview/components/Theme.qml
+preview/components/TripComputer.qml
+preview/components/VEMapDisplay.qml
+preview/components/WarningManager.qml
+
+# Windows null file artifact
+nul
+
+# Claude AI session data
+.claude/
