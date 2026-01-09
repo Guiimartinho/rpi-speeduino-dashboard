@@ -100,6 +100,9 @@ Item {
                     if (!State.AppState.openAutoRunning) {
                         return "OpenAuto is not running"
                     }
+                    if (State.AppState.openAutoPhoneName) {
+                        return "Device detected: " + State.AppState.openAutoPhoneName + "\nConnecting..."
+                    }
                     return "Waiting for phone connection...\nConnect your Android phone via USB"
                 }
             }
@@ -269,6 +272,79 @@ Item {
             font.pixelSize: Styles.Theme.fontXs
             font.weight: Styles.Theme.fontWeightBold
             color: Styles.Theme.backgroundPrimary
+        }
+    }
+
+    // Connected phone indicator (shown when connected)
+    Rectangle {
+        id: connectedIndicator
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: Styles.Theme.spacingSm
+        width: connectedRow.implicitWidth + Styles.Theme.spacingMd * 2
+        height: Styles.Theme.dp(32)
+        radius: Styles.Theme.radiusSmall
+        color: Styles.Theme.overlayDark
+        visible: State.AppState.openAutoConnected
+        opacity: connectedIndicatorTimer.running ? 1.0 : 0.0
+
+        Behavior on opacity {
+            NumberAnimation { duration: Styles.Theme.animationNormal }
+        }
+
+        RowLayout {
+            id: connectedRow
+            anchors.centerIn: parent
+            spacing: Styles.Theme.spacingSm
+
+            Text {
+                text: "\u2713"  // ✓ checkmark
+                font.pixelSize: Styles.Theme.fontMd
+                color: Styles.Theme.statusOk
+            }
+
+            Text {
+                text: State.AppState.openAutoPhoneName || "Phone Connected"
+                font.pixelSize: Styles.Theme.fontSm
+                font.weight: Styles.Theme.fontWeightMedium
+                color: Styles.Theme.textPrimary
+            }
+
+            Text {
+                text: "(" + (State.AppState.openAutoConnectionType || "USB") + ")"
+                font.pixelSize: Styles.Theme.fontXs
+                color: Styles.Theme.textSecondary
+                visible: State.AppState.openAutoConnectionType !== ""
+            }
+        }
+
+        // Auto-hide timer
+        Timer {
+            id: connectedIndicatorTimer
+            interval: 5000
+            running: false
+        }
+
+        // Show indicator when connected
+        Connections {
+            target: State.AppState
+            function onOpenAutoConnectedChanged() {
+                if (State.AppState.openAutoConnected) {
+                    connectedIndicatorTimer.restart()
+                }
+            }
+        }
+
+        // Click to keep visible
+        MouseArea {
+            anchors.fill: parent
+            onClicked: {
+                if (connectedIndicatorTimer.running) {
+                    connectedIndicatorTimer.stop()
+                } else {
+                    connectedIndicatorTimer.restart()
+                }
+            }
         }
     }
 }

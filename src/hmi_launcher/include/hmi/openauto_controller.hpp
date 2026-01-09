@@ -4,38 +4,90 @@
 #include <QObject>
 #include <QString>
 #include <QProcess>
+#include <QTimer>
+#include <QFileSystemWatcher>
 #include <memory>
 
 namespace speeduino {
 
+/**
+ * @brief OpenAutoController manages the OpenAuto/Android Auto integration
+ *
+ * This controller handles:
+ * - Starting/stopping OpenAuto process
+ * - USB device detection for Android phones
+ * - Phone connection state management
+ * - Touch event forwarding
+ * - Wireless Android Auto preparation
+ */
 class OpenAutoController : public QObject {
     Q_OBJECT
 
+    // Process state
     Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged)
+    Q_PROPERTY(bool connected READ isConnected NOTIFY connectedChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorChanged)
+
+    // Connection info
+    Q_PROPERTY(QString connectionType READ connectionType NOTIFY connectionTypeChanged)
+    Q_PROPERTY(QString phoneName READ phoneName NOTIFY phoneNameChanged)
+
+    // Configuration
+    Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
+    Q_PROPERTY(bool wirelessEnabled READ wirelessEnabled WRITE setWirelessEnabled NOTIFY wirelessEnabledChanged)
 
 public:
     explicit OpenAutoController(QObject* parent = nullptr);
     ~OpenAutoController();
 
+    // Property getters
     bool isRunning() const { return m_running; }
+    bool isConnected() const { return m_connected; }
     QString errorMessage() const { return m_errorMessage; }
+    QString connectionType() const { return m_connectionType; }
+    QString phoneName() const { return m_phoneName; }
+    bool autoStart() const { return m_autoStart; }
+    bool wirelessEnabled() const { return m_wirelessEnabled; }
 
     // Configuration
     Q_INVOKABLE void setExecutablePath(const QString& path);
     Q_INVOKABLE void setFullscreen(bool fullscreen);
+    Q_INVOKABLE void setAutoStart(bool autoStart);
+    Q_INVOKABLE void setWirelessEnabled(bool enabled);
+    Q_INVOKABLE void setResolution(int width, int height, int fps = 60);
 
     // Control
     Q_INVOKABLE bool start();
     Q_INVOKABLE void stop();
+    Q_INVOKABLE void restart();
     Q_INVOKABLE void toggle();
 
+    // Touch event forwarding (for embedded mode)
+    Q_INVOKABLE void sendTouch(int x, int y, int type);
+
+    // USB device scanning
+    Q_INVOKABLE void scanForDevices();
+    Q_INVOKABLE QStringList getConnectedDevices() const;
+
 signals:
+    // State signals
     void runningChanged();
+    void connectedChanged();
     void errorChanged();
+    void connectionTypeChanged();
+    void phoneNameChanged();
+    void autoStartChanged();
+    void wirelessEnabledChanged();
+
+    // Event signals
     void started();
     void stopped();
     void crashed(const QString& message);
+    void phoneConnected(const QString& deviceName);
+    void phoneDisconnected();
+
+    // For UI notifications
+    void showNotification(const QString& title, const QString& message);
 
 private slots:
     void onProcessStarted();
@@ -44,16 +96,45 @@ private slots:
     void onReadyReadStdout();
     void onReadyReadStderr();
 
+    // USB monitoring
+    void checkUsbDevices();
+    void onUsbDeviceChanged(const QString& path);
+
 private:
     void setError(const QString& message);
     void clearError();
+    void setConnected(bool connected);
+    void startUsbMonitoring();
+    void stopUsbMonitoring();
+    bool detectAndroidAutoDevice();
+    QString getDeviceName(const QString& devicePath);
 
-    QString m_executablePath{"/usr/local/bin/openauto"};
+    // Configuration
+    QString m_executablePath{"/usr/local/bin/autoapp"};
     bool m_fullscreen{true};
-    bool m_running{false};
-    QString m_errorMessage;
+    bool m_autoStart{true};
+    bool m_wirelessEnabled{false};
+    int m_videoWidth{800};
+    int m_videoHeight{480};
+    int m_videoFps{60};
 
+    // State
+    bool m_running{false};
+    bool m_connected{false};
+    QString m_errorMessage;
+    QString m_connectionType;  // "USB" or "Wireless"
+    QString m_phoneName;
+
+    // Process management
     std::unique_ptr<QProcess> m_process;
+
+    // USB monitoring
+    std::unique_ptr<QTimer> m_usbCheckTimer;
+    std::unique_ptr<QFileSystemWatcher> m_usbWatcher;
+    QString m_lastDetectedDevice;
+
+    // Android Auto USB identifiers (vendor:product)
+    static const QStringList AA_USB_IDS;
 };
 
 } // namespace speeduino

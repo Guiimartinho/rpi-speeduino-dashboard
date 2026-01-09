@@ -7,9 +7,12 @@ QtObject {
     property int currentScreen: 0
     property int currentOverlay: 0
     property bool canConnected: false
+    property bool canHealthy: true
     property bool reverseEngaged: false
     property bool openAutoRunning: false
     property bool openAutoConnected: false
+    property string openAutoPhoneName: ""
+    property string openAutoConnectionType: ""
     property bool cameraAvailable: true
     property bool cameraActive: false
     property bool celOn: false
@@ -61,6 +64,9 @@ QtObject {
     function updateSystemMode() { }
     function setOpenAutoRunning(running) { openAutoRunning = running }
     function setOpenAutoConnected(connected) { openAutoConnected = connected }
+    function setOpenAutoPhoneName(name) { openAutoPhoneName = name }
+    function setOpenAutoConnectionType(type) { openAutoConnectionType = type }
+    function setCanHealthy(healthy) { canHealthy = healthy }
 
     function screenName(screen) {
         switch (screen) {

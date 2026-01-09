@@ -142,6 +142,32 @@ ApplicationWindow {
         function onConnectedChanged() {
             State.AppState.setOpenAutoConnected(openAutoController.connected)
         }
+
+        function onPhoneNameChanged() {
+            State.AppState.setOpenAutoPhoneName(openAutoController.phoneName)
+        }
+
+        function onConnectionTypeChanged() {
+            State.AppState.setOpenAutoConnectionType(openAutoController.connectionType)
+        }
+
+        function onPhoneConnected(deviceName) {
+            console.log("Main: Phone connected -", deviceName)
+            State.AppState.setOpenAutoPhoneName(deviceName)
+            State.AppState.setOpenAutoConnected(true)
+        }
+
+        function onPhoneDisconnected() {
+            console.log("Main: Phone disconnected")
+            State.AppState.setOpenAutoPhoneName("")
+            State.AppState.setOpenAutoConnected(false)
+        }
+
+        function onShowNotification(title, message) {
+            console.log("Main: OpenAuto notification -", title, ":", message)
+            // TODO: Show visual notification in UI
+            // notificationPopup.show(title, message)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════

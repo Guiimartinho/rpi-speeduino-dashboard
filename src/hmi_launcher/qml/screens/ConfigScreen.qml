@@ -159,9 +159,29 @@ Item {
                         }
                     }
 
+                    // Phone info when connected
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        rowSpacing: Styles.Theme.spacingXs
+                        columnSpacing: Styles.Theme.spacingLg
+                        visible: State.AppState.openAutoConnected
+
+                        ConfigLabel { text: "Device:" }
+                        ConfigValue {
+                            text: State.AppState.openAutoPhoneName || "Unknown"
+                            valueColor: Styles.Theme.accentAndroidAuto
+                        }
+
+                        ConfigLabel { text: "Connection:" }
+                        ConfigValue { text: State.AppState.openAutoConnectionType || "USB" }
+                    }
+
                     Text {
                         Layout.fillWidth: true
-                        text: "Connect your Android phone via USB to use Android Auto features."
+                        text: State.AppState.openAutoConnected
+                            ? "Phone connected. Tap Android Auto in the tab bar to view."
+                            : "Connect your Android phone via USB to use Android Auto features."
                         font.pixelSize: Styles.Theme.fontSm
                         color: Styles.Theme.textSecondary
                         wrapMode: Text.WordWrap
