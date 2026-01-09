@@ -77,40 +77,29 @@ Window {
                     border.width: 1
                 }
 
-                // Load the actual main.qml content
+                // Load MainContent.qml (Item, not Window - can be loaded via Loader)
                 Loader {
                     id: mainLoader
                     anchors.fill: parent
-                    source: "../src/hmi_launcher/qml/main.qml"
+                    source: "../src/hmi_launcher/qml/MainContent.qml"
 
                     // Inject mock providers
                     onLoaded: {
                         if (item) {
-                            // Override the dataProvider check
-                            item.engineData = Qt.binding(function() {
-                                return {
-                                    rpm: mockDataProvider.rpm,
-                                    coolantTemp: mockDataProvider.coolantTemp,
-                                    intakeTemp: mockDataProvider.intakeTemp,
-                                    tps: mockDataProvider.tps,
-                                    mapKpa: mockDataProvider.mapKpa,
-                                    lambda: mockDataProvider.lambda,
-                                    ignitionAdvance: mockDataProvider.ignitionAdvance,
-                                    injectorDuty: mockDataProvider.injectorDuty,
-                                    vehicleSpeed: mockDataProvider.vehicleSpeed,
-                                    gear: mockDataProvider.gear,
-                                    canOk: mockDataProvider.canConnected,
-                                    celOn: mockDataProvider.celOn,
-                                    overheat: mockDataProvider.overheat
-                                }
-                            })
+                            console.log("PreviewMain: MainContent loaded successfully")
+                            item.dataProvider = mockDataProvider
+                            console.log("PreviewMain: dataProvider injected, rpm =", mockDataProvider.rpm)
                         }
                     }
 
                     onStatusChanged: {
+                        console.log("PreviewMain: Loader status =", status)
                         if (status === Loader.Error) {
-                            console.error("Failed to load main.qml:", mainLoader.sourceComponent.errorString())
+                            console.error("PreviewMain: Failed to load MainContent.qml")
                             errorText.visible = true
+                            errorText.text = "Failed to load MainContent.qml\nCheck console for errors"
+                        } else if (status === Loader.Ready) {
+                            console.log("PreviewMain: Loader ready")
                         }
                     }
                 }
