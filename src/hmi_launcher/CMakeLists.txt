@@ -34,10 +34,30 @@ qt_add_qml_module(hmi_launcher
         qml/components/WarningIndicator.qml
         qml/components/IconButton.qml
 
+        # Advanced gauges and displays
+        qml/components/GForceMeter.qml
+        qml/components/ChartGauge.qml
+        qml/components/VEMapDisplay.qml
+
+        # Timing and performance components
+        qml/components/LapTimer.qml
+        qml/components/PerformanceMeter.qml
+
+        # Data management components
+        qml/components/DataLogger.qml
+        qml/components/PeakRecall.qml
+        qml/components/TripComputer.qml
+
+        # Singleton managers
+        qml/components/NightModeManager.qml
+        qml/components/WarningManager.qml
+
         # Screens module
         qml/screens/qmldir
         qml/screens/HomeScreen.qml
         qml/screens/DashScreen.qml
+        qml/screens/RacingDashScreen.qml
+        qml/screens/TuningDashScreen.qml
         qml/screens/ConfigScreen.qml
         qml/screens/OpenAutoScreen.qml
         qml/screens/ReverseOverlay.qml

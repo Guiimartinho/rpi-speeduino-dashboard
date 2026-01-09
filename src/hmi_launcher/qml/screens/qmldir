@@ -1,6 +1,12 @@
 module Screens
+
+# Main screens
 HomeScreen 1.0 HomeScreen.qml
-DashScreen 1.0 DashScreen.qml
 ConfigScreen 1.0 ConfigScreen.qml
 OpenAutoScreen 1.0 OpenAutoScreen.qml
 ReverseOverlay 1.0 ReverseOverlay.qml
+
+# Dashboard variants
+DashScreen 1.0 DashScreen.qml
+RacingDashScreen 1.0 RacingDashScreen.qml
+TuningDashScreen 1.0 TuningDashScreen.qml

@@ -1,6 +1,29 @@
 module Components
+
+# Core UI components
 TabBar 1.0 TabBar.qml
 TabButton 1.0 TabButton.qml
 StatusBar 1.0 StatusBar.qml
 SafeGauge 1.0 SafeGauge.qml
 StatusIndicator 1.0 StatusIndicator.qml
+Gauge 1.0 Gauge.qml
+WarningIndicator 1.0 WarningIndicator.qml
+IconButton 1.0 IconButton.qml
+
+# Advanced gauges and displays
+GForceMeter 1.0 GForceMeter.qml
+ChartGauge 1.0 ChartGauge.qml
+VEMapDisplay 1.0 VEMapDisplay.qml
+
+# Timing and performance
+LapTimer 1.0 LapTimer.qml
+PerformanceMeter 1.0 PerformanceMeter.qml
+
+# Data management
+DataLogger 1.0 DataLogger.qml
+PeakRecall 1.0 PeakRecall.qml
+TripComputer 1.0 TripComputer.qml
+
+# Singletons
+singleton NightModeManager 1.0 NightModeManager.qml
+singleton WarningManager 1.0 WarningManager.qml
