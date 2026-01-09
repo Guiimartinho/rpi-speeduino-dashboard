@@ -36,6 +36,18 @@ QtObject {
     property int canTxCount: 0
     property int canErrorCount: 0
 
+    // Additional Speeduino parameters
+    property real batteryVoltage: 14.2
+    property real oilPressure: 45
+    property real oilTemp: 95
+    property real boostPsi: 0
+    property real veValue: 75
+    property real sparkDwell: 3.5
+    property int loopsPerSec: 2500
+    property int freeRam: 1200
+    property real targetAfr: 14.7
+    property real afrCorrection: 0
+
     // ═══════════════════════════════════════════════════════════════
     // SIMULATION STATE
     // ═══════════════════════════════════════════════════════════════
@@ -136,6 +148,35 @@ QtObject {
 
         // Intake temp varies with speed (air cooling)
         intakeTemp = 30 + (100 - vehicleSpeed) * 0.1 + (Math.random() - 0.5) * 2
+
+        // Additional Speeduino parameters simulation
+        batteryVoltage = 13.8 + (Math.random() - 0.5) * 0.4 + (rpm > 2000 ? 0.4 : 0)
+
+        // Oil pressure varies with RPM
+        oilPressure = 25 + (rpm / 8000) * 40 + (Math.random() - 0.5) * 5
+
+        // Oil temp slowly approaches 100°C
+        var oilTempTarget = 80 + (rpm / 8000) * 30
+        oilTemp += (oilTempTarget - oilTemp) * 0.01
+        oilTemp += (Math.random() - 0.5) * 0.5
+
+        // Boost/Vacuum from MAP
+        boostPsi = (mapKpa - 101.3) * 0.145
+
+        // VE based on RPM and load
+        veValue = 60 + (rpm / 8000) * 30 + (tps / 100) * 20 + (Math.random() - 0.5) * 5
+
+        // Spark dwell varies with battery voltage
+        sparkDwell = 2.5 + (14.4 - batteryVoltage) * 0.5 + (Math.random() - 0.5) * 0.2
+
+        // Loops per second - stable around 2000-3000
+        loopsPerSec = 2200 + Math.floor(Math.random() * 600)
+
+        // Free RAM slowly decreases then resets (simulating memory management)
+        freeRam = 1200 + Math.floor(Math.random() * 100)
+
+        // AFR correction oscillates around 0
+        afrCorrection = (Math.random() - 0.5) * 10
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -200,6 +241,16 @@ QtObject {
         targetRpm = 850
         targetTps = 0
         targetSpeed = 0
+        // Reset additional parameters
+        batteryVoltage = 14.2
+        oilPressure = 45
+        oilTemp = 95
+        boostPsi = 0
+        veValue = 75
+        sparkDwell = 3.5
+        loopsPerSec = 2500
+        freeRam = 1200
+        afrCorrection = 0
     }
 
     Component.onCompleted: {
