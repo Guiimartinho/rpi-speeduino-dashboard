@@ -144,7 +144,7 @@ Item {
                     font.family: "Roboto Mono, monospace"
                 }
 
-                Item { width: 1; height: 1; Layout.fillWidth: true }
+                Item { width: parent.width - 280; height: 1 }  // Spacer
 
                 // Session timer
                 Text {

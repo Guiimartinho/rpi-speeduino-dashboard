@@ -1,195 +1,281 @@
 import QtQuick
 import QtQuick.Layouts
-import "../styles" as Styles
-import "../state" as State
 
 /**
- * StatusBar.qml
- * Top status bar showing system info and warnings
+ * StatusBar.qml - Top status bar with CAN status, warnings, and clock
  *
  * Features:
- * - Clock display
- * - CAN connection status
- * - CEL/Warning indicators
- * - System mode display
+ * - CAN connection status indicator
+ * - CEL (Check Engine Light) warning
+ * - Overheat warning with blinking
+ * - Low fuel warning
+ * - Current time display
+ * - Display mode indicator
  */
-Rectangle {
-    id: statusBar
+Item {
+    id: root
 
-    // Size
+    // ═══════════════════════════════════════════════════════════════════════
+    // PUBLIC PROPERTIES
+    // ═══════════════════════════════════════════════════════════════════════
+
+    property bool canConnected: true
+    property bool celOn: false
+    property bool overheat: false
+    property bool lowFuel: false
+    property bool lowOilPressure: false
+
+    property string displayMode: "SPORT"
+
+    property color backgroundColor: "#0a0a0a"
+    property color connectedColor: "#00E676"
+    property color disconnectedColor: "#FF3D00"
+    property color warningColor: "#FFB300"
+    property color criticalColor: "#FF3D00"
+
+    height: 36
     width: parent.width
-    height: Styles.Theme.statusBarHeight
 
-    // Appearance
-    color: Styles.Theme.backgroundPrimary
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRIVATE PROPERTIES
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // Bottom border
-    Rectangle {
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 1
-        color: Styles.Theme.backgroundTertiary
+    property string currentTime: Qt.formatTime(new Date(), "HH:mm")
+
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: currentTime = Qt.formatTime(new Date(), "HH:mm")
     }
 
-    // Content layout
+    // ═══════════════════════════════════════════════════════════════════════
+    // BACKGROUND
+    // ═══════════════════════════════════════════════════════════════════════
+
+    Rectangle {
+        anchors.fill: parent
+        color: backgroundColor
+
+        // Bottom border
+        Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: "#1a1a1a"
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTENT
+    // ═══════════════════════════════════════════════════════════════════════
+
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: Styles.Theme.spacingMd
-        anchors.rightMargin: Styles.Theme.spacingMd
-        spacing: Styles.Theme.spacingMd
+        anchors.leftMargin: 12
+        anchors.rightMargin: 12
+        spacing: 12
 
-        // Left section: System status indicators
-        RowLayout {
-            Layout.alignment: Qt.AlignVCenter
-            spacing: Styles.Theme.spacingSm
+        // ─────────────────────────────────────────────────────────────────
+        // LEFT: CAN Status
+        // ─────────────────────────────────────────────────────────────────
 
-            // CAN Status
-            StatusIndicatorSmall {
-                iconText: "CAN"
-                isActive: State.AppState.canConnected
-                activeColor: Styles.Theme.statusOk
-                inactiveColor: Styles.Theme.statusCritical
+        Rectangle {
+            Layout.preferredWidth: 56
+            Layout.preferredHeight: 24
+            radius: 4
+            color: "transparent"
+            border.color: canConnected ? connectedColor : disconnectedColor
+            border.width: 1
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 4
+
+                // Status dot
+                Rectangle {
+                    width: 6
+                    height: 6
+                    radius: 3
+                    color: canConnected ? connectedColor : disconnectedColor
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    // Pulse when connected
+                    SequentialAnimation on opacity {
+                        running: canConnected
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.4; duration: 1000 }
+                        NumberAnimation { to: 1.0; duration: 1000 }
+                    }
+                }
+
+                Text {
+                    text: "CAN"
+                    color: canConnected ? connectedColor : disconnectedColor
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.family: "Roboto, sans-serif"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
-            // Camera Available
-            StatusIndicatorSmall {
-                iconText: "CAM"
-                isActive: State.AppState.cameraAvailable
-                activeColor: Styles.Theme.statusOk
-                inactiveColor: Styles.Theme.textTertiary
-                visible: State.AppState.cameraAvailable || State.AppState.reverseEngaged
+            // Blink when disconnected
+            SequentialAnimation on opacity {
+                running: !canConnected
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.4; duration: 300 }
+                NumberAnimation { to: 1.0; duration: 300 }
             }
         }
 
-        // Center section: Warning indicators
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignCenter
-            spacing: Styles.Theme.spacingMd
+        // ─────────────────────────────────────────────────────────────────
+        // LEFT-CENTER: Display Mode
+        // ─────────────────────────────────────────────────────────────────
 
-            // CEL (Check Engine Light)
-            WarningIndicator {
-                visible: State.AppState.celOn
-                iconText: "CEL"
-                warningColor: Styles.Theme.statusWarning
+        Rectangle {
+            Layout.preferredWidth: 60
+            Layout.preferredHeight: 20
+            radius: 10
+            color: "#1a1a1a"
+            border.color: "#333333"
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: displayMode
+                color: Qt.rgba(1, 1, 1, 0.72)
+                font.pixelSize: 9
+                font.bold: true
+                font.family: "Roboto, sans-serif"
+                font.letterSpacing: 1
+            }
+        }
+
+        Item { Layout.fillWidth: true }
+
+        // ─────────────────────────────────────────────────────────────────
+        // CENTER: Warning Indicators
+        // ─────────────────────────────────────────────────────────────────
+
+        Row {
+            spacing: 8
+            Layout.alignment: Qt.AlignHCenter
+
+            // CEL Warning
+            Rectangle {
+                visible: celOn
+                width: 44
+                height: 24
+                radius: 4
+                color: warningColor
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "CEL"
+                    color: "#000000"
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.family: "Roboto, sans-serif"
+                }
+
+                // Pulse animation
+                SequentialAnimation on opacity {
+                    running: celOn
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.7; duration: 800 }
+                    NumberAnimation { to: 1.0; duration: 800 }
+                }
             }
 
             // Overheat Warning
-            WarningIndicator {
-                visible: State.AppState.overheat
-                iconText: "TEMP"
-                warningColor: Styles.Theme.statusCritical
-                blink: true
+            Rectangle {
+                visible: overheat
+                width: 52
+                height: 24
+                radius: 4
+                color: criticalColor
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 3
+
+                    Text {
+                        text: "TEMP"
+                        color: "#FFFFFF"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.family: "Roboto, sans-serif"
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Fast blink for critical
+                SequentialAnimation on opacity {
+                    running: overheat
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.3; duration: 200 }
+                    NumberAnimation { to: 1.0; duration: 200 }
+                }
             }
 
-            // System Mode Warning
-            WarningIndicator {
-                visible: State.AppState.systemMode !== State.AppState.SystemMode.Normal
-                iconText: getModeText()
-                warningColor: State.AppState.systemMode === State.AppState.SystemMode.SafeMode
-                             ? Styles.Theme.statusCritical
-                             : Styles.Theme.statusWarning
+            // Low Fuel Warning
+            Rectangle {
+                visible: lowFuel
+                width: 44
+                height: 24
+                radius: 4
+                color: warningColor
 
-                function getModeText() {
-                    switch (State.AppState.systemMode) {
-                        case State.AppState.SystemMode.DegradedCAN: return "CAN!"
-                        case State.AppState.SystemMode.DegradedCamera: return "CAM!"
-                        case State.AppState.SystemMode.DegradedMultiple: return "SYS!"
-                        case State.AppState.SystemMode.SafeMode: return "SAFE"
-                        default: return ""
-                    }
+                Text {
+                    anchors.centerIn: parent
+                    text: "FUEL"
+                    color: "#000000"
+                    font.pixelSize: 10
+                    font.bold: true
+                    font.family: "Roboto, sans-serif"
+                }
+            }
+
+            // Low Oil Pressure Warning
+            Rectangle {
+                visible: lowOilPressure
+                width: 40
+                height: 24
+                radius: 4
+                color: criticalColor
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "OIL"
+                    color: "#FFFFFF"
+                    font.pixelSize: 10
+                    font.bold: true
+                    font.family: "Roboto, sans-serif"
+                }
+
+                // Fast blink for critical
+                SequentialAnimation on opacity {
+                    running: lowOilPressure
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.3; duration: 200 }
+                    NumberAnimation { to: 1.0; duration: 200 }
                 }
             }
         }
 
-        // Right section: Clock
-        Text {
-            id: clockText
-            Layout.alignment: Qt.AlignVCenter
-            text: Qt.formatTime(new Date(), "HH:mm")
-            font.pixelSize: Styles.Theme.fontMd
-            font.weight: Styles.Theme.fontWeightMedium
-            font.family: "monospace"
-            color: Styles.Theme.textPrimary
+        Item { Layout.fillWidth: true }
 
-            // Update clock every minute
-            Timer {
-                interval: 1000
-                running: true
-                repeat: true
-                onTriggered: clockText.text = Qt.formatTime(new Date(), "HH:mm")
-            }
-        }
-    }
-
-    // Hide during reverse camera
-    opacity: State.AppState.currentOverlay === State.AppState.Overlay.ReverseCamera ? 0 : 1
-    visible: opacity > 0
-
-    Behavior on opacity {
-        NumberAnimation {
-            duration: Styles.Theme.animationFast
-            easing.type: Styles.Theme.easingType
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    // INTERNAL COMPONENTS
-    // ═══════════════════════════════════════════════════════════════
-
-    // Small status indicator (CAN, CAM)
-    component StatusIndicatorSmall: Rectangle {
-        property string iconText: ""
-        property bool isActive: false
-        property color activeColor: Styles.Theme.statusOk
-        property color inactiveColor: Styles.Theme.textTertiary
-
-        width: indicatorText.implicitWidth + Styles.Theme.spacingSm * 2
-        height: Styles.Theme.statusBarHeight - Styles.Theme.spacingSm
-        radius: Styles.Theme.radiusSmall
-        color: "transparent"
-        border.width: 1
-        border.color: isActive ? activeColor : inactiveColor
+        // ─────────────────────────────────────────────────────────────────
+        // RIGHT: Clock
+        // ─────────────────────────────────────────────────────────────────
 
         Text {
-            id: indicatorText
-            anchors.centerIn: parent
-            text: iconText
-            font.pixelSize: Styles.Theme.fontXs
-            font.weight: Styles.Theme.fontWeightBold
-            font.family: "monospace"
-            color: parent.isActive ? parent.activeColor : parent.inactiveColor
-        }
-    }
-
-    // Warning indicator with optional blink
-    component WarningIndicator: Rectangle {
-        property string iconText: ""
-        property color warningColor: Styles.Theme.statusWarning
-        property bool blink: false
-
-        width: warningText.implicitWidth + Styles.Theme.spacingSm * 2
-        height: Styles.Theme.statusBarHeight - Styles.Theme.spacingSm
-        radius: Styles.Theme.radiusSmall
-        color: warningColor
-
-        Text {
-            id: warningText
-            anchors.centerIn: parent
-            text: iconText
-            font.pixelSize: Styles.Theme.fontXs
-            font.weight: Styles.Theme.fontWeightBold
-            font.family: "monospace"
-            color: Styles.Theme.backgroundPrimary
-        }
-
-        // Blink animation
-        SequentialAnimation on opacity {
-            running: blink
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.3; duration: 300 }
-            NumberAnimation { to: 1.0; duration: 300 }
+            text: currentTime
+            color: Qt.rgba(1, 1, 1, 0.96)
+            font.pixelSize: 16
+            font.family: "Roboto Mono, monospace"
+            font.weight: Font.Medium
         }
     }
 }

@@ -47,7 +47,7 @@ Rectangle {
             Layout.fillHeight: true
             iconSource: "\u2302"  // ⌂ House symbol
             label: "Home"
-            isActive: State.AppState.currentScreen === State.AppState.Screen.Home
+            isActive: State.AppState.currentScreen === State.AppState.screenHome
             onClicked: State.AppState.goHome()
         }
 
@@ -58,7 +58,7 @@ Rectangle {
             Layout.fillHeight: true
             iconSource: "\u2299"  // ⊙ Gauge symbol
             label: "Dash"
-            isActive: State.AppState.currentScreen === State.AppState.Screen.Dash
+            isActive: State.AppState.currentScreen === State.AppState.screenDash
             onClicked: State.AppState.goDash()
         }
 
@@ -69,7 +69,7 @@ Rectangle {
             Layout.fillHeight: true
             iconSource: "\u2699"  // ⚙ Gear symbol
             label: "Config"
-            isActive: State.AppState.currentScreen === State.AppState.Screen.Config
+            isActive: State.AppState.currentScreen === State.AppState.screenConfig
             onClicked: State.AppState.goConfig()
         }
 
@@ -81,7 +81,7 @@ Rectangle {
             iconSource: "\u25B6"  // ▶ Play symbol (Android Auto style)
             label: "Auto"
             activeColor: Styles.Theme.accentAndroidAuto
-            isActive: State.AppState.currentScreen === State.AppState.Screen.OpenAuto
+            isActive: State.AppState.currentScreen === State.AppState.screenOpenAuto
             onClicked: State.AppState.goOpenAuto()
         }
     }
@@ -109,7 +109,7 @@ Rectangle {
     }
 
     // Hide during reverse camera overlay
-    opacity: State.AppState.currentOverlay === State.AppState.Overlay.ReverseCamera ? 0 : 1
+    opacity: State.AppState.currentOverlay === State.AppState.overlayReverseCamera ? 0 : 1
     visible: opacity > 0
 
     Behavior on opacity {
