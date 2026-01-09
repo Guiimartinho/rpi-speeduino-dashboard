@@ -304,33 +304,6 @@ Item {
                             value: 100
                             stepSize: 5
                             implicitWidth: Styles.Theme.dp(200)
-
-                            background: Rectangle {
-                                x: brightnessSlider.leftPadding
-                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
-                                width: brightnessSlider.availableWidth
-                                height: Styles.Theme.dp(4)
-                                radius: 2
-                                color: Styles.Theme.backgroundTertiary
-
-                                Rectangle {
-                                    width: brightnessSlider.visualPosition * parent.width
-                                    height: parent.height
-                                    color: Styles.Theme.accentPrimary
-                                    radius: 2
-                                }
-                            }
-
-                            handle: Rectangle {
-                                x: brightnessSlider.leftPadding + brightnessSlider.visualPosition * (brightnessSlider.availableWidth - width)
-                                y: brightnessSlider.topPadding + brightnessSlider.availableHeight / 2 - height / 2
-                                width: Styles.Theme.touchTargetMin
-                                height: Styles.Theme.touchTargetMin
-                                radius: width / 2
-                                color: brightnessSlider.pressed ? Styles.Theme.surfacePressed : Styles.Theme.surfaceCard
-                                border.color: Styles.Theme.accentPrimary
-                                border.width: 2
-                            }
                         }
 
                         Text {
