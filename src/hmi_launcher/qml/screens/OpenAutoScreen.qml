@@ -7,10 +7,17 @@ import "../state" as State
  * OpenAutoScreen.qml
  * Container for OpenAuto/Android Auto display
  *
+ * ARCHITECTURE:
+ * - This screen provides the container Item where Android Auto video will be displayed
+ * - On Component.onCompleted, we register our container with C++ via setVideoContainer()
+ * - On visibility changes, we notify C++ via setVideoVisible()
+ * - Touch events are captured and forwarded via sendTouch()
+ * - The actual video rendering is done by a C++ QWidget that overlays on our container
+ *
  * Features:
- * - Fullscreen video surface for OpenAuto
+ * - Video surface for OpenAuto (embedded in content area, NOT fullscreen)
  * - Connection status overlay when not connected
- * - Touch passthrough to OpenAuto process
+ * - Touch passthrough to OpenAuto embedded library
  * - Tab bar remains accessible at bottom
  */
 Item {
@@ -21,46 +28,173 @@ Item {
     signal requestStop()
     signal touchEvent(int x, int y, int type)
 
-    // OpenAuto video surface (filled by C++ VideoSurface)
+    // Reference to embedded controller (set by parent)
+    property var embeddedController: null
+
+    // Use embedded OpenAuto if available (default mode)
+    property bool useEmbedded: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
+
+    // ═══════════════════════════════════════════════════════════════
+    // LIFECYCLE - Register container with C++
+    // ═══════════════════════════════════════════════════════════════
+
+    Component.onCompleted: {
+        console.log("OpenAutoScreen: initialized, useEmbedded =", useEmbedded)
+        console.log("OpenAutoScreen: size =", width, "x", height)
+
+        // CRITICAL: Register our video container with C++
+        // This allows C++ to parent its video widget to our window and position it correctly
+        if (useEmbedded && openAutoEmbedded) {
+            console.log("OpenAutoScreen: Registering video container with C++")
+            openAutoEmbedded.setVideoContainer(openAutoVideoPlaceholder)
+
+            // Also notify C++ that we're visible (screen just loaded)
+            openAutoEmbedded.setVideoVisible(true)
+
+            // Auto-start if not already running
+            if (!openAutoEmbedded.running) {
+                console.log("OpenAutoScreen: Auto-starting embedded OpenAuto")
+                openAutoEmbedded.start()
+            }
+        }
+    }
+
+    Component.onDestruction: {
+        // Notify C++ that screen is being destroyed
+        if (useEmbedded && openAutoEmbedded) {
+            openAutoEmbedded.setVideoVisible(false)
+        }
+    }
+
+    // CRITICAL: Track visibility changes to show/hide video widget
+    onVisibleChanged: {
+        console.log("OpenAutoScreen: visibility changed to", visible)
+        if (useEmbedded && openAutoEmbedded) {
+            openAutoEmbedded.setVideoVisible(visible)
+        }
+    }
+
+    // Connections for embedded OpenAuto
+    Connections {
+        target: useEmbedded ? openAutoEmbedded : null
+        enabled: useEmbedded
+
+        function onStarted() {
+            console.log("OpenAutoScreen: Embedded OpenAuto started")
+        }
+
+        function onStopped() {
+            console.log("OpenAutoScreen: Embedded OpenAuto stopped")
+        }
+
+        function onProjectionStarted() {
+            console.log("OpenAutoScreen: Projection started - phone connected")
+        }
+
+        function onProjectionStopped() {
+            console.log("OpenAutoScreen: Projection stopped")
+        }
+
+        function onErrorChanged() {
+            if (openAutoEmbedded.errorMessage !== "") {
+                console.log("OpenAutoScreen: Error -", openAutoEmbedded.errorMessage)
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // VIDEO SURFACE CONTAINER
+    // ═══════════════════════════════════════════════════════════════
+
+    // OpenAuto video surface (C++ widget renders as overlay on this Item)
     Rectangle {
         id: videoSurface
         anchors.fill: parent
         color: Styles.Theme.backgroundPrimary
 
-        // Placeholder for actual video surface
-        // In production, this is replaced by a QQuickVideoOutput or custom surface
+        // CRITICAL: This Item is the video container
+        // C++ will parent its QWidget to our window and position it over this Item
         Item {
             id: openAutoVideoPlaceholder
             anchors.fill: parent
-            objectName: "openAutoVideoSurface"  // C++ looks for this
+            objectName: "openAutoVideoSurface"  // For debugging/identification
+
+            // Notify C++ when geometry changes (debounced to avoid excessive calls)
+            onWidthChanged: geometryUpdateTimer.restart()
+            onHeightChanged: geometryUpdateTimer.restart()
+            onXChanged: geometryUpdateTimer.restart()
+            onYChanged: geometryUpdateTimer.restart()
+
+            // Debounce timer to batch rapid geometry changes (e.g., during animations)
+            Timer {
+                id: geometryUpdateTimer
+                interval: 16  // ~60fps, batches rapid changes
+                onTriggered: openAutoVideoPlaceholder.updateGeometryNow()
+            }
+
+            function updateGeometryNow() {
+                if (useEmbedded && openAutoEmbedded && visible) {
+                    var scenePos = mapToItem(null, 0, 0)
+                    openAutoEmbedded.updateVideoGeometry(
+                        Math.round(scenePos.x),
+                        Math.round(scenePos.y),
+                        Math.round(width),
+                        Math.round(height)
+                    )
+                }
+            }
+
+            // Debug border when connected (shows container bounds)
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                border.color: State.AppState.openAutoConnected ? Styles.Theme.accentAndroidAuto : "transparent"
+                border.width: State.AppState.openAutoConnected ? 2 : 0
+                visible: State.AppState.openAutoConnected
+            }
         }
 
-        // Touch passthrough area
+        // Touch passthrough area - forwards touch DIRECTLY to embedded OpenAuto
+        // CRITICAL: Call openAutoEmbedded.sendTouch() directly, not through signal
         MouseArea {
             anchors.fill: parent
             enabled: State.AppState.openAutoRunning && State.AppState.openAutoConnected
 
             onPressed: function(mouse) {
-                openAutoScreen.touchEvent(mouse.x, mouse.y, 0)  // 0 = press
+                if (useEmbedded && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 0)  // 0 = press
+                }
+                openAutoScreen.touchEvent(mouse.x, mouse.y, 0)  // Also emit for compatibility
             }
             onReleased: function(mouse) {
-                openAutoScreen.touchEvent(mouse.x, mouse.y, 1)  // 1 = release
+                if (useEmbedded && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 1)  // 1 = release
+                }
+                openAutoScreen.touchEvent(mouse.x, mouse.y, 1)
             }
             onPositionChanged: function(mouse) {
                 if (pressed) {
-                    openAutoScreen.touchEvent(mouse.x, mouse.y, 2)  // 2 = move
+                    if (useEmbedded && openAutoEmbedded) {
+                        openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 2)  // 2 = move
+                    }
+                    openAutoScreen.touchEvent(mouse.x, mouse.y, 2)
                 }
             }
         }
     }
 
-    // Connection overlay (shown when not connected)
+    // ═══════════════════════════════════════════════════════════════
+    // CONNECTION OVERLAY (shown when not connected)
+    // ═══════════════════════════════════════════════════════════════
+
     Rectangle {
         id: connectionOverlay
         anchors.fill: parent
         color: Styles.Theme.backgroundPrimary
-        visible: !State.AppState.openAutoConnected
-        opacity: visible ? 1.0 : 0.0
+        // FIX: Use opacity-based visibility to allow fade animation
+        // visible binding would hide element before animation plays
+        visible: opacity > 0
+        opacity: State.AppState.openAutoConnected ? 0.0 : 1.0
 
         Behavior on opacity {
             NumberAnimation { duration: Styles.Theme.animationNormal }
@@ -73,7 +207,7 @@ Item {
             // Android Auto Icon
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "\u25B6"  // ▶
+                text: "\u25B6"  // Play icon
                 font.pixelSize: Styles.Theme.fontMega
                 font.family: "Segoe UI Symbol, Noto Sans Symbols, sans-serif"
                 color: Styles.Theme.accentAndroidAuto
@@ -98,13 +232,25 @@ Item {
 
                 function getStatusMessage() {
                     if (!State.AppState.openAutoRunning) {
-                        return "OpenAuto is not running"
+                        return "OpenAuto is not running\nPress Start to begin"
                     }
                     if (State.AppState.openAutoPhoneName) {
                         return "Device detected: " + State.AppState.openAutoPhoneName + "\nConnecting..."
                     }
                     return "Waiting for phone connection...\nConnect your Android phone via USB"
                 }
+            }
+
+            // Error message (if any)
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: useEmbedded && openAutoEmbedded ? openAutoEmbedded.errorMessage : ""
+                font.pixelSize: Styles.Theme.fontSm
+                color: Styles.Theme.statusCritical
+                horizontalAlignment: Text.AlignHCenter
+                visible: text !== ""
+                wrapMode: Text.WordWrap
+                Layout.maximumWidth: parent.width * 0.8
             }
 
             // Action button
@@ -135,14 +281,19 @@ Item {
                         if (State.AppState.openAutoRunning) {
                             openAutoScreen.requestStop()
                             // Small delay then restart
-                            Qt.callLater(function() {
-                                openAutoScreen.requestStart()
-                            })
+                            restartTimer.start()
                         } else {
                             openAutoScreen.requestStart()
                         }
                     }
                 }
+            }
+
+            // Restart delay timer
+            Timer {
+                id: restartTimer
+                interval: 500
+                onTriggered: openAutoScreen.requestStart()
             }
 
             // Connection animation
@@ -158,7 +309,7 @@ Item {
                     id: phoneIcon
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "\u25A1"  // □
+                    text: "\u25A1"  // Square (phone placeholder)
                     font.pixelSize: Styles.Theme.fontXl
                     font.family: "Segoe UI Symbol, Noto Sans Symbols, sans-serif"
                     color: Styles.Theme.textTertiary
@@ -194,7 +345,7 @@ Item {
                 Text {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "\u25A0"  // ■
+                    text: "\u25A0"  // Filled square (car placeholder)
                     font.pixelSize: Styles.Theme.fontXl
                     font.family: "Segoe UI Symbol, Noto Sans Symbols, sans-serif"
                     color: Styles.Theme.accentAndroidAuto
@@ -203,7 +354,10 @@ Item {
         }
     }
 
-    // Mini dashboard overlay (optional, can be enabled)
+    // ═══════════════════════════════════════════════════════════════
+    // MINI DASHBOARD OVERLAY (optional feature)
+    // ═══════════════════════════════════════════════════════════════
+
     Rectangle {
         id: miniDashOverlay
         anchors.top: parent.top
@@ -252,12 +406,16 @@ Item {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // STATUS INDICATORS
+    // ═══════════════════════════════════════════════════════════════
+
     // OpenAuto process status indicator
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.right: parent.right
         anchors.margins: Styles.Theme.spacingSm
-        anchors.bottomMargin: Styles.Theme.tabBarHeight + Styles.Theme.spacingSm
+        anchors.bottomMargin: Styles.Theme.spacingSm
         width: processStatusText.implicitWidth + Styles.Theme.spacingSm * 2
         height: Styles.Theme.dp(24)
         radius: Styles.Theme.radiusSmall
@@ -275,7 +433,7 @@ Item {
         }
     }
 
-    // Connected phone indicator (shown when connected)
+    // Connected phone indicator (shown briefly when connected)
     Rectangle {
         id: connectedIndicator
         anchors.top: parent.top
@@ -298,7 +456,7 @@ Item {
             spacing: Styles.Theme.spacingSm
 
             Text {
-                text: "\u2713"  // ✓ checkmark
+                text: "\u2713"  // Checkmark
                 font.pixelSize: Styles.Theme.fontMd
                 color: Styles.Theme.statusOk
             }
@@ -311,10 +469,9 @@ Item {
             }
 
             Text {
-                text: "(" + (State.AppState.openAutoConnectionType || "USB") + ")"
+                text: "(USB)"
                 font.pixelSize: Styles.Theme.fontXs
                 color: Styles.Theme.textSecondary
-                visible: State.AppState.openAutoConnectionType !== ""
             }
         }
 
