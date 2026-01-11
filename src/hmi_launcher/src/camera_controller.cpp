@@ -1,5 +1,6 @@
 #include "hmi/camera_controller.hpp"
 #include <QDebug>
+#include <QFile>
 
 namespace speeduino {
 
