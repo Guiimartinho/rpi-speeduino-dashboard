@@ -63,49 +63,119 @@ OpenAutoController::~OpenAutoController() {
     stopUsbMonitoring();
 }
 
+// ═══════════════════════════════════════════════════════════════
+// THREAD-SAFE PROPERTY GETTERS
+// ═══════════════════════════════════════════════════════════════
+
+bool OpenAutoController::isRunning() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_running;
+}
+
+bool OpenAutoController::isConnected() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_connected;
+}
+
+QString OpenAutoController::errorMessage() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_errorMessage;
+}
+
+QString OpenAutoController::connectionType() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_connectionType;
+}
+
+QString OpenAutoController::phoneName() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_phoneName;
+}
+
+bool OpenAutoController::autoStart() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_autoStart;
+}
+
+bool OpenAutoController::wirelessEnabled() const {
+    QMutexLocker locker(&m_stateMutex);
+    return m_wirelessEnabled;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════════
+
 void OpenAutoController::setExecutablePath(const QString& path) {
+    QMutexLocker locker(&m_stateMutex);
     m_executablePath = path;
-    qInfo() << "OpenAuto executable path set to:" << path;
+    qInfo() << "[OpenAutoController] Executable path set to:" << path;
 }
 
 void OpenAutoController::setFullscreen(bool fullscreen) {
+    QMutexLocker locker(&m_stateMutex);
     m_fullscreen = fullscreen;
 }
 
 void OpenAutoController::setAutoStart(bool autoStart) {
-    if (m_autoStart != autoStart) {
-        m_autoStart = autoStart;
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_autoStart != autoStart) {
+            m_autoStart = autoStart;
+            changed = true;
+        }
+    }
+    if (changed) {
         emit autoStartChanged();
-        qInfo() << "OpenAuto auto-start:" << (autoStart ? "enabled" : "disabled");
+        qInfo() << "[OpenAutoController] Auto-start:" << (autoStart ? "enabled" : "disabled");
     }
 }
 
 void OpenAutoController::setWirelessEnabled(bool enabled) {
-    if (m_wirelessEnabled != enabled) {
-        m_wirelessEnabled = enabled;
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_wirelessEnabled != enabled) {
+            m_wirelessEnabled = enabled;
+            changed = true;
+        }
+    }
+    if (changed) {
         emit wirelessEnabledChanged();
-        qInfo() << "Wireless Android Auto:" << (enabled ? "enabled" : "disabled");
+        qInfo() << "[OpenAutoController] Wireless Android Auto:" << (enabled ? "enabled" : "disabled");
     }
 }
 
 void OpenAutoController::setResolution(int width, int height, int fps) {
+    QMutexLocker locker(&m_stateMutex);
     m_videoWidth = width;
     m_videoHeight = height;
     m_videoFps = fps;
-    qInfo() << "OpenAuto resolution set to:" << width << "x" << height << "@" << fps << "fps";
+    qInfo() << "[OpenAutoController] Resolution set to:" << width << "x" << height << "@" << fps << "fps";
 }
 
 bool OpenAutoController::start() {
-    if (m_running) {
-        qWarning() << "OpenAuto already running";
-        return true;
+    // Thread-safe running check
+    QString execPath;
+    bool isFullscreen;
+    int videoW, videoH;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_running) {
+            qWarning() << "[OpenAutoController] Already running";
+            return true;
+        }
+        execPath = m_executablePath;
+        isFullscreen = m_fullscreen;
+        videoW = m_videoWidth;
+        videoH = m_videoHeight;
     }
 
     clearError();
 
     // Check if executable exists
-    QFile exe(m_executablePath);
-    if (!exe.exists()) {
+    if (!QFile::exists(execPath)) {
         // Try alternative paths
         QStringList altPaths = {
             "/usr/bin/autoapp",
@@ -118,41 +188,69 @@ bool OpenAutoController::start() {
         bool found = false;
         for (const QString& path : altPaths) {
             if (QFile::exists(path)) {
-                m_executablePath = path;
+                {
+                    QMutexLocker locker(&m_stateMutex);
+                    m_executablePath = path;
+                }
+                execPath = path;
                 found = true;
-                qInfo() << "Found OpenAuto at:" << path;
+                qInfo() << "[OpenAutoController] Found OpenAuto at:" << path;
                 break;
             }
         }
 
         if (!found) {
             setError(QString("OpenAuto executable not found. Searched:\n%1\n%2")
-                    .arg(m_executablePath)
+                    .arg(execPath)
                     .arg(altPaths.join("\n")));
             return false;
         }
     }
 
-    // Build arguments
-    QStringList args;
+    // Build environment for OpenAuto
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
 
-    // Resolution settings
-    args << "-r" << QString("%1x%2").arg(m_videoWidth).arg(m_videoHeight);
-    args << "-f" << QString::number(m_videoFps);
-
-    if (m_fullscreen) {
-        args << "--fullscreen";
+    // Set windowed mode if not fullscreen
+    if (!isFullscreen) {
+        env.insert("OPENAUTO_WINDOWED", "1");
+        env.insert("OPENAUTO_WIDTH", QString::number(videoW));
+        env.insert("OPENAUTO_HEIGHT", QString::number(videoH));
+        qInfo() << "[OpenAutoController] Windowed mode:" << videoW << "x" << videoH;
     }
 
-    // Wireless mode
-    if (m_wirelessEnabled) {
-        args << "--wireless";
+    // Set Qt platform for Wayland
+    if (!env.contains("QT_QPA_PLATFORM")) {
+        env.insert("QT_QPA_PLATFORM", "wayland");
     }
 
-    qInfo() << "Starting OpenAuto:" << m_executablePath << args;
+    // Ensure XDG_RUNTIME_DIR is set
+    if (!env.contains("XDG_RUNTIME_DIR")) {
+        env.insert("XDG_RUNTIME_DIR", "/run/user/1000");
+    }
 
-    m_process->setProcessEnvironment(QProcessEnvironment::systemEnvironment());
-    m_process->start(m_executablePath, args);
+    // Ensure WAYLAND_DISPLAY is set
+    if (!env.contains("WAYLAND_DISPLAY")) {
+        env.insert("WAYLAND_DISPLAY", "wayland-0");
+    }
+
+    qInfo() << "[OpenAutoController] Starting OpenAuto:" << execPath;
+    qInfo() << "[OpenAutoController]   Windowed:" << (!isFullscreen ? "yes" : "no");
+    qInfo() << "[OpenAutoController]   Resolution:" << videoW << "x" << videoH;
+
+    // Validate process state before starting
+    if (!m_process) {
+        setError("Process object is null");
+        return false;
+    }
+
+    if (m_process->state() != QProcess::NotRunning) {
+        qWarning() << "[OpenAutoController] Process already in running state, killing first";
+        m_process->kill();
+        m_process->waitForFinished(1000);
+    }
+
+    m_process->setProcessEnvironment(env);
+    m_process->start(execPath, QStringList());
 
     if (!m_process->waitForStarted(5000)) {
         setError("Failed to start OpenAuto process within timeout");
@@ -163,18 +261,28 @@ bool OpenAutoController::start() {
 }
 
 void OpenAutoController::stop() {
-    if (!m_running) {
-        return;
+    // Thread-safe running check
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_running) {
+            return;
+        }
     }
 
-    qInfo() << "Stopping OpenAuto...";
+    qInfo() << "[OpenAutoController] Stopping...";
+
+    // Validate process before operations
+    if (!m_process) {
+        qWarning() << "[OpenAutoController] Process is null in stop()";
+        return;
+    }
 
     // Send SIGTERM first for graceful shutdown
     m_process->terminate();
 
     if (!m_process->waitForFinished(3000)) {
         // Force kill if doesn't respond
-        qWarning() << "OpenAuto not responding to SIGTERM, sending SIGKILL...";
+        qWarning() << "[OpenAutoController] Not responding to SIGTERM, sending SIGKILL...";
         m_process->kill();
         m_process->waitForFinished(1000);
     }
@@ -193,7 +301,14 @@ void OpenAutoController::restart() {
 }
 
 void OpenAutoController::toggle() {
-    if (m_running) {
+    // Thread-safe running check
+    bool isRunning;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isRunning = m_running;
+    }
+
+    if (isRunning) {
         stop();
     } else {
         start();
@@ -201,8 +316,37 @@ void OpenAutoController::toggle() {
 }
 
 void OpenAutoController::sendTouch(int x, int y, int type) {
-    if (!m_running || !m_connected) {
+    // Thread-safe state check
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_running || !m_connected) {
+            return;
+        }
+    }
+
+    // ISO 26262: Validate touch type (0=press, 1=release, 2=move)
+    if (type < 0 || type > 2) {
+        qWarning() << "[OpenAutoController] Invalid touch type:" << type;
         return;
+    }
+
+    // ISO 26262: Bounds validation for coordinates
+    // Use configured video resolution as max bounds
+    int maxX, maxY;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        maxX = m_videoWidth;
+        maxY = m_videoHeight;
+    }
+
+    // Clamp coordinates to valid range (prevent negative or overflow)
+    const int safeX = qBound(0, x, maxX);
+    const int safeY = qBound(0, y, maxY);
+
+    // Log if coordinates were clamped (potential issue indicator)
+    if (safeX != x || safeY != y) {
+        qDebug() << "[OpenAutoController] Touch coordinates clamped:"
+                 << x << "," << y << "->" << safeX << "," << safeY;
     }
 
     // Touch types: 0 = press, 1 = release, 2 = move
@@ -211,7 +355,7 @@ void OpenAutoController::sendTouch(int x, int y, int type) {
 
     // For now, log the touch events (actual implementation requires
     // either IPC with OpenAuto or using an input device)
-    qDebug() << "Touch event:" << x << y << "type:" << type;
+    qDebug() << "[OpenAutoController] Touch event:" << safeX << safeY << "type:" << type;
 
     // TODO: Implement actual touch forwarding via:
     // Option 1: Write to a named pipe that OpenAuto reads
@@ -278,17 +422,26 @@ QStringList OpenAutoController::getConnectedDevices() const {
 // Private slots
 
 void OpenAutoController::onProcessStarted() {
-    m_running = true;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_running = true;
+    }
     emit runningChanged();
     emit started();
-    qInfo() << "OpenAuto process started (PID:" << m_process->processId() << ")";
+    qInfo() << "[OpenAutoController] Process started (PID:" << m_process->processId() << ")";
     emit showNotification("OpenAuto", "Android Auto is ready. Connect your phone.");
 }
 
 void OpenAutoController::onProcessFinished(int exitCode, QProcess::ExitStatus status) {
-    m_running = false;
-    emit runningChanged();
+    bool shouldAutoRestart = false;
 
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_running = false;
+        shouldAutoRestart = m_autoStart;
+    }
+
+    emit runningChanged();
     setConnected(false);
 
     if (status == QProcess::CrashExit) {
@@ -298,12 +451,12 @@ void OpenAutoController::onProcessFinished(int exitCode, QProcess::ExitStatus st
         emit showNotification("OpenAuto Error", msg);
 
         // Auto-restart on crash if autoStart is enabled
-        if (m_autoStart) {
-            qInfo() << "Auto-restarting OpenAuto after crash...";
+        if (shouldAutoRestart) {
+            qInfo() << "[OpenAutoController] Auto-restarting after crash...";
             QTimer::singleShot(2000, this, &OpenAutoController::start);
         }
     } else {
-        qInfo() << "OpenAuto stopped normally with exit code" << exitCode;
+        qInfo() << "[OpenAutoController] Stopped normally with exit code" << exitCode;
         emit stopped();
     }
 }
@@ -375,8 +528,17 @@ void OpenAutoController::onReadyReadStderr() {
 void OpenAutoController::checkUsbDevices() {
     bool deviceFound = detectAndroidAutoDevice();
 
-    if (deviceFound && !m_connected && m_autoStart && !m_running) {
-        qInfo() << "Android Auto device detected, auto-starting OpenAuto...";
+    // Thread-safe state read
+    bool isConnected, isAutoStart, isRunning;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isConnected = m_connected;
+        isAutoStart = m_autoStart;
+        isRunning = m_running;
+    }
+
+    if (deviceFound && !isConnected && isAutoStart && !isRunning) {
+        qInfo() << "[OpenAutoController] Android Auto device detected, auto-starting...";
         start();
     }
 }
@@ -390,35 +552,63 @@ void OpenAutoController::onUsbDeviceChanged(const QString& path) {
 // Private methods
 
 void OpenAutoController::setError(const QString& message) {
-    if (m_errorMessage != message) {
-        m_errorMessage = message;
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_errorMessage != message) {
+            m_errorMessage = message;
+            changed = true;
+        }
+    }
+    if (changed) {
         emit errorChanged();
-        qWarning() << "OpenAuto error:" << message;
+        qWarning() << "[OpenAutoController] Error:" << message;
     }
 }
 
 void OpenAutoController::clearError() {
-    if (!m_errorMessage.isEmpty()) {
-        m_errorMessage.clear();
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_errorMessage.isEmpty()) {
+            m_errorMessage.clear();
+            changed = true;
+        }
+    }
+    if (changed) {
         emit errorChanged();
     }
 }
 
 void OpenAutoController::setConnected(bool connected) {
-    if (m_connected != connected) {
-        m_connected = connected;
+    QString currentPhoneName;
+    bool changed = false;
+
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_connected != connected) {
+            m_connected = connected;
+            changed = true;
+
+            if (!connected) {
+                m_phoneName.clear();
+                m_connectionType.clear();
+            }
+            currentPhoneName = m_phoneName;
+        }
+    }
+
+    if (changed) {
         emit connectedChanged();
 
         if (connected) {
-            qInfo() << "Android Auto phone connected:" << m_phoneName;
-            emit phoneConnected(m_phoneName);
+            qInfo() << "[OpenAutoController] Phone connected:" << currentPhoneName;
+            emit phoneConnected(currentPhoneName);
         } else {
-            m_phoneName.clear();
-            m_connectionType.clear();
             emit phoneNameChanged();
             emit connectionTypeChanged();
             emit phoneDisconnected();
-            qInfo() << "Android Auto phone disconnected";
+            qInfo() << "[OpenAutoController] Phone disconnected";
         }
     }
 }
@@ -468,7 +658,7 @@ bool OpenAutoController::detectAndroidAutoDevice() {
 
         if (vendorFile.open(QIODevice::ReadOnly)) {
             QString vendor = QString::fromUtf8(vendorFile.readAll()).trimmed();
-            vendorFile.close();
+            vendorFile.close();  // Explicit close for clarity (RAII would handle it too)
 
             // Check against known Android AA vendor IDs
             for (const QString& aaId : AA_USB_IDS) {
@@ -477,14 +667,27 @@ bool OpenAutoController::detectAndroidAutoDevice() {
                     QString devicePath = usbDir.filePath(entry);
                     QString deviceName = getDeviceName(devicePath);
 
-                    if (deviceName != m_phoneName) {
-                        m_phoneName = deviceName;
-                        emit phoneNameChanged();
+                    // Thread-safe state update
+                    bool phoneNameChanged = false;
+                    bool lastDeviceChanged = false;
+                    {
+                        QMutexLocker locker(&m_stateMutex);
+                        if (deviceName != m_phoneName) {
+                            m_phoneName = deviceName;
+                            phoneNameChanged = true;
+                        }
+                        if (m_lastDetectedDevice != devicePath) {
+                            m_lastDetectedDevice = devicePath;
+                            lastDeviceChanged = true;
+                        }
                     }
 
-                    if (m_lastDetectedDevice != devicePath) {
-                        m_lastDetectedDevice = devicePath;
-                        qInfo() << "Android Auto compatible device detected:" << deviceName;
+                    if (phoneNameChanged) {
+                        emit this->phoneNameChanged();
+                    }
+
+                    if (lastDeviceChanged) {
+                        qInfo() << "[OpenAutoController] Android Auto compatible device detected:" << deviceName;
                     }
 
                     return true;
@@ -493,10 +696,18 @@ bool OpenAutoController::detectAndroidAutoDevice() {
         }
     }
 
-    // No device found
-    if (!m_lastDetectedDevice.isEmpty()) {
-        m_lastDetectedDevice.clear();
-        qInfo() << "Android Auto device disconnected";
+    // No device found - thread-safe clear
+    bool wasDevicePresent = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_lastDetectedDevice.isEmpty()) {
+            m_lastDetectedDevice.clear();
+            wasDevicePresent = true;
+        }
+    }
+
+    if (wasDevicePresent) {
+        qInfo() << "[OpenAutoController] Android Auto device disconnected";
     }
 #endif
 

@@ -6,6 +6,8 @@
 #include <QProcess>
 #include <QTimer>
 #include <QFileSystemWatcher>
+#include <QMutex>
+#include <QMutexLocker>
 #include <memory>
 
 namespace speeduino {
@@ -40,14 +42,14 @@ public:
     explicit OpenAutoController(QObject* parent = nullptr);
     ~OpenAutoController();
 
-    // Property getters
-    bool isRunning() const { return m_running; }
-    bool isConnected() const { return m_connected; }
-    QString errorMessage() const { return m_errorMessage; }
-    QString connectionType() const { return m_connectionType; }
-    QString phoneName() const { return m_phoneName; }
-    bool autoStart() const { return m_autoStart; }
-    bool wirelessEnabled() const { return m_wirelessEnabled; }
+    // Thread-safe property getters
+    bool isRunning() const;
+    bool isConnected() const;
+    QString errorMessage() const;
+    QString connectionType() const;
+    QString phoneName() const;
+    bool autoStart() const;
+    bool wirelessEnabled() const;
 
     // Configuration
     Q_INVOKABLE void setExecutablePath(const QString& path);
@@ -109,7 +111,10 @@ private:
     bool detectAndroidAutoDevice();
     QString getDeviceName(const QString& devicePath);
 
-    // Configuration
+    // Thread synchronization - protects state variables
+    mutable QMutex m_stateMutex;
+
+    // Configuration (protected by m_stateMutex)
     QString m_executablePath{"/usr/local/bin/autoapp"};
     bool m_fullscreen{true};
     bool m_autoStart{true};
@@ -118,7 +123,7 @@ private:
     int m_videoHeight{480};
     int m_videoFps{60};
 
-    // State
+    // State (protected by m_stateMutex)
     bool m_running{false};
     bool m_connected{false};
     QString m_errorMessage;
