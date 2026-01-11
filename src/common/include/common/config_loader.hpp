@@ -45,6 +45,9 @@ struct ReverseConfig {
     std::string gpio_chip = "gpiochip0";
     uint32_t gpio_line = 17;
     bool gpio_active_low = false;
+
+    // Debounce time in milliseconds
+    uint32_t debounce_ms = 50;
 };
 
 // Steering wheel button config
