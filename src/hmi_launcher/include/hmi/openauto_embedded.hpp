@@ -7,9 +7,12 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QPointer>
+#include <QMutex>
+#include <QTimer>
 #include <memory>
 #include <functional>
 #include <atomic>
+#include <cmath>
 
 // Boost forward declarations
 #include <boost/asio.hpp>
@@ -79,12 +82,12 @@ public:
     explicit OpenAutoEmbedded(QObject* parent = nullptr);
     ~OpenAutoEmbedded();
 
-    // Property getters
-    bool isRunning() const { return m_running; }
-    bool isConnected() const { return m_connected; }
-    QString errorMessage() const { return m_errorMessage; }
-    QString phoneName() const { return m_phoneName; }
-    bool isVideoVisible() const { return m_videoVisible; }
+    // Property getters (thread-safe)
+    bool isRunning() const;
+    bool isConnected() const;
+    QString errorMessage() const;
+    QString phoneName() const;
+    bool isVideoVisible() const;
     QWidget* videoWidget() const { return m_videoWidget.get(); }
 
     // Control
@@ -150,6 +153,8 @@ signals:
 private slots:
     void onProjectionActive(bool active);
     void onContainerGeometryChanged();
+    void onContainerDestroyed();
+    void onGeometryUpdateTimeout();
 
 private:
     bool initializeLibusb();
@@ -160,7 +165,16 @@ private:
     void setConnected(bool connected);
     void updateVideoWidgetPosition();
 
-    // State
+    // Coordinate validation helpers (ISO 26262 defensive programming)
+    static constexpr int MAX_COORDINATE = 10000;  // Reasonable display limit
+    static constexpr int MIN_DIMENSION = 1;
+    int safeCoordinate(qreal value, int minVal, int maxVal) const;
+    bool validateGeometry(int x, int y, int w, int h) const;
+
+    // Thread synchronization - protects shared state accessed from multiple threads
+    mutable QMutex m_stateMutex;
+
+    // State (protected by m_stateMutex)
     bool m_running{false};
     bool m_connected{false};
     bool m_touchPressed{false};
@@ -179,6 +193,9 @@ private:
     // Using QPointer to safely detect if container is destroyed
     QPointer<QQuickItem> m_container;
     QPointer<QQuickWindow> m_containerWindow;
+
+    // Geometry update debounce timer (prevents excessive updates during animations)
+    std::unique_ptr<QTimer> m_geometryUpdateTimer;
 
     // libusb
     libusb_context* m_usbContext{nullptr};

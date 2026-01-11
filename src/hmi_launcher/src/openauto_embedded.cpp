@@ -60,17 +60,19 @@ OpenAutoIOWorker::~OpenAutoIOWorker()
 
 void OpenAutoIOWorker::run()
 {
-    m_running = true;
+    m_running.store(true, std::memory_order_release);
     qInfo() << "[OpenAutoEmbedded] IO worker thread started";
 
-    while (m_running) {
+    while (m_running.load(std::memory_order_acquire)) {
         try {
             m_ioService.run();
-            if (m_running) {
+            if (m_running.load(std::memory_order_acquire)) {
                 m_ioService.reset();
             }
         } catch (const std::exception& e) {
             qWarning() << "[OpenAutoEmbedded] IO service exception:" << e.what();
+            // Brief delay before retry to prevent tight error loop
+            QThread::msleep(100);
         }
     }
 
@@ -79,7 +81,7 @@ void OpenAutoIOWorker::run()
 
 void OpenAutoIOWorker::stop()
 {
-    m_running = false;
+    m_running.store(false, std::memory_order_release);
     m_ioService.stop();
 }
 
@@ -90,6 +92,13 @@ void OpenAutoIOWorker::stop()
 OpenAutoEmbedded::OpenAutoEmbedded(QObject* parent)
     : QObject(parent)
 {
+    // Create geometry update debounce timer
+    m_geometryUpdateTimer = std::make_unique<QTimer>();
+    m_geometryUpdateTimer->setSingleShot(true);
+    m_geometryUpdateTimer->setInterval(16);  // ~60fps debounce
+    connect(m_geometryUpdateTimer.get(), &QTimer::timeout,
+            this, &OpenAutoEmbedded::onGeometryUpdateTimeout);
+
     // Create the video widget that will be used for Android Auto video output
     // This widget will be parented to the QML window when setVideoContainer() is called
     m_videoWidget = std::make_unique<QWidget>();
@@ -102,6 +111,40 @@ OpenAutoEmbedded::OpenAutoEmbedded(QObject* parent)
     m_videoWidget->hide();
 
     qInfo() << "[OpenAutoEmbedded] Created with video widget" << m_width << "x" << m_height;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THREAD-SAFE PROPERTY GETTERS
+// ═══════════════════════════════════════════════════════════════
+
+bool OpenAutoEmbedded::isRunning() const
+{
+    QMutexLocker locker(&m_stateMutex);
+    return m_running;
+}
+
+bool OpenAutoEmbedded::isConnected() const
+{
+    QMutexLocker locker(&m_stateMutex);
+    return m_connected;
+}
+
+QString OpenAutoEmbedded::errorMessage() const
+{
+    QMutexLocker locker(&m_stateMutex);
+    return m_errorMessage;
+}
+
+QString OpenAutoEmbedded::phoneName() const
+{
+    QMutexLocker locker(&m_stateMutex);
+    return m_phoneName;
+}
+
+bool OpenAutoEmbedded::isVideoVisible() const
+{
+    QMutexLocker locker(&m_stateMutex);
+    return m_videoVisible;
 }
 
 OpenAutoEmbedded::~OpenAutoEmbedded()
@@ -127,29 +170,27 @@ void OpenAutoEmbedded::setVideoContainer(QQuickItem* container)
     QQuickWindow* window = container->window();
     if (!window) {
         qWarning() << "[OpenAutoEmbedded] Container has no window, deferring...";
-        // Try again when the container gets a window (use UniqueConnection to avoid duplicates)
-        connect(container, &QQuickItem::windowChanged, this, [this, container](QQuickWindow* win) {
-            if (win) {
-                setVideoContainer(container);
+        // Use QPointer to avoid dangling pointer in lambda if container is destroyed
+        QPointer<QQuickItem> weakContainer(container);
+        connect(container, &QQuickItem::windowChanged, this, [this, weakContainer](QQuickWindow* win) {
+            // Safety check: container still exists and has window
+            if (weakContainer && win) {
+                setVideoContainer(weakContainer.data());
             }
         }, Qt::UniqueConnection);
         return;
     }
 
-    // Handle container destruction - null our reference to avoid dangling pointer
-    connect(container, &QObject::destroyed, this, [this]() {
-        qWarning() << "[OpenAutoEmbedded] Container was destroyed";
-        m_container = nullptr;
-        m_containerWindow = nullptr;
-        m_containerRegistered = false;
-        if (m_videoWidget) {
-            m_videoWidget->hide();
-        }
-    }, Qt::UniqueConnection);
+    // Handle container destruction - use proper slot instead of lambda with this capture
+    connect(container, &QObject::destroyed, this,
+            &OpenAutoEmbedded::onContainerDestroyed, Qt::UniqueConnection);
 
-    m_container = container;
-    m_containerWindow = window;
-    m_containerRegistered = true;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_container = container;
+        m_containerWindow = window;
+        m_containerRegistered = true;
+    }
 
     qInfo() << "[OpenAutoEmbedded] Video container registered:"
             << "size" << container->width() << "x" << container->height()
@@ -182,22 +223,56 @@ void OpenAutoEmbedded::setVideoContainer(QQuickItem* container)
     updateVideoWidgetPosition();
 
     // If projection is already active, show the widget
-    if (m_connected && m_videoVisible) {
+    bool shouldShow = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        shouldShow = m_connected && m_videoVisible;
+    }
+    if (shouldShow) {
         m_videoWidget->show();
         m_videoWidget->raise();
     }
 }
 
+void OpenAutoEmbedded::onContainerDestroyed()
+{
+    qWarning() << "[OpenAutoEmbedded] Container was destroyed";
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_container = nullptr;
+        m_containerWindow = nullptr;
+        m_containerRegistered = false;
+    }
+    if (m_videoWidget) {
+        m_videoWidget->hide();
+    }
+}
+
+void OpenAutoEmbedded::onGeometryUpdateTimeout()
+{
+    updateVideoWidgetPosition();
+}
+
 void OpenAutoEmbedded::setVideoVisible(bool visible)
 {
-    if (m_videoVisible == visible) {
-        return;
+    bool wasVisible;
+    bool isConnected;
+    bool isRegistered;
+
+    {
+        QMutexLocker locker(&m_stateMutex);
+        wasVisible = m_videoVisible;
+        if (m_videoVisible == visible) {
+            return;
+        }
+        m_videoVisible = visible;
+        isConnected = m_connected;
+        isRegistered = m_containerRegistered;
     }
 
-    m_videoVisible = visible;
     qInfo() << "[OpenAutoEmbedded] Video visibility:" << visible;
 
-    if (!m_containerRegistered) {
+    if (!isRegistered) {
         qDebug() << "[OpenAutoEmbedded] Container not registered yet, visibility will be applied later";
         emit videoVisibleChanged();
         return;
@@ -208,7 +283,7 @@ void OpenAutoEmbedded::setVideoVisible(bool visible)
         updateVideoWidgetPosition();
 
         // Only show if projection is active
-        if (m_connected) {
+        if (isConnected) {
             m_videoWidget->show();
             m_videoWidget->raise();
             qInfo() << "[OpenAutoEmbedded] Video widget shown (projection active)";
@@ -229,39 +304,74 @@ void OpenAutoEmbedded::updateVideoGeometry(int x, int y, int width, int height)
         return;
     }
 
-    // Validate geometry to avoid invalid values
-    if (width <= 0 || height <= 0) {
-        qWarning() << "[OpenAutoEmbedded] Invalid geometry ignored:" << width << "x" << height;
+    // ISO 26262 defensive programming: validate all geometry parameters
+    if (!validateGeometry(x, y, width, height)) {
+        qWarning() << "[OpenAutoEmbedded] Invalid geometry rejected:"
+                   << x << y << width << "x" << height;
         return;
     }
 
-    m_videoWidget->setGeometry(x, y, width, height);
+    // Apply safe bounds
+    const int safeX = safeCoordinate(x, 0, MAX_COORDINATE);
+    const int safeY = safeCoordinate(y, 0, MAX_COORDINATE);
+    const int safeW = safeCoordinate(width, MIN_DIMENSION, MAX_COORDINATE);
+    const int safeH = safeCoordinate(height, MIN_DIMENSION, MAX_COORDINATE);
+
+    m_videoWidget->setGeometry(safeX, safeY, safeW, safeH);
 
     if (m_serviceFactory) {
         m_serviceFactory->resize();
     }
 
-    qDebug() << "[OpenAutoEmbedded] Video geometry updated:" << x << y << width << "x" << height;
+    qDebug() << "[OpenAutoEmbedded] Video geometry updated:" << safeX << safeY << safeW << "x" << safeH;
 }
 
 void OpenAutoEmbedded::onContainerGeometryChanged()
 {
-    updateVideoWidgetPosition();
+    // Use debounce timer to batch rapid geometry changes (animations, resize)
+    // This prevents excessive position updates that could cause flicker
+    if (m_geometryUpdateTimer && !m_geometryUpdateTimer->isActive()) {
+        m_geometryUpdateTimer->start();
+    }
 }
 
 void OpenAutoEmbedded::updateVideoWidgetPosition()
 {
-    if (!m_container || !m_videoWidget) {
+    // Thread-safe container access
+    QPointer<QQuickItem> container;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_containerRegistered || !m_container) {
+            return;
+        }
+        container = m_container;
+    }
+
+    if (!m_videoWidget || !container) {
         return;
     }
 
     // Map container position to scene coordinates
-    QPointF scenePos = m_container->mapToScene(QPointF(0, 0));
+    QPointF scenePos = container->mapToScene(QPointF(0, 0));
 
-    int x = static_cast<int>(scenePos.x());
-    int y = static_cast<int>(scenePos.y());
-    int w = static_cast<int>(m_container->width());
-    int h = static_cast<int>(m_container->height());
+    // ISO 26262: Validate floating point values before integer conversion
+    if (!std::isfinite(scenePos.x()) || !std::isfinite(scenePos.y()) ||
+        !std::isfinite(container->width()) || !std::isfinite(container->height())) {
+        qWarning() << "[OpenAutoEmbedded] Invalid container geometry (non-finite values)";
+        return;
+    }
+
+    // Apply safe coordinate conversion with bounds checking
+    const int x = safeCoordinate(scenePos.x(), 0, MAX_COORDINATE);
+    const int y = safeCoordinate(scenePos.y(), 0, MAX_COORDINATE);
+    const int w = safeCoordinate(container->width(), MIN_DIMENSION, MAX_COORDINATE);
+    const int h = safeCoordinate(container->height(), MIN_DIMENSION, MAX_COORDINATE);
+
+    // Final validation before applying
+    if (!validateGeometry(x, y, w, h)) {
+        qWarning() << "[OpenAutoEmbedded] Container geometry validation failed";
+        return;
+    }
 
     m_videoWidget->setGeometry(x, y, w, h);
 
@@ -274,9 +384,13 @@ void OpenAutoEmbedded::updateVideoWidgetPosition()
 
 bool OpenAutoEmbedded::start()
 {
-    if (m_running) {
-        qWarning() << "[OpenAutoEmbedded] Already running";
-        return true;
+    // Thread-safe running check
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_running) {
+            qWarning() << "[OpenAutoEmbedded] Already running";
+            return true;
+        }
     }
 
     qInfo() << "[OpenAutoEmbedded] Starting...";
@@ -292,34 +406,44 @@ bool OpenAutoEmbedded::start()
         return false;
     }
 
-    m_running = true;
+    // Thread-safe state update
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_running = true;
 
-    // Clear any previous error message on successful start
-    if (!m_errorMessage.isEmpty()) {
-        m_errorMessage.clear();
-        emit errorChanged();
+        // Clear any previous error message on successful start
+        if (!m_errorMessage.isEmpty()) {
+            m_errorMessage.clear();
+        }
     }
 
+    emit errorChanged();
     emit runningChanged();
     emit started();
 
     qInfo() << "[OpenAutoEmbedded] Started successfully, waiting for device...";
 
     // Start waiting for USB device connection
-    m_app->waitForDevice(true);
+    if (m_app) {
+        m_app->waitForDevice(true);
+    }
 
     return true;
 }
 
 void OpenAutoEmbedded::stop()
 {
-    if (!m_running) {
-        return;
+    // Thread-safe running check
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (!m_running) {
+            return;
+        }
     }
 
     qInfo() << "[OpenAutoEmbedded] Stopping...";
 
-    // Stop the app first
+    // Stop the app first (outside mutex to avoid deadlock with callbacks)
     if (m_app) {
         m_app->stop();
     }
@@ -330,7 +454,12 @@ void OpenAutoEmbedded::stop()
     // Cleanup libusb
     cleanupLibusb();
 
-    m_running = false;
+    // Thread-safe state update
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_running = false;
+    }
+
     setConnected(false);
     emit runningChanged();
     emit stopped();
@@ -351,7 +480,16 @@ void OpenAutoEmbedded::restart()
 
 void OpenAutoEmbedded::sendTouch(int x, int y, int action)
 {
-    if (!m_running || !m_connected) {
+    // Thread-safe state check
+    bool isRunning;
+    bool isConnected;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isRunning = m_running;
+        isConnected = m_connected;
+    }
+
+    if (!isRunning || !isConnected) {
         return;
     }
 
@@ -360,16 +498,26 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
         return;
     }
 
+    // ISO 26262: Validate touch coordinates
+    if (x < 0 || y < 0 || x > MAX_COORDINATE || y > MAX_COORDINATE) {
+        qWarning() << "[OpenAutoEmbedded] Touch coordinates out of bounds:" << x << y;
+        return;
+    }
+
     // The openauto InputDevice class is installed as an event filter on the video widget.
     // It intercepts touch/mouse events and forwards them to Android Auto.
     // We synthesize mouse events here which will be captured by the InputDevice eventFilter.
 
-    QPointF localPos(x, y);
+    // Safe coordinate clamping for extra safety
+    const int safeX = safeCoordinate(x, 0, m_videoWidget->width());
+    const int safeY = safeCoordinate(y, 0, m_videoWidget->height());
+
+    QPointF localPos(safeX, safeY);
 
     // Calculate global position (only valid if widget is properly parented)
     QPointF globalPos = localPos;
     if (m_videoWidget->parentWidget()) {
-        QPoint gp = m_videoWidget->mapToGlobal(QPoint(x, y));
+        QPoint gp = m_videoWidget->mapToGlobal(QPoint(safeX, safeY));
         globalPos = QPointF(gp.x(), gp.y());
     }
 
@@ -377,25 +525,32 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     Qt::MouseButton button = Qt::LeftButton;
     Qt::MouseButtons buttons;
 
-    switch (action) {
-        case TOUCH_ACTION_PRESS:
-            eventType = QEvent::MouseButtonPress;
-            buttons = Qt::LeftButton;
-            m_touchPressed = true;
-            break;
-        case TOUCH_ACTION_RELEASE:
-            eventType = QEvent::MouseButtonRelease;
-            buttons = Qt::NoButton;
-            m_touchPressed = false;
-            break;
-        case TOUCH_ACTION_MOVE:
-            eventType = QEvent::MouseMove;
-            buttons = m_touchPressed ? Qt::LeftButton : Qt::NoButton;
-            button = Qt::NoButton;  // No button for move events
-            break;
-        default:
-            qWarning() << "[OpenAutoEmbedded] Unknown touch action:" << action;
-            return;
+    // Thread-safe touch state access
+    bool wasTouchPressed;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        wasTouchPressed = m_touchPressed;
+
+        switch (action) {
+            case TOUCH_ACTION_PRESS:
+                eventType = QEvent::MouseButtonPress;
+                buttons = Qt::LeftButton;
+                m_touchPressed = true;
+                break;
+            case TOUCH_ACTION_RELEASE:
+                eventType = QEvent::MouseButtonRelease;
+                buttons = Qt::NoButton;
+                m_touchPressed = false;
+                break;
+            case TOUCH_ACTION_MOVE:
+                eventType = QEvent::MouseMove;
+                buttons = m_touchPressed ? Qt::LeftButton : Qt::NoButton;
+                button = Qt::NoButton;  // No button for move events
+                break;
+            default:
+                qWarning() << "[OpenAutoEmbedded] Unknown touch action:" << action;
+                return;
+        }
     }
 
     // Create and post the mouse event to the video widget
@@ -412,12 +567,21 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     // Post the event to the video widget (will be handled by InputDevice eventFilter)
     QCoreApplication::postEvent(m_videoWidget.get(), mouseEvent);
 
-    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << x << y << "action:" << action;
+    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action;
 }
 
 void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
 {
-    if (!m_running || !m_connected) {
+    // Thread-safe state check
+    bool isRunning;
+    bool isConnected;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isRunning = m_running;
+        isConnected = m_connected;
+    }
+
+    if (!isRunning || !isConnected) {
         return;
     }
 
@@ -474,12 +638,21 @@ void OpenAutoEmbedded::onProjectionActive(bool active)
 {
     qInfo() << "[OpenAutoEmbedded] Projection active:" << active;
 
+    // Thread-safe state read for visibility decision
+    bool isVisible;
+    bool isRegistered;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isVisible = m_videoVisible;
+        isRegistered = m_containerRegistered;
+    }
+
     if (active) {
         setConnected(true);
         emit projectionStarted();
 
         // Show video widget if screen is visible
-        if (m_videoVisible && m_containerRegistered) {
+        if (isVisible && isRegistered && m_videoWidget) {
             updateVideoWidgetPosition();
             m_videoWidget->show();
             m_videoWidget->raise();
@@ -657,8 +830,16 @@ void OpenAutoEmbedded::cleanupOpenauto()
 
 void OpenAutoEmbedded::setError(const QString& msg)
 {
-    if (m_errorMessage != msg) {
-        m_errorMessage = msg;
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_errorMessage != msg) {
+            m_errorMessage = msg;
+            changed = true;
+        }
+    }
+
+    if (changed) {
         emit errorChanged();
         qWarning() << "[OpenAutoEmbedded] Error:" << msg;
     }
@@ -666,20 +847,95 @@ void OpenAutoEmbedded::setError(const QString& msg)
 
 void OpenAutoEmbedded::setConnected(bool connected)
 {
-    if (m_connected != connected) {
-        m_connected = connected;
+    QString currentPhoneName;
+    bool changed = false;
+
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_connected != connected) {
+            m_connected = connected;
+            changed = true;
+
+            if (!connected) {
+                m_phoneName.clear();
+            }
+            currentPhoneName = m_phoneName;
+        }
+    }
+
+    if (changed) {
         emit connectedChanged();
 
         if (connected) {
             qInfo() << "[OpenAutoEmbedded] Phone connected";
-            emit phoneConnected(m_phoneName);
+            emit phoneConnected(currentPhoneName);
         } else {
-            m_phoneName.clear();
             emit phoneNameChanged();
             emit phoneDisconnected();
             qInfo() << "[OpenAutoEmbedded] Phone disconnected";
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ISO 26262 DEFENSIVE PROGRAMMING HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+int OpenAutoEmbedded::safeCoordinate(qreal value, int minVal, int maxVal) const
+{
+    // Handle non-finite values (NaN, Inf)
+    if (!std::isfinite(value)) {
+        qWarning() << "[OpenAutoEmbedded] Non-finite coordinate value detected, using minimum";
+        return minVal;
+    }
+
+    // Clamp to valid range
+    if (value < static_cast<qreal>(minVal)) {
+        return minVal;
+    }
+    if (value > static_cast<qreal>(maxVal)) {
+        return maxVal;
+    }
+
+    // Safe conversion with rounding
+    return static_cast<int>(std::round(value));
+}
+
+bool OpenAutoEmbedded::validateGeometry(int x, int y, int w, int h) const
+{
+    // ISO 26262: Comprehensive geometry validation
+
+    // Check for negative coordinates (invalid for screen position)
+    if (x < 0 || y < 0) {
+        qDebug() << "[OpenAutoEmbedded] Negative coordinate detected";
+        return false;
+    }
+
+    // Check for excessive coordinates (overflow protection)
+    if (x > MAX_COORDINATE || y > MAX_COORDINATE) {
+        qDebug() << "[OpenAutoEmbedded] Coordinate exceeds maximum";
+        return false;
+    }
+
+    // Check for invalid dimensions
+    if (w < MIN_DIMENSION || h < MIN_DIMENSION) {
+        qDebug() << "[OpenAutoEmbedded] Dimension below minimum";
+        return false;
+    }
+
+    // Check for excessive dimensions
+    if (w > MAX_COORDINATE || h > MAX_COORDINATE) {
+        qDebug() << "[OpenAutoEmbedded] Dimension exceeds maximum";
+        return false;
+    }
+
+    // Check for overflow in position + dimension calculation
+    if (x > MAX_COORDINATE - w || y > MAX_COORDINATE - h) {
+        qDebug() << "[OpenAutoEmbedded] Position + dimension would overflow";
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace speeduino
