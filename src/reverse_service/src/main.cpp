@@ -12,9 +12,11 @@
 #include <atomic>
 #include <getopt.h>
 #include <sstream>
+#include <iostream>
 
 #ifdef __linux__
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <net/if.h>
 #include <linux/can.h>
 #include <linux/can/raw.h>

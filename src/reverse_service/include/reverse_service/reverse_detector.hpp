@@ -8,6 +8,12 @@
 #include <atomic>
 #include <chrono>
 
+// Forward declarations for gpiod v2 types
+#ifdef HAS_GPIOD
+struct gpiod_chip;
+struct gpiod_line_request;
+#endif
+
 namespace speeduino {
 
 // Callback when reverse state changes
@@ -62,10 +68,11 @@ private:
     std::chrono::steady_clock::time_point m_lastTransition;
     bool m_pendingState{false};
 
-    // GPIO handle (platform-specific)
+    // GPIO handle (platform-specific) - gpiod v2 API
 #ifdef HAS_GPIOD
-    struct gpiod_chip* m_gpioChip{nullptr};
-    struct gpiod_line* m_gpioLine{nullptr};
+    gpiod_chip* m_gpioChip{nullptr};
+    gpiod_line_request* m_gpioRequest{nullptr};
+    unsigned int m_gpioOffset{0};
 #endif
 
     bool m_gpioInitialized{false};

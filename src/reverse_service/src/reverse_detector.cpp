@@ -53,9 +53,9 @@ bool ReverseDetector::init(const ReverseConfig& config) {
 
 void ReverseDetector::shutdown() {
 #ifdef HAS_GPIOD
-    if (m_gpioLine) {
-        gpiod_line_release(m_gpioLine);
-        m_gpioLine = nullptr;
+    if (m_gpioRequest) {
+        gpiod_line_request_release(m_gpioRequest);
+        m_gpioRequest = nullptr;
     }
     if (m_gpioChip) {
         gpiod_chip_close(m_gpioChip);
@@ -93,7 +93,7 @@ void ReverseDetector::procesCanFrame(uint32_t can_id, const uint8_t* data, uint8
     if (reverseDetected != m_pendingState) {
         m_pendingState = reverseDetected;
         m_lastTransition = now;
-    } else if (elapsed >= m_config.debounce_ms && m_pendingState != m_engaged) {
+    } else if (elapsed >= static_cast<long>(m_config.debounce_ms) && m_pendingState != m_engaged) {
         setState(m_pendingState, Source::CAN);
     }
 }
@@ -118,7 +118,7 @@ void ReverseDetector::checkGpio() {
     if (gpioState != m_pendingState) {
         m_pendingState = gpioState;
         m_lastTransition = now;
-    } else if (elapsed >= m_config.debounce_ms && m_pendingState != m_engaged) {
+    } else if (elapsed >= static_cast<long>(m_config.debounce_ms) && m_pendingState != m_engaged) {
         setState(m_pendingState, Source::GPIO);
     }
 }
@@ -145,26 +145,74 @@ void ReverseDetector::setState(bool engaged, Source source) {
 
 bool ReverseDetector::initGpio() {
 #ifdef HAS_GPIOD
-    m_gpioChip = gpiod_chip_open_by_name(m_config.gpio_chip.c_str());
+    // gpiod v2 API - open chip by path
+    std::string chipPath = "/dev/" + m_config.gpio_chip;
+    m_gpioChip = gpiod_chip_open(chipPath.c_str());
     if (!m_gpioChip) {
-        LOG_ERROR("Failed to open GPIO chip: " + m_config.gpio_chip);
+        LOG_ERROR("Failed to open GPIO chip: " + chipPath);
         return false;
     }
 
-    m_gpioLine = gpiod_chip_get_line(m_gpioChip, m_config.gpio_line);
-    if (!m_gpioLine) {
-        LOG_ERROR("Failed to get GPIO line: " + std::to_string(m_config.gpio_line));
+    // Store the offset for later use
+    m_gpioOffset = m_config.gpio_line;
+
+    // Create line settings for input
+    struct gpiod_line_settings* settings = gpiod_line_settings_new();
+    if (!settings) {
+        LOG_ERROR("Failed to create GPIO line settings");
         gpiod_chip_close(m_gpioChip);
         m_gpioChip = nullptr;
         return false;
     }
 
-    int ret = gpiod_line_request_input(m_gpioLine, "reverse_service");
-    if (ret < 0) {
-        LOG_ERROR("Failed to request GPIO line as input");
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+
+    // Create line config
+    struct gpiod_line_config* lineConfig = gpiod_line_config_new();
+    if (!lineConfig) {
+        LOG_ERROR("Failed to create GPIO line config");
+        gpiod_line_settings_free(settings);
         gpiod_chip_close(m_gpioChip);
         m_gpioChip = nullptr;
-        m_gpioLine = nullptr;
+        return false;
+    }
+
+    // Add line with settings
+    unsigned int offsets[] = {m_gpioOffset};
+    if (gpiod_line_config_add_line_settings(lineConfig, offsets, 1, settings) < 0) {
+        LOG_ERROR("Failed to add GPIO line settings");
+        gpiod_line_config_free(lineConfig);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
+        return false;
+    }
+
+    // Create request config
+    struct gpiod_request_config* reqConfig = gpiod_request_config_new();
+    if (!reqConfig) {
+        LOG_ERROR("Failed to create GPIO request config");
+        gpiod_line_config_free(lineConfig);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
+        return false;
+    }
+
+    gpiod_request_config_set_consumer(reqConfig, "reverse_service");
+
+    // Request the line
+    m_gpioRequest = gpiod_chip_request_lines(m_gpioChip, reqConfig, lineConfig);
+
+    // Cleanup config objects
+    gpiod_request_config_free(reqConfig);
+    gpiod_line_config_free(lineConfig);
+    gpiod_line_settings_free(settings);
+
+    if (!m_gpioRequest) {
+        LOG_ERROR("Failed to request GPIO line: " + std::to_string(m_config.gpio_line));
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
         return false;
     }
 
@@ -180,11 +228,11 @@ bool ReverseDetector::initGpio() {
 
 bool ReverseDetector::readGpio() {
 #ifdef HAS_GPIOD
-    if (!m_gpioLine) {
+    if (!m_gpioRequest) {
         return false;
     }
-    int value = gpiod_line_get_value(m_gpioLine);
-    return value > 0;
+    enum gpiod_line_value value = gpiod_line_request_get_value(m_gpioRequest, m_gpioOffset);
+    return value == GPIOD_LINE_VALUE_ACTIVE;
 #else
     return false;
 #endif
