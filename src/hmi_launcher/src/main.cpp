@@ -98,8 +98,8 @@ int main(int argc, char *argv[])
     openAutoController.setFullscreen(false);  // CRITICAL: Never fullscreen!
 
     // Configure embedded OpenAuto
-    // Content area is 800x480 minus tab bar height (60px) = 800x420
-    openAutoEmbedded.setResolution(800, 420);
+    // Content area is 800x480 minus StatusBar (36px) and TabBar (64px) = 800x380
+    openAutoEmbedded.setResolution(800, 380);
 
     // Expose controllers to QML
     engine.rootContext()->setContextProperty("dataProvider", &dataProvider);
