@@ -156,28 +156,39 @@ Item {
 
         // Touch passthrough area - forwards touch DIRECTLY to embedded OpenAuto
         // CRITICAL: Call openAutoEmbedded.sendTouch() directly, not through signal
+        // ISO 26262: Validate touch coordinates before forwarding
         MouseArea {
+            id: touchArea
             anchors.fill: parent
             enabled: State.AppState.openAutoRunning && State.AppState.openAutoConnected
 
-            onPressed: function(mouse) {
-                if (useEmbedded && openAutoEmbedded) {
-                    openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 0)  // 0 = press
+            // Helper function to validate and clamp touch coordinates
+            function validateAndSendTouch(mouseX, mouseY, action) {
+                // Bounds validation - prevent negative or excessive coordinates
+                if (!isFinite(mouseX) || !isFinite(mouseY)) {
+                    console.warn("OpenAutoScreen: Invalid touch coordinates (non-finite)")
+                    return
                 }
-                openAutoScreen.touchEvent(mouse.x, mouse.y, 0)  // Also emit for compatibility
+
+                // Clamp coordinates to valid range
+                var safeX = Math.max(0, Math.min(Math.round(mouseX), width))
+                var safeY = Math.max(0, Math.min(Math.round(mouseY), height))
+
+                if (useEmbedded && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(safeX, safeY, action)
+                }
+                openAutoScreen.touchEvent(safeX, safeY, action)
+            }
+
+            onPressed: function(mouse) {
+                validateAndSendTouch(mouse.x, mouse.y, 0)  // 0 = press
             }
             onReleased: function(mouse) {
-                if (useEmbedded && openAutoEmbedded) {
-                    openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 1)  // 1 = release
-                }
-                openAutoScreen.touchEvent(mouse.x, mouse.y, 1)
+                validateAndSendTouch(mouse.x, mouse.y, 1)  // 1 = release
             }
             onPositionChanged: function(mouse) {
                 if (pressed) {
-                    if (useEmbedded && openAutoEmbedded) {
-                        openAutoEmbedded.sendTouch(Math.round(mouse.x), Math.round(mouse.y), 2)  // 2 = move
-                    }
-                    openAutoScreen.touchEvent(mouse.x, mouse.y, 2)
+                    validateAndSendTouch(mouse.x, mouse.y, 2)  // 2 = move
                 }
             }
         }
