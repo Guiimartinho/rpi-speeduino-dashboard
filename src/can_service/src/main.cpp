@@ -10,7 +10,13 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <iostream>
 #include <getopt.h>
+
+// Forward declaration from signal_database.cpp
+namespace speeduino {
+std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol);
+}
 
 namespace {
 
@@ -31,9 +37,6 @@ void printUsage(const char* progname) {
               << "  -v, --verbose            Enable debug logging\n"
               << "  -h, --help               Show this help\n";
 }
-
-// Forward declarations from signal_database.cpp
-std::vector<speeduino::CanSignalDef> getSignalsForProtocol(const std::string& protocol);
 
 } // anonymous namespace
 

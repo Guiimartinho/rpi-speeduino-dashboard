@@ -48,6 +48,9 @@ private:
     // Apply scale and offset
     double applyScaling(uint64_t raw, const CanSignalDef& signal) const;
 
+    // Update aggregated engine data from parsed signals
+    void updateEngineData();
+
     // Signal definitions indexed by CAN ID
     std::unordered_multimap<uint32_t, CanSignalDef> m_signalsByCanId;
 

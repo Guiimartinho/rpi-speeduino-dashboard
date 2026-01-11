@@ -1,6 +1,8 @@
 #include "can_service/can_writer.hpp"
 #include "common/logger.hpp"
 
+#include <cstring>
+
 namespace speeduino {
 
 // TokenBucket implementation
