@@ -26,7 +26,41 @@
  * - C++ parents the video widget to the QML window and positions it over the container
  * - QML notifies C++ of visibility changes via setVideoVisible()
  * - This reactive approach eliminates startup timing issues
+ *
+ * ISO 26262 CONSIDERATIONS:
+ * - Structured cleanup ensures resources are released on all exit paths
+ * - Error handling provides diagnostics for debugging
  */
+
+// RAII helper for cleanup - ensures resources are released on all exit paths
+class ApplicationCleanup {
+public:
+    ApplicationCleanup(speeduino::DataProvider& dp,
+                       speeduino::CameraController& cc,
+                       speeduino::OpenAutoController& oac,
+                       speeduino::OpenAutoEmbedded& oae)
+        : m_dataProvider(dp)
+        , m_cameraController(cc)
+        , m_openAutoController(oac)
+        , m_openAutoEmbedded(oae)
+    {}
+
+    ~ApplicationCleanup() {
+        qInfo() << "[Main] Performing cleanup...";
+        m_dataProvider.stop();
+        m_cameraController.stop();
+        m_openAutoController.stop();
+        m_openAutoEmbedded.stop();
+        qInfo() << "[Main] Cleanup complete";
+    }
+
+private:
+    speeduino::DataProvider& m_dataProvider;
+    speeduino::CameraController& m_cameraController;
+    speeduino::OpenAutoController& m_openAutoController;
+    speeduino::OpenAutoEmbedded& m_openAutoEmbedded;
+};
+
 int main(int argc, char *argv[])
 {
     // Use QApplication for QWidget support (required by embedded OpenAuto)
@@ -61,19 +95,19 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
-    bool fullscreen = parser.isSet(fullscreenOption);
-    bool debug = parser.isSet(debugOption);
-    bool useProcessOpenAuto = parser.isSet(processOpenAutoOption);
-    QString configDir = parser.value(configOption);
+    const bool fullscreen = parser.isSet(fullscreenOption);
+    const bool debug = parser.isSet(debugOption);
+    const bool useProcessOpenAuto = parser.isSet(processOpenAutoOption);
+    const QString configDir = parser.value(configOption);
 
     if (debug) {
         qSetMessagePattern("[%{time hh:mm:ss.zzz}] [%{type}] %{message}");
     }
 
-    qInfo() << "Speeduino UI starting...";
-    qInfo() << "Config dir:" << configDir;
-    qInfo() << "Fullscreen:" << fullscreen;
-    qInfo() << "Use embedded OpenAuto:" << !useProcessOpenAuto;
+    qInfo() << "[Main] Speeduino UI starting...";
+    qInfo() << "[Main] Config dir:" << configDir;
+    qInfo() << "[Main] Fullscreen:" << fullscreen;
+    qInfo() << "[Main] Use embedded OpenAuto:" << !useProcessOpenAuto;
 
     // Set Qt Quick style
     QQuickStyle::setStyle("Basic");
@@ -86,6 +120,10 @@ int main(int argc, char *argv[])
     speeduino::CameraController cameraController;
     speeduino::OpenAutoController openAutoController;
     speeduino::OpenAutoEmbedded openAutoEmbedded;
+
+    // RAII cleanup - ensures resources are released even on early exit
+    ApplicationCleanup cleanup(dataProvider, cameraController,
+                               openAutoController, openAutoEmbedded);
 
     // Configure camera
     cameraController.setDevice("/dev/video0");
@@ -102,55 +140,63 @@ int main(int argc, char *argv[])
     openAutoEmbedded.setResolution(800, 380);
 
     // Expose controllers to QML
-    engine.rootContext()->setContextProperty("dataProvider", &dataProvider);
-    engine.rootContext()->setContextProperty("cameraController", &cameraController);
-    engine.rootContext()->setContextProperty("openAutoController", &openAutoController);
-    engine.rootContext()->setContextProperty("openAutoEmbedded", &openAutoEmbedded);
-    engine.rootContext()->setContextProperty("isFullscreen", fullscreen);
-    engine.rootContext()->setContextProperty("useProcessOpenAuto", useProcessOpenAuto);
+    QQmlContext* rootContext = engine.rootContext();
+    if (!rootContext) {
+        qCritical() << "[Main] Failed to get root context";
+        return -1;  // cleanup happens via RAII
+    }
+
+    rootContext->setContextProperty("dataProvider", &dataProvider);
+    rootContext->setContextProperty("cameraController", &cameraController);
+    rootContext->setContextProperty("openAutoController", &openAutoController);
+    rootContext->setContextProperty("openAutoEmbedded", &openAutoEmbedded);
+    rootContext->setContextProperty("isFullscreen", fullscreen);
+    rootContext->setContextProperty("useProcessOpenAuto", useProcessOpenAuto);
 
     // Load main QML
     // Using Qt::StringLiterals for modern Qt6 compatibility
     using namespace Qt::StringLiterals;
     const QUrl url(u"qrc:/SpeeduinoUI/qml/main.qml"_s);
 
+    // Track loading errors
+    bool loadFailed = false;
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
-        &app, []() { QCoreApplication::exit(-1); },
+        &app, [&loadFailed]() {
+            qCritical() << "[Main] QML object creation failed";
+            loadFailed = true;
+            QCoreApplication::exit(-1);
+        },
         Qt::QueuedConnection);
 
     engine.load(url);
 
     if (engine.rootObjects().isEmpty()) {
-        qCritical() << "Failed to load QML";
-        return -1;
+        qCritical() << "[Main] Failed to load QML - no root objects created";
+        return -1;  // cleanup happens via RAII
     }
 
     // Get the root window for reference
     QQuickWindow* rootWindow = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if (rootWindow) {
-        qInfo() << "Root window created:" << rootWindow->width() << "x" << rootWindow->height();
+        qInfo() << "[Main] Root window created:" << rootWindow->width() << "x" << rootWindow->height();
 
         // NOTE: Video widget integration is now handled reactively by QML:
         // 1. OpenAutoScreen.qml calls openAutoEmbedded.setVideoContainer() when it loads
         // 2. OpenAutoScreen.qml calls openAutoEmbedded.setVideoVisible() on visibility changes
         // 3. This eliminates timing issues with the old startup-based lookup approach
     } else {
-        qCritical() << "Failed to get root window";
+        qWarning() << "[Main] Failed to get root window - UI may not function correctly";
+        // Continue anyway as this might not be fatal
     }
 
     // Start data provider
     dataProvider.start();
 
-    qInfo() << "Speeduino UI started";
+    qInfo() << "[Main] Speeduino UI started successfully";
 
-    int result = app.exec();
+    const int result = app.exec();
 
-    // Cleanup
-    dataProvider.stop();
-    cameraController.stop();
-    openAutoController.stop();
-    openAutoEmbedded.stop();
-
-    qInfo() << "Speeduino UI stopped";
+    qInfo() << "[Main] Speeduino UI exiting with code" << result;
+    // cleanup happens automatically via RAII (ApplicationCleanup destructor)
     return result;
 }
