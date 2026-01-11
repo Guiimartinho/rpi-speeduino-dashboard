@@ -302,7 +302,10 @@ ApplicationWindow {
 
             onRestartOpenAuto: {
                 console.log("Main: Restart OpenAuto requested")
-                if (openAutoController) {
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.restart()
+                } else if (openAutoController) {
                     openAutoController.stop()
                     openAutoController.start()
                 }
@@ -325,17 +328,32 @@ ApplicationWindow {
         Screens.OpenAutoScreen {
             onRequestStart: {
                 console.log("Main: OpenAuto start requested")
-                if (openAutoController) openAutoController.start()
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.start()
+                } else if (openAutoController) {
+                    openAutoController.start()
+                }
             }
 
             onRequestStop: {
                 console.log("Main: OpenAuto stop requested")
-                if (openAutoController) openAutoController.stop()
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.stop()
+                } else if (openAutoController) {
+                    openAutoController.stop()
+                }
             }
 
             onTouchEvent: function(x, y, type) {
                 // Forward touch events to OpenAuto
-                if (openAutoController) {
+                // CRITICAL: Route to openAutoEmbedded when in embedded mode
+                // (Note: OpenAutoScreen.qml already calls sendTouch directly,
+                //  this is for backwards compatibility with process mode)
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.sendTouch(x, y, type)
+                } else if (openAutoController) {
                     openAutoController.sendTouch(x, y, type)
                 }
             }
