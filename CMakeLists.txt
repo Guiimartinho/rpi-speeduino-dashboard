@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(speeduino_ui VERSION 1.0.0 LANGUAGES CXX)
 
-# C++17 standard
-set(CMAKE_CXX_STANDARD 17)
+# C++20 standard (required for std::source_location)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -66,13 +66,18 @@ if(SYSTEMD_FOUND)
     add_compile_definitions(HAVE_SYSTEMD)
 endif()
 
-# MessagePack (header-only, check if available)
+# MessagePack (try C++ header first, then C header)
 find_path(MSGPACK_INCLUDE_DIR msgpack.hpp
     HINTS /usr/include /usr/local/include
 )
+if(NOT MSGPACK_INCLUDE_DIR)
+    find_path(MSGPACK_INCLUDE_DIR msgpack.h
+        HINTS /usr/include /usr/local/include
+    )
+endif()
 
 # Qt6 (for hmi_launcher)
-find_package(Qt6 COMPONENTS Core Quick Multimedia QUIET)
+find_package(Qt6 COMPONENTS Core Quick QuickControls2 Multimedia MultimediaWidgets Widgets Bluetooth QUIET)
 
 # GTest for unit tests
 find_package(GTest QUIET)

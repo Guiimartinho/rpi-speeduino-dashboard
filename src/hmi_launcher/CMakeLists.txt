@@ -1,11 +1,24 @@
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# Find required packages for OpenAuto integration
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
+
+# Find Boost (required by openauto/aasdk)
+find_package(Boost REQUIRED COMPONENTS system log)
+
 qt_add_executable(hmi_launcher
     src/main.cpp
     src/data_provider.cpp
     src/camera_controller.cpp
     src/openauto_controller.cpp
+    src/openauto_embedded.cpp
+    # Headers with Q_OBJECT macro (required for AUTOMOC)
+    include/hmi/data_provider.hpp
+    include/hmi/camera_controller.hpp
+    include/hmi/openauto_controller.hpp
+    include/hmi/openauto_embedded.hpp
 )
 
 qt_add_qml_module(hmi_launcher
@@ -82,22 +95,26 @@ qt_add_qml_module(hmi_launcher
 target_include_directories(hmi_launcher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ZMQ_INCLUDE_DIRS}
+    ${LIBUSB_INCLUDE_DIRS}
+    ${Boost_INCLUDE_DIRS}
+    /usr/local/include
 )
 
 target_link_libraries(hmi_launcher PRIVATE
     Qt6::Core
     Qt6::Quick
+    Qt6::QuickControls2
     Qt6::Multimedia
+    Qt6::MultimediaWidgets
+    Qt6::Widgets
+    Qt6::Bluetooth
     common
     ${ZMQ_LIBRARIES}
+    ${LIBUSB_LIBRARIES}
+    ${Boost_LIBRARIES}
+    openauto
+    aasdk
 )
-
-# Qt Quick Compiler for release builds (precompiles QML)
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    qt_add_qml_module(hmi_launcher
-        PRECOMPILE
-    )
-endif()
 
 # Install
 install(TARGETS hmi_launcher RUNTIME DESTINATION /usr/local/bin)
