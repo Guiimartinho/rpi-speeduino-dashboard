@@ -1,0 +1,42 @@
+#!/bin/bash
+# Post-installation script for speeduino-ui DEB package
+# ISO 26262 ASIL-B: Ensures safe service installation and startup
+
+set -e
+
+# Create speeduino user if it doesn't exist
+if ! id -u speeduino > /dev/null 2>&1; then
+    useradd -r -s /bin/false -G dialout,video,gpio,i2c,spi,can speeduino
+    echo "Created speeduino system user"
+fi
+
+# Set proper permissions on config files
+chown -R root:speeduino /etc/speeduino-ui
+chmod 750 /etc/speeduino-ui
+chmod 640 /etc/speeduino-ui/*.yaml
+
+# Reload systemd daemon
+systemctl daemon-reload
+
+# Enable services (but don't start - let user configure first)
+systemctl enable can_service.service || true
+systemctl enable hmi_launcher.service || true
+systemctl enable reverse_service.service || true
+
+# Create log directory
+mkdir -p /var/log/speeduino-ui
+chown speeduino:speeduino /var/log/speeduino-ui
+chmod 750 /var/log/speeduino-ui
+
+echo ""
+echo "=== Speeduino UI installed successfully ==="
+echo ""
+echo "Next steps:"
+echo "  1. Edit configuration: /etc/speeduino-ui/system.yaml"
+echo "  2. Configure CAN interface: sudo /usr/local/bin/setup_can.sh"
+echo "  3. Start services:"
+echo "     sudo systemctl start can_service"
+echo "     sudo systemctl start hmi_launcher"
+echo ""
+
+exit 0

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Pre-removal script for speeduino-ui DEB package
+# ISO 26262 ASIL-B: Ensures clean service shutdown before removal
+
+set -e
+
+# Stop services gracefully
+echo "Stopping Speeduino UI services..."
+systemctl stop hmi_launcher.service || true
+systemctl stop can_service.service || true
+systemctl stop reverse_service.service || true
+
+# Disable services
+systemctl disable hmi_launcher.service || true
+systemctl disable can_service.service || true
+systemctl disable reverse_service.service || true
+
+# Reload systemd daemon
+systemctl daemon-reload
+
+echo "Speeduino UI services stopped and disabled"
+
+exit 0
