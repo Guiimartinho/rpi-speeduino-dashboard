@@ -18,6 +18,15 @@ namespace speeduino {
 std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAN Service Configuration Constants
+// ISO 26262: Named constants for timing and rate configuration
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// CAN frame receive timeout in milliseconds
+    constexpr uint32_t CAN_RECEIVE_TIMEOUT_MS = 10;
+} // anonymous namespace
+
 namespace {
 
 std::atomic<bool> g_running{true};
@@ -81,7 +90,7 @@ int main(int argc, char* argv[]) {
     // Initialize logger
     Logger::init("can_service");
     if (verbose) {
-        Logger::setLevel(LogLevel::DEBUG);
+        Logger::setLevel(LogLevel::Dbg);
     }
 
     LOG_INFO("Speeduino CAN Service starting...");
@@ -161,7 +170,7 @@ int main(int argc, char* argv[]) {
     // Main loop
     while (g_running) {
         // Receive CAN frames (non-blocking with short timeout)
-        auto frame = canInterface.receive(10);
+        auto frame = canInterface.receive(CAN_RECEIVE_TIMEOUT_MS);
         if (frame) {
             parser.parseFrame(*frame);
         }

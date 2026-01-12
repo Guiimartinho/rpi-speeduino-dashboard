@@ -25,6 +25,15 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAN Recovery Timing Constants
+// ISO 26262: Named constants for hardware recovery timing
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// Delay in microseconds for CAN interface recovery (100ms)
+    constexpr unsigned int CAN_RECOVERY_DELAY_US = 100000;
+} // anonymous namespace
+
 CanErrorHandler::CanErrorHandler() {
     stats_.lastError = std::chrono::steady_clock::time_point::min();
     stats_.lastBusOff = std::chrono::steady_clock::time_point::min();
@@ -264,7 +273,7 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
     }
 
     // Brief delay to allow hardware to reset
-    usleep(100000);  // 100ms
+    usleep(CAN_RECOVERY_DELAY_US);
 
     // Bring interface back up
     ifr.ifr_flags |= IFF_UP;

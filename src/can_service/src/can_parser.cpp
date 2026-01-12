@@ -5,6 +5,15 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Engine Safety Thresholds
+// ISO 26262 ASIL-B: Named constants for safety-critical thresholds
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// Coolant temperature threshold for overheat warning (Celsius)
+    constexpr int8_t COOLANT_OVERHEAT_THRESHOLD_C = 105;
+} // anonymous namespace
+
 namespace {
 
 uint32_t getMonotonicMs() {
@@ -226,7 +235,7 @@ void CanParser::updateEngineData() {
     if (m_engineData.rpm > 0) {
         m_engineData.flags |= EngineData::FLAG_ENGINE_RUN;
     }
-    if (m_engineData.coolant_temp > 105) {
+    if (m_engineData.coolant_temp > COOLANT_OVERHEAT_THRESHOLD_C) {
         m_engineData.flags |= EngineData::FLAG_OVERHEAT;
     }
 }

@@ -5,6 +5,17 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ZMQ Socket Configuration Constants
+// ISO 26262: Named constants improve code readability and maintainability
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// High water mark for ZMQ publisher - drops old messages if subscriber is slow
+    constexpr int ZMQ_PUBLISHER_HWM = 10;
+    /// Linger time for ZMQ sockets (0 = don't wait on close)
+    constexpr int ZMQ_LINGER_MS = 0;
+} // anonymous namespace
+
 // ZmqPublisher implementation
 ZmqPublisher::ZmqPublisher() = default;
 
@@ -18,12 +29,8 @@ bool ZmqPublisher::init(const std::string& endpoint) {
         m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::pub);
 
         // Set socket options
-        int linger = 0;
-        m_socket->set(zmq::sockopt::linger, linger);
-
-        // High water mark - drop old messages if subscriber is slow
-        int hwm = 10;
-        m_socket->set(zmq::sockopt::sndhwm, hwm);
+        m_socket->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
+        m_socket->set(zmq::sockopt::sndhwm, ZMQ_PUBLISHER_HWM);
 
         m_socket->bind(endpoint);
 
@@ -97,8 +104,7 @@ bool ZmqCommandServer::init(const std::string& endpoint) {
         m_context = std::make_unique<zmq::context_t>(1);
         m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::rep);
 
-        int linger = 0;
-        m_socket->set(zmq::sockopt::linger, linger);
+        m_socket->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
 
         m_socket->bind(endpoint);
 
