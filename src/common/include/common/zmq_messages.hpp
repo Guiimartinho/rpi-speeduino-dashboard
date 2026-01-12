@@ -8,12 +8,102 @@
 
 namespace speeduino {
 
-// ZMQ IPC endpoints
+// ═══════════════════════════════════════════════════════════════════════════════
+// ZMQ IPC Endpoints Configuration
+// ISO 26262: Configurable endpoints for testing and deployment flexibility
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * @struct ZmqEndpointsConfig
+ * @brief Configurable ZMQ IPC endpoints
+ *
+ * Default values are for production use.
+ * Can be overridden via configuration file or for testing.
+ */
+struct ZmqEndpointsConfig {
+    std::string engine_data = "ipc:///tmp/speeduino_data.ipc";
+    std::string can_command = "ipc:///tmp/speeduino_cmd.ipc";
+    std::string reverse_trigger = "ipc:///tmp/reverse_trigger.ipc";
+    std::string steering_events = "ipc:///tmp/steering_events.ipc";
+
+    // Validation helper
+    bool isValid() const {
+        return !engine_data.empty() &&
+               !can_command.empty() &&
+               !reverse_trigger.empty() &&
+               !steering_events.empty();
+    }
+};
+
+/**
+ * @class ZmqEndpoints
+ * @brief Singleton for managing ZMQ endpoint configuration
+ *
+ * Usage:
+ *   // Get default endpoints
+ *   auto& ep = ZmqEndpoints::instance();
+ *   publisher.bind(ep.engineData());
+ *
+ *   // Override for testing
+ *   ZmqEndpointsConfig testConfig;
+ *   testConfig.engine_data = "ipc:///tmp/test_engine.ipc";
+ *   ZmqEndpoints::configure(testConfig);
+ */
+class ZmqEndpoints {
+public:
+    static ZmqEndpoints& instance() {
+        static ZmqEndpoints instance;
+        return instance;
+    }
+
+    // Configure endpoints (call before using any endpoint)
+    static void configure(const ZmqEndpointsConfig& config) {
+        instance().config_ = config;
+    }
+
+    // Reset to default configuration
+    static void reset() {
+        instance().config_ = ZmqEndpointsConfig{};
+    }
+
+    // Endpoint getters
+    const std::string& engineData() const { return config_.engine_data; }
+    const std::string& canCommand() const { return config_.can_command; }
+    const std::string& reverseTrigger() const { return config_.reverse_trigger; }
+    const std::string& steeringEvents() const { return config_.steering_events; }
+
+    // Get full configuration
+    const ZmqEndpointsConfig& config() const { return config_; }
+
+private:
+    ZmqEndpoints() = default;
+    ZmqEndpointsConfig config_;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Legacy namespace for backward compatibility
+// DEPRECATED: Use ZmqEndpoints::instance() instead
+// ═══════════════════════════════════════════════════════════════════════════════
 namespace endpoints {
+    // Default endpoints (for backward compatibility)
     constexpr const char* ENGINE_DATA = "ipc:///tmp/speeduino_data.ipc";
     constexpr const char* CAN_COMMAND = "ipc:///tmp/speeduino_cmd.ipc";
     constexpr const char* REVERSE_TRIGGER = "ipc:///tmp/reverse_trigger.ipc";
     constexpr const char* STEERING_EVENTS = "ipc:///tmp/steering_events.ipc";
+
+    // Helper to get configured endpoint (preferred)
+    inline const std::string& getEngineData() {
+        return ZmqEndpoints::instance().engineData();
+    }
+    inline const std::string& getCanCommand() {
+        return ZmqEndpoints::instance().canCommand();
+    }
+    inline const std::string& getReverseTrigger() {
+        return ZmqEndpoints::instance().reverseTrigger();
+    }
+    inline const std::string& getSteeringEvents() {
+        return ZmqEndpoints::instance().steeringEvents();
+    }
 }
 
 // Topic prefixes for PUB/SUB
