@@ -235,6 +235,34 @@ template<typename Func>
     return ScopeSuccess<std::decay_t<Func>>(std::forward<Func>(func));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Macro helpers for SCOPE_EXIT, SCOPE_FAIL, SCOPE_SUCCESS
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace detail {
+
+struct ScopeExitHelper {
+    template<typename F>
+    auto operator+(F&& f) const {
+        return makeScopeExit(std::forward<F>(f));
+    }
+};
+
+struct ScopeFailHelper {
+    template<typename F>
+    auto operator+(F&& f) const {
+        return makeScopeFail(std::forward<F>(f));
+    }
+};
+
+struct ScopeSuccessHelper {
+    template<typename F>
+    auto operator+(F&& f) const {
+        return makeScopeSuccess(std::forward<F>(f));
+    }
+};
+
+} // namespace detail
+
 } // namespace speeduino
 
 // Convenience macros for anonymous scope guards
@@ -252,20 +280,20 @@ template<typename Func>
  * @endcode
  */
 #define SCOPE_EXIT \
-    auto SPEEDUINO_UNIQUE_NAME(scopeExit_) = ::speeduino::makeScopeExit([&]()
+    auto SPEEDUINO_UNIQUE_NAME(scopeExit_) = ::speeduino::detail::ScopeExitHelper{} + [&]()
 
 /**
  * @def SCOPE_FAIL
  * @brief Create an anonymous scope guard that executes on exception
  */
 #define SCOPE_FAIL \
-    auto SPEEDUINO_UNIQUE_NAME(scopeFail_) = ::speeduino::makeScopeFail([&]()
+    auto SPEEDUINO_UNIQUE_NAME(scopeFail_) = ::speeduino::detail::ScopeFailHelper{} + [&]()
 
 /**
  * @def SCOPE_SUCCESS
  * @brief Create an anonymous scope guard that executes on normal exit
  */
 #define SCOPE_SUCCESS \
-    auto SPEEDUINO_UNIQUE_NAME(scopeSuccess_) = ::speeduino::makeScopeSuccess([&]()
+    auto SPEEDUINO_UNIQUE_NAME(scopeSuccess_) = ::speeduino::detail::ScopeSuccessHelper{} + [&]()
 
 #endif // COMMON_SCOPE_GUARD_HPP
