@@ -7,6 +7,29 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Process Management Timing Constants
+// ISO 26262: Named constants for process lifecycle timing
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// Timeout for killing a process in milliseconds
+    constexpr int PROCESS_KILL_TIMEOUT_MS = 1000;
+    /// Timeout for starting a process in milliseconds
+    constexpr int PROCESS_START_TIMEOUT_MS = 5000;
+    /// Timeout for graceful process termination in milliseconds
+    constexpr int PROCESS_TERMINATE_TIMEOUT_MS = 3000;
+    /// Delay before restarting after clean stop in milliseconds
+    constexpr int RESTART_DELAY_MS = 500;
+    /// Delay for USB device change debouncing in milliseconds
+    constexpr int USB_DEBOUNCE_DELAY_MS = 500;
+    /// Interval for USB device polling in milliseconds
+    constexpr int USB_CHECK_INTERVAL_MS = 2000;
+    /// Initial USB check delay on startup in milliseconds
+    constexpr int INITIAL_USB_CHECK_DELAY_MS = 100;
+    /// Delay to confirm process stability before reset crash counter in milliseconds
+    constexpr int PROCESS_STABILITY_CHECK_MS = 5000;
+} // anonymous namespace
+
 // Known Android Auto compatible device USB IDs (vendor:product)
 // These are common Android phone manufacturers that support AA
 const QStringList OpenAutoController::AA_USB_IDS = {
@@ -246,13 +269,13 @@ bool OpenAutoController::start() {
     if (m_process->state() != QProcess::NotRunning) {
         qWarning() << "[OpenAutoController] Process already in running state, killing first";
         m_process->kill();
-        m_process->waitForFinished(1000);
+        m_process->waitForFinished(PROCESS_KILL_TIMEOUT_MS);
     }
 
     m_process->setProcessEnvironment(env);
     m_process->start(execPath, QStringList());
 
-    if (!m_process->waitForStarted(5000)) {
+    if (!m_process->waitForStarted(PROCESS_START_TIMEOUT_MS)) {
         setError("Failed to start OpenAuto process within timeout");
         return false;
     }
@@ -280,11 +303,11 @@ void OpenAutoController::stop() {
     // Send SIGTERM first for graceful shutdown
     m_process->terminate();
 
-    if (!m_process->waitForFinished(3000)) {
+    if (!m_process->waitForFinished(PROCESS_TERMINATE_TIMEOUT_MS)) {
         // Force kill if doesn't respond
         qWarning() << "[OpenAutoController] Not responding to SIGTERM, sending SIGKILL...";
         m_process->kill();
-        m_process->waitForFinished(1000);
+        m_process->waitForFinished(PROCESS_KILL_TIMEOUT_MS);
     }
 
     setConnected(false);
@@ -295,7 +318,7 @@ void OpenAutoController::restart() {
     stop();
 
     // Wait a bit before restarting
-    QTimer::singleShot(500, this, [this]() {
+    QTimer::singleShot(RESTART_DELAY_MS, this, [this]() {
         start();
     });
 }
@@ -437,7 +460,7 @@ void OpenAutoController::onProcessStarted() {
 
     // FIX #9: Reset crash counter after successful start + stable period
     // Use delayed reset to confirm process is stable (not immediately crashing)
-    QTimer::singleShot(5000, this, [this]() {
+    QTimer::singleShot(PROCESS_STABILITY_CHECK_MS, this, [this]() {
         bool isStillRunning;
         {
             QMutexLocker locker(&m_stateMutex);
@@ -597,7 +620,7 @@ void OpenAutoController::checkUsbDevices() {
 void OpenAutoController::onUsbDeviceChanged(const QString& path) {
     Q_UNUSED(path)
     // Debounce rapid USB events
-    QTimer::singleShot(500, this, &OpenAutoController::checkUsbDevices);
+    QTimer::singleShot(USB_DEBOUNCE_DELAY_MS, this, &OpenAutoController::checkUsbDevices);
 }
 
 // Private methods
@@ -676,11 +699,11 @@ void OpenAutoController::startUsbMonitoring() {
         m_usbWatcher->addPath("/sys/bus/usb/devices");
     }
 
-    // Periodic check as backup (every 2 seconds)
-    m_usbCheckTimer->start(2000);
+    // Periodic check as backup
+    m_usbCheckTimer->start(USB_CHECK_INTERVAL_MS);
 
     // Initial scan
-    QTimer::singleShot(100, this, &OpenAutoController::checkUsbDevices);
+    QTimer::singleShot(INITIAL_USB_CHECK_DELAY_MS, this, &OpenAutoController::checkUsbDevices);
 
     qInfo() << "USB device monitoring started";
 #else

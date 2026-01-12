@@ -5,6 +5,25 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ZMQ Socket Configuration Constants
+// ISO 26262: Named constants for network timing parameters
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// ZMQ receive timeout in milliseconds (extended for automotive reliability)
+    constexpr int ZMQ_RECEIVE_TIMEOUT_MS = 500;
+    /// ZMQ reconnect interval in milliseconds
+    constexpr int ZMQ_RECONNECT_INTERVAL_MS = 100;
+    /// ZMQ max reconnect interval in milliseconds
+    constexpr int ZMQ_RECONNECT_INTERVAL_MAX_MS = 1000;
+    /// ZMQ poll timeout in milliseconds
+    constexpr int ZMQ_POLL_TIMEOUT_MS = 50;
+    /// Worker thread shutdown timeout in milliseconds
+    constexpr int WORKER_THREAD_WAIT_TIMEOUT_MS = 2000;
+    /// ZMQ socket linger time (0 = don't wait on close)
+    constexpr int ZMQ_LINGER_MS = 0;
+} // anonymous namespace
+
 // ZmqWorker implementation
 ZmqWorker::ZmqWorker(QObject* parent)
     : QObject(parent)
@@ -25,19 +44,19 @@ void ZmqWorker::process() {
 
         // Engine data subscriber with extended timeouts for automotive reliability
         m_engineSub = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::sub);
-        m_engineSub->set(zmq::sockopt::linger, 0);
-        m_engineSub->set(zmq::sockopt::rcvtimeo, 500);  // Extended timeout for reliability
-        m_engineSub->set(zmq::sockopt::reconnect_ivl, 100);  // Reconnect interval
-        m_engineSub->set(zmq::sockopt::reconnect_ivl_max, 1000);  // Max reconnect interval
+        m_engineSub->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
+        m_engineSub->set(zmq::sockopt::rcvtimeo, ZMQ_RECEIVE_TIMEOUT_MS);
+        m_engineSub->set(zmq::sockopt::reconnect_ivl, ZMQ_RECONNECT_INTERVAL_MS);
+        m_engineSub->set(zmq::sockopt::reconnect_ivl_max, ZMQ_RECONNECT_INTERVAL_MAX_MS);
         m_engineSub->connect(endpoints::ENGINE_DATA);
         m_engineSub->set(zmq::sockopt::subscribe, topics::ENGINE);
 
         // Reverse event subscriber
         m_reverseSub = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::sub);
-        m_reverseSub->set(zmq::sockopt::linger, 0);
-        m_reverseSub->set(zmq::sockopt::rcvtimeo, 500);
-        m_reverseSub->set(zmq::sockopt::reconnect_ivl, 100);
-        m_reverseSub->set(zmq::sockopt::reconnect_ivl_max, 1000);
+        m_reverseSub->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
+        m_reverseSub->set(zmq::sockopt::rcvtimeo, ZMQ_RECEIVE_TIMEOUT_MS);
+        m_reverseSub->set(zmq::sockopt::reconnect_ivl, ZMQ_RECONNECT_INTERVAL_MS);
+        m_reverseSub->set(zmq::sockopt::reconnect_ivl_max, ZMQ_RECONNECT_INTERVAL_MAX_MS);
         m_reverseSub->connect(endpoints::REVERSE_TRIGGER);
         m_reverseSub->set(zmq::sockopt::subscribe, topics::REVERSE);
 
@@ -52,7 +71,7 @@ void ZmqWorker::process() {
                 {*m_reverseSub, 0, ZMQ_POLLIN, 0}
             };
 
-            zmq::poll(items, 2, std::chrono::milliseconds(50));
+            zmq::poll(items, 2, std::chrono::milliseconds(ZMQ_POLL_TIMEOUT_MS));
 
             // Engine data
             if (items[0].revents & ZMQ_POLLIN) {
@@ -249,7 +268,7 @@ void DataProvider::stop() {
     m_workerThread.quit();
 
     // Wait with timeout for clean shutdown
-    if (!m_workerThread.wait(2000)) {
+    if (!m_workerThread.wait(WORKER_THREAD_WAIT_TIMEOUT_MS)) {
         qWarning() << "[DataProvider] Worker thread did not stop in time";
         m_workerThread.terminate();
         m_workerThread.wait();
