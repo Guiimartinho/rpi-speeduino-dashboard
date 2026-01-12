@@ -9,13 +9,14 @@
 namespace speeduino {
 
 // Log levels compatible with journald/syslog
+// Note: Using Dbg instead of DEBUG to avoid conflict with -DDEBUG compiler flag
 enum class LogLevel : uint8_t {
-    TRACE = 0,
-    DEBUG = 1,
-    INFO  = 2,
-    WARN  = 3,
-    ERROR = 4,
-    FATAL = 5
+    Trace = 0,
+    Dbg   = 1,
+    Info  = 2,
+    Warn  = 3,
+    Err   = 4,
+    Fatal = 5
 };
 
 class Logger {
