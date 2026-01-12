@@ -57,4 +57,42 @@ if(BUILD_TESTS AND GTest_FOUND)
         GTest::gtest_main
     )
     add_test(NAME test_scope_guard COMMAND test_scope_guard)
+
+    # ConfigLoader tests - thread-safe configuration loading
+    add_executable(test_config_loader
+        tests/test_config_loader.cpp
+        src/config_loader.cpp
+        src/logger.cpp
+    )
+    target_include_directories(test_config_loader PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${YAML_CPP_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_config_loader PRIVATE
+        ${YAML_CPP_LIBRARIES}
+        Threads::Threads
+        GTest::gtest
+        GTest::gtest_main
+    )
+    add_test(NAME test_config_loader COMMAND test_config_loader)
+
+    # WatchdogNotifier tests - systemd integration
+    add_executable(test_watchdog_notifier
+        tests/test_watchdog_notifier.cpp
+        src/watchdog_notifier.cpp
+        src/logger.cpp
+    )
+    target_include_directories(test_watchdog_notifier PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(test_watchdog_notifier PRIVATE
+        Threads::Threads
+        GTest::gtest
+        GTest::gtest_main
+    )
+    if(SYSTEMD_FOUND)
+        target_link_libraries(test_watchdog_notifier PRIVATE ${SYSTEMD_LIBRARIES})
+        target_include_directories(test_watchdog_notifier PRIVATE ${SYSTEMD_INCLUDE_DIRS})
+    endif()
+    add_test(NAME test_watchdog_notifier COMMAND test_watchdog_notifier)
 endif()

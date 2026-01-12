@@ -57,4 +57,39 @@ if(BUILD_TESTS AND GTest_FOUND)
         GTest::gtest_main
     )
     add_test(NAME test_can_error_handler COMMAND test_can_error_handler)
+
+    # CAN Interface tests
+    add_executable(test_can_interface
+        tests/test_can_interface.cpp
+        src/can_interface.cpp
+    )
+    target_include_directories(test_can_interface PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(test_can_interface PRIVATE
+        common
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+    )
+    add_test(NAME test_can_interface COMMAND test_can_interface)
+
+    # ZMQ Publisher tests - IPC communication
+    add_executable(test_zmq_publisher
+        tests/test_zmq_publisher.cpp
+        src/zmq_publisher.cpp
+    )
+    target_include_directories(test_zmq_publisher PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${ZMQ_INCLUDE_DIRS}
+        ${MSGPACK_INCLUDE_DIR}
+    )
+    target_link_libraries(test_zmq_publisher PRIVATE
+        common
+        ${ZMQ_LIBRARIES}
+        GTest::gtest
+        GTest::gtest_main
+        Threads::Threads
+    )
+    add_test(NAME test_zmq_publisher COMMAND test_zmq_publisher)
 endif()
