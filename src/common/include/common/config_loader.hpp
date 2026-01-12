@@ -7,6 +7,8 @@
 #include <optional>
 #include <cstdint>
 #include <unordered_map>
+#include <mutex>
+#include <shared_mutex>
 
 namespace speeduino {
 
@@ -168,6 +170,11 @@ public:
     static uint32_t getCommandRateLimit(uint32_t can_id);
 
 private:
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Thread-safe static members with mutex protection
+    // Uses shared_mutex for read-heavy workloads (multiple readers, single writer)
+    // ═══════════════════════════════════════════════════════════════════════
+    static std::shared_mutex s_mutex;
     static SystemConfig s_systemConfig;
     static std::vector<CanSignalDef> s_signals;
     static std::vector<CanCommandDef> s_allowedCommands;

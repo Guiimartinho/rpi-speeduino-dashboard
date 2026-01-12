@@ -8,7 +8,11 @@
 
 namespace speeduino {
 
-// Static members
+// ═══════════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Thread-safe static members with mutex protection
+// Static mutex must be defined before other static members
+// ═══════════════════════════════════════════════════════════════════════════════
+std::shared_mutex ConfigLoader::s_mutex;
 SystemConfig ConfigLoader::s_systemConfig;
 std::vector<CanSignalDef> ConfigLoader::s_signals;
 std::vector<CanCommandDef> ConfigLoader::s_allowedCommands;
@@ -124,6 +128,9 @@ void loadBMWSignals(std::vector<CanSignalDef>& signals) {
 } // anonymous namespace
 
 bool ConfigLoader::loadFromDirectory(std::string_view config_dir) {
+    // ISO 26262: Exclusive lock for writing - prevents data races
+    std::unique_lock<std::shared_mutex> lock(s_mutex);
+
     std::filesystem::path dir(config_dir);
 
     bool success = true;
@@ -298,27 +305,37 @@ bool ConfigLoader::loadSteeringConfig(std::string_view path) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Thread-safe getters with shared_lock (multiple readers OK)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const SystemConfig& ConfigLoader::getSystemConfig() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_systemConfig;
 }
 
 const std::vector<CanSignalDef>& ConfigLoader::getSignals() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_signals;
 }
 
 const std::vector<CanCommandDef>& ConfigLoader::getAllowedCommands() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_allowedCommands;
 }
 
 const std::vector<SteeringButtonDef>& ConfigLoader::getSteeringButtons() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_steeringButtons;
 }
 
 const ReverseConfig& ConfigLoader::getReverseConfig() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_reverseConfig;
 }
 
 std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& sig : s_signals) {
         if (sig.name == name) return sig;
     }
@@ -326,6 +343,7 @@ std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
 }
 
 bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
         if (cmd.can_id == can_id) return true;
     }
@@ -333,6 +351,7 @@ bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
 }
 
 uint32_t ConfigLoader::getCommandRateLimit(uint32_t can_id) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
         if (cmd.can_id == can_id) return cmd.rate_limit_hz;
     }
