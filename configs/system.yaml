@@ -23,21 +23,39 @@ openauto:
   path: /usr/local/bin/openauto
 
 # Reverse gear detection
+# Options:
+#   detection_mode: "can"           - CAN bus only (modern ECUs)
+#   detection_mode: "gpio"          - GPIO only (classic cars like Gol Quadrado)
+#   detection_mode: "both"          - Try CAN first, GPIO as fallback
+#   detection_mode: "speeduino_can" - Speeduino CAN broadcast
+#
+#   preset: "gol_quadrado"          - VW Gol Quadrado / Fusca / Kombi
+#   preset: "classic_vw"            - Same as gol_quadrado
+#   preset: "speeduino_can"         - Speeduino with CAN enabled
+#   preset: "haltech"               - Haltech ECU
+#
 reverse:
-  # CAN-based detection (primary)
+  detection_mode: both    # Primary detection method
+  # preset: haltech       # Uncomment to use preset (sets all values below)
+
+  # CAN-based detection (for modern ECUs)
   can_enabled: true
   can_id: 0x370      # Haltech VSS frame
   byte_index: 3       # Gear byte
   bit_mask: 0xFF      # Full byte
   expected_value: 0x00  # Gear 0 = reverse (adjust for your setup)
-  debounce_ms: 100
 
-  # GPIO fallback (optional)
+  # GPIO detection (for classic cars without CAN)
   # Connects to reverse lamp signal via optocoupler
+  # See docs/WIRING_GOL_QUADRADO.md for wiring diagram
   gpio_enabled: false
   gpio_chip: gpiochip0
   gpio_line: 17       # GPIO17 (pin 11)
   gpio_active_low: false
+
+  # Debounce time - filters noise from gear lever switch
+  # Classic cars may need higher values (100-200ms)
+  debounce_ms: 100
 
 # Allowed CAN commands (whitelist)
 # Only these CAN IDs can be sent from the UI

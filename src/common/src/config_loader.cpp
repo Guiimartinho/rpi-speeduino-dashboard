@@ -134,16 +134,36 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
 
         if (config["reverse"]) {
             auto rev = config["reverse"];
+
+            // Check for preset first - this sets defaults for specific vehicles
+            if (rev["preset"]) {
+                std::string preset = rev["preset"].as<std::string>();
+                s_reverseConfig.applyPreset(preset);
+                LOG_INFO("Applied reverse detection preset: " + preset);
+            }
+
+            // Detection mode (can override preset)
+            if (rev["detection_mode"]) {
+                s_reverseConfig.detection_mode = rev["detection_mode"].as<std::string>();
+            }
+
+            // CAN settings (can override preset)
             if (rev["can_enabled"]) s_reverseConfig.can_enabled = rev["can_enabled"].as<bool>();
             if (rev["can_id"]) s_reverseConfig.can_id = parseHexOrDec(rev["can_id"]);
             if (rev["byte_index"]) s_reverseConfig.byte_index = rev["byte_index"].as<uint8_t>();
             if (rev["bit_mask"]) s_reverseConfig.bit_mask = parseHexOrDec(rev["bit_mask"]);
             if (rev["expected_value"]) s_reverseConfig.expected_value = parseHexOrDec(rev["expected_value"]);
+
+            // GPIO settings (can override preset)
             if (rev["gpio_enabled"]) s_reverseConfig.gpio_enabled = rev["gpio_enabled"].as<bool>();
             if (rev["gpio_chip"]) s_reverseConfig.gpio_chip = rev["gpio_chip"].as<std::string>();
             if (rev["gpio_line"]) s_reverseConfig.gpio_line = rev["gpio_line"].as<uint32_t>();
             if (rev["gpio_active_low"]) s_reverseConfig.gpio_active_low = rev["gpio_active_low"].as<bool>();
-            if (rev["debounce_ms"]) s_systemConfig.reverse_debounce_ms = rev["debounce_ms"].as<uint32_t>();
+
+            // Debounce setting
+            if (rev["debounce_ms"]) s_reverseConfig.debounce_ms = rev["debounce_ms"].as<uint32_t>();
+
+            LOG_INFO("Reverse detection mode: " + s_reverseConfig.detection_mode);
         }
 
         if (config["allowed_commands"]) {
