@@ -255,7 +255,8 @@ public:
 
 private:
     SystemHealth();
-    ~SystemHealth() = default;
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~SystemHealth() noexcept = default;
 
     void updateSystemMode();
     void notifyModeChange(SystemMode oldMode, SystemMode newMode);
@@ -294,7 +295,8 @@ public:
         SystemHealth::instance().reportHeartbeat(id_);
     }
 
-    ~SubsystemGuard() {
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~SubsystemGuard() noexcept {
         if (reportOnDestroy_) {
             SystemHealth::instance().reportHeartbeat(id_);
         }

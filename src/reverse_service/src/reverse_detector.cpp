@@ -21,7 +21,7 @@ uint32_t getMonotonicMs() {
 
 ReverseDetector::ReverseDetector() = default;
 
-ReverseDetector::~ReverseDetector() {
+ReverseDetector::~ReverseDetector() noexcept {
     shutdown();
 }
 
@@ -75,7 +75,10 @@ bool ReverseDetector::init(const ReverseConfig& config) {
         }
     }
 
-    m_lastTransition = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
+        m_lastTransition = std::chrono::steady_clock::now();
+    }
 
     return true;
 }
@@ -114,16 +117,31 @@ void ReverseDetector::procesCanFrame(uint32_t can_id, const uint8_t* data, uint8
     uint8_t value = data[m_config.byte_index] & m_config.bit_mask;
     bool reverseDetected = (value == m_config.expected_value);
 
-    // Apply debounce
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_lastTransition).count();
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
+    // ═══════════════════════════════════════════════════════════════════════
+    bool shouldSetState = false;
+    bool pendingValue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
 
-    if (reverseDetected != m_pendingState) {
-        m_pendingState = reverseDetected;
-        m_lastTransition = now;
-    } else if (elapsed >= static_cast<long>(m_config.debounce_ms) && m_pendingState != m_engaged) {
-        setState(m_pendingState, Source::CAN);
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_lastTransition).count();
+
+        if (reverseDetected != m_pendingState) {
+            m_pendingState = reverseDetected;
+            m_lastTransition = now;
+        } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
+                   m_pendingState != m_engaged.load(std::memory_order_acquire)) {
+            shouldSetState = true;
+            pendingValue = m_pendingState;
+        }
+    }
+
+    // Call setState outside mutex to avoid potential deadlock with callback
+    if (shouldSetState) {
+        setState(pendingValue, Source::CAN);
     }
 }
 
@@ -139,16 +157,31 @@ void ReverseDetector::checkGpio() {
         gpioState = !gpioState;
     }
 
-    // Apply debounce
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_lastTransition).count();
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
+    // ═══════════════════════════════════════════════════════════════════════
+    bool shouldSetState = false;
+    bool pendingValue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
 
-    if (gpioState != m_pendingState) {
-        m_pendingState = gpioState;
-        m_lastTransition = now;
-    } else if (elapsed >= static_cast<long>(m_config.debounce_ms) && m_pendingState != m_engaged) {
-        setState(m_pendingState, Source::GPIO);
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_lastTransition).count();
+
+        if (gpioState != m_pendingState) {
+            m_pendingState = gpioState;
+            m_lastTransition = now;
+        } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
+                   m_pendingState != m_engaged.load(std::memory_order_acquire)) {
+            shouldSetState = true;
+            pendingValue = m_pendingState;
+        }
+    }
+
+    // Call setState outside mutex to avoid potential deadlock with callback
+    if (shouldSetState) {
+        setState(pendingValue, Source::GPIO);
     }
 }
 

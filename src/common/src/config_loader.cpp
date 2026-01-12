@@ -3,6 +3,8 @@
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include <fstream>
+#include <climits>
+#include <stdexcept>
 
 namespace speeduino {
 
@@ -16,15 +18,63 @@ bool ConfigLoader::s_loaded = false;
 
 namespace {
 
-// Helper to parse hex strings like "0x360"
+// ═══════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Safe hex/decimal parsing with bounds checking
+// MISRA C++:2008 Rule 5-0-3: Check input validity before processing
+// ═══════════════════════════════════════════════════════════════════════════
 uint32_t parseHexOrDec(const YAML::Node& node) {
-    if (!node.IsDefined() || node.IsNull()) return 0;
-
-    std::string value = node.as<std::string>();
-    if (value.substr(0, 2) == "0x" || value.substr(0, 2) == "0X") {
-        return std::stoul(value, nullptr, 16);
+    if (!node.IsDefined() || node.IsNull()) {
+        return 0;
     }
-    return node.as<uint32_t>();
+
+    try {
+        std::string value = node.as<std::string>();
+
+        // Bounds check: prevent substr from throwing
+        if (value.empty()) {
+            return 0;
+        }
+
+        // Check for hex prefix safely
+        bool isHex = false;
+        if (value.size() >= 2) {
+            if ((value[0] == '0') && (value[1] == 'x' || value[1] == 'X')) {
+                isHex = true;
+            }
+        }
+
+        if (isHex) {
+            // Validate hex string has actual digits after prefix
+            if (value.size() <= 2) {
+                LOG_WARN("Empty hex value in config, using 0");
+                return 0;
+            }
+
+            // stoul can throw std::out_of_range or std::invalid_argument
+            unsigned long parsed = std::stoul(value, nullptr, 16);
+
+            // Check for overflow (unsigned long may be larger than uint32_t)
+            if (parsed > UINT32_MAX) {
+                LOG_WARN("Hex value " + value + " exceeds uint32_t max, clamping");
+                return UINT32_MAX;
+            }
+
+            return static_cast<uint32_t>(parsed);
+        }
+
+        // Decimal parsing
+        return node.as<uint32_t>();
+
+    } catch (const std::out_of_range& e) {
+        LOG_ERROR("Config value out of range: " + std::string(e.what()));
+        return 0;
+    } catch (const std::invalid_argument& e) {
+        LOG_ERROR("Invalid config value format: " + std::string(e.what()));
+        return 0;
+    } catch (const YAML::Exception& e) {
+        LOG_ERROR("YAML parse error: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 void loadHaltechSignals(std::vector<CanSignalDef>& signals) {

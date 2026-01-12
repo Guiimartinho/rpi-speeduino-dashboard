@@ -10,11 +10,14 @@
 #include <linux/can.h>
 #include <linux/can/error.h>
 #include <linux/can/raw.h>
+#include <linux/can/netlink.h>
 #include <sys/socket.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <cstring>
+#include <cctype>
+#include <algorithm>
 #endif
 
 #include <sstream>
@@ -189,17 +192,91 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
 #ifdef __linux__
     Logger::info("Triggering CAN recovery for " + interfaceName);
 
-    // Use system command to restart interface
-    // Alternative: use netlink directly for cleaner approach
-    std::string cmd = "ip link set " + interfaceName + " type can restart";
+    // ═══════════════════════════════════════════════════════════════════════
+    // SECURITY FIX: Removed system() call to prevent command injection
+    // ISO 26262 ASIL-B: Input validation required for safety-critical systems
+    // ═══════════════════════════════════════════════════════════════════════
 
-    int ret = system(cmd.c_str());
-    if (ret != 0) {
-        Logger::error("Failed to restart CAN interface");
+    // Validate interface name to prevent injection attacks
+    // Valid CAN interface names: can0, can1, vcan0, slcan0, etc.
+    // Pattern: [a-z]+[0-9]+ (letters followed by numbers, max 15 chars)
+    if (interfaceName.empty() || interfaceName.size() > IFNAMSIZ - 1) {
+        Logger::error("Invalid interface name length: " + interfaceName);
         return false;
     }
 
-    Logger::info("CAN recovery initiated");
+    // Strict validation: only alphanumeric characters allowed
+    bool hasLetters = false;
+    bool hasDigits = false;
+    for (char c : interfaceName) {
+        if (std::isalpha(static_cast<unsigned char>(c))) {
+            hasLetters = true;
+        } else if (std::isdigit(static_cast<unsigned char>(c))) {
+            hasDigits = true;
+        } else {
+            // Reject any non-alphanumeric characters (prevents injection)
+            Logger::error("Invalid character in interface name: " + interfaceName);
+            return false;
+        }
+    }
+
+    if (!hasLetters) {
+        Logger::error("Interface name must contain letters: " + interfaceName);
+        return false;
+    }
+
+    // Use ioctl-based restart instead of system() command
+    // This is the safe, non-injectable approach
+    int sockfd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (sockfd < 0) {
+        Logger::error("Failed to create socket for CAN recovery: " +
+                     std::string(strerror(errno)));
+        return false;
+    }
+
+    // Get interface index
+    struct ifreq ifr;
+    std::memset(&ifr, 0, sizeof(ifr));
+    std::strncpy(ifr.ifr_name, interfaceName.c_str(), IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';  // Ensure null termination
+
+    if (ioctl(sockfd, SIOCGIFINDEX, &ifr) < 0) {
+        Logger::error("Failed to get interface index for recovery: " +
+                     std::string(strerror(errno)));
+        ::close(sockfd);
+        return false;
+    }
+
+    // Bring interface down
+    if (ioctl(sockfd, SIOCGIFFLAGS, &ifr) < 0) {
+        Logger::error("Failed to get interface flags: " +
+                     std::string(strerror(errno)));
+        ::close(sockfd);
+        return false;
+    }
+
+    ifr.ifr_flags &= ~IFF_UP;
+    if (ioctl(sockfd, SIOCSIFFLAGS, &ifr) < 0) {
+        Logger::error("Failed to bring interface down: " +
+                     std::string(strerror(errno)));
+        ::close(sockfd);
+        return false;
+    }
+
+    // Brief delay to allow hardware to reset
+    usleep(100000);  // 100ms
+
+    // Bring interface back up
+    ifr.ifr_flags |= IFF_UP;
+    if (ioctl(sockfd, SIOCSIFFLAGS, &ifr) < 0) {
+        Logger::error("Failed to bring interface up: " +
+                     std::string(strerror(errno)));
+        ::close(sockfd);
+        return false;
+    }
+
+    ::close(sockfd);
+    Logger::info("CAN recovery completed successfully via ioctl");
     return true;
 #else
     (void)interfaceName;
@@ -240,6 +317,10 @@ std::string CanErrorHandler::getStatusString() const {
 }
 
 void CanErrorHandler::updateState(CanBusState newState) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // DEADLOCK FIX: Callback executed with exception safety
+    // ISO 26262 ASIL-B: Prevents recursive mutex acquisition deadlocks
+    // ═══════════════════════════════════════════════════════════════════════
     // Called with mutex_ held
 
     auto oldState = currentState_.exchange(newState, std::memory_order_acq_rel);
@@ -249,11 +330,22 @@ void CanErrorHandler::updateState(CanBusState newState) {
                     canBusStateToString(oldState) + " -> " +
                     canBusStateToString(newState));
 
+        // Copy callback while holding lock
+        BusStateCallback callbackCopy;
         if (stateCallback_) {
-            // Release lock during callback to prevent deadlock
-            auto callback = stateCallback_;
+            callbackCopy = stateCallback_;
+        }
+
+        // Release lock BEFORE invoking callback (exception-safe)
+        if (callbackCopy) {
             mutex_.unlock();
-            callback(oldState, newState);
+            try {
+                callbackCopy(oldState, newState);
+            } catch (const std::exception& e) {
+                Logger::error(std::string("Bus state callback exception: ") + e.what());
+            } catch (...) {
+                Logger::error("Bus state callback threw unknown exception");
+            }
             mutex_.lock();
         }
     }

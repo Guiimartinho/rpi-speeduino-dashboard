@@ -38,7 +38,8 @@ using CanFrameCallback = std::function<void(const CanFrame&)>;
 class CanInterface {
 public:
     CanInterface();
-    ~CanInterface();
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~CanInterface() noexcept;
 
     // Non-copyable
     CanInterface(const CanInterface&) = delete;

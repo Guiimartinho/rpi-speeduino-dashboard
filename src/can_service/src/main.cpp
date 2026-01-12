@@ -131,9 +131,27 @@ int main(int argc, char* argv[]) {
 
     LOG_INFO("CAN service initialized, starting main loop");
 
-    // Calculate publish interval
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Validate publish rate before division
+    // MISRA C++:2008 Rule 5-0-5: Division by zero shall be prevented
+    // ═══════════════════════════════════════════════════════════════════════
+    constexpr uint32_t DEFAULT_PUBLISH_RATE_HZ = 50;
+    constexpr uint32_t MAX_PUBLISH_RATE_HZ = 1000;
+
+    uint32_t safePublishRate = sysConfig.zmq_publish_rate_hz;
+    if (safePublishRate == 0) {
+        LOG_WARN("ZMQ publish rate is 0, using default " +
+                 std::to_string(DEFAULT_PUBLISH_RATE_HZ) + " Hz");
+        safePublishRate = DEFAULT_PUBLISH_RATE_HZ;
+    } else if (safePublishRate > MAX_PUBLISH_RATE_HZ) {
+        LOG_WARN("ZMQ publish rate " + std::to_string(safePublishRate) +
+                 " exceeds max, clamping to " + std::to_string(MAX_PUBLISH_RATE_HZ) + " Hz");
+        safePublishRate = MAX_PUBLISH_RATE_HZ;
+    }
+
+    // Calculate publish interval (safe - safePublishRate guaranteed > 0)
     const auto publishInterval = std::chrono::microseconds(
-        1000000 / sysConfig.zmq_publish_rate_hz);
+        1000000 / safePublishRate);
     auto lastPublish = std::chrono::steady_clock::now();
 
     // Timeout tracking

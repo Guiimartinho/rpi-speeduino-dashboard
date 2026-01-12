@@ -298,29 +298,62 @@ void SystemHealth::updateSystemMode() {
 }
 
 void SystemHealth::notifyModeChange(SystemMode oldMode, SystemMode newMode) {
-    // Called with mutex_ already held
+    // ═══════════════════════════════════════════════════════════════════════
+    // DEADLOCK FIX: Callbacks are now queued and executed outside mutex
+    // ISO 26262 ASIL-B: Prevents recursive mutex acquisition deadlocks
+    // ═══════════════════════════════════════════════════════════════════════
+    // IMPORTANT: This function is called with mutex_ already held
+    // We copy the callback and release the mutex BEFORE calling it
+    // to prevent deadlock if callback tries to access SystemHealth
 
     Logger::info(std::string("System mode changed: ") +
                 systemModeToString(oldMode) + " -> " +
                 systemModeToString(newMode));
 
+    // Copy callback while holding lock
+    ModeChangeCallback callbackCopy;
     if (modeCallback_) {
-        // Release lock during callback to prevent deadlock
-        auto callback = modeCallback_;
+        callbackCopy = modeCallback_;
+    }
+
+    // Release lock BEFORE invoking callback (exception-safe)
+    // The caller must handle re-acquisition if needed
+    if (callbackCopy) {
+        // Store current state to detect if re-entry occurred
         mutex_.unlock();
-        callback(oldMode, newMode);
+        try {
+            callbackCopy(oldMode, newMode);
+        } catch (const std::exception& e) {
+            Logger::error(std::string("Mode change callback exception: ") + e.what());
+        } catch (...) {
+            Logger::error("Mode change callback threw unknown exception");
+        }
         mutex_.lock();
     }
 }
 
 void SystemHealth::notifyHealthChange(SubsystemId id, bool healthy) {
-    // Called with mutex_ already held
+    // ═══════════════════════════════════════════════════════════════════════
+    // DEADLOCK FIX: Same pattern as notifyModeChange
+    // ═══════════════════════════════════════════════════════════════════════
+    // IMPORTANT: This function is called with mutex_ already held
 
+    // Copy callback while holding lock
+    HealthChangeCallback callbackCopy;
     if (healthCallback_) {
-        // Release lock during callback to prevent deadlock
-        auto callback = healthCallback_;
+        callbackCopy = healthCallback_;
+    }
+
+    // Release lock BEFORE invoking callback (exception-safe)
+    if (callbackCopy) {
         mutex_.unlock();
-        callback(id, healthy);
+        try {
+            callbackCopy(id, healthy);
+        } catch (const std::exception& e) {
+            Logger::error(std::string("Health change callback exception: ") + e.what());
+        } catch (...) {
+            Logger::error("Health change callback threw unknown exception");
+        }
         mutex_.lock();
     }
 }

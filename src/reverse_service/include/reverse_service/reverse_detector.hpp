@@ -7,6 +7,7 @@
 #include <functional>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 // Forward declarations for gpiod v2 types
 #ifdef HAS_GPIOD
@@ -22,7 +23,8 @@ using ReverseStateCallback = std::function<void(bool engaged, uint8_t source)>;
 class ReverseDetector {
 public:
     ReverseDetector();
-    ~ReverseDetector();
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~ReverseDetector() noexcept;
 
     // Initialize with config
     bool init(const ReverseConfig& config);
@@ -66,7 +68,12 @@ private:
     // FIX #5: Made atomic to prevent data race between CAN/GPIO threads and readers
     std::atomic<Source> m_source{Source::CAN};
 
-    // Debounce
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Debounce state protected by mutex
+    // Both procesCanFrame() and checkGpio() may run on different threads
+    // MISRA C++:2008 Rule 14-7-1: All shared data requires synchronization
+    // ═══════════════════════════════════════════════════════════════════════
+    mutable std::mutex m_debounceMutex;
     std::chrono::steady_clock::time_point m_lastTransition;
     bool m_pendingState{false};
 

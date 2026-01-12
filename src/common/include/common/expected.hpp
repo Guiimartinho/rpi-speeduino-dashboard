@@ -279,7 +279,12 @@ public:
 
 private:
     E error_{};
-    bool hasValue_;
+    // ═══════════════════════════════════════════════════════════════════════
+    // MISRA C++:2008 Rule 12-1-2: All members shall be explicitly initialized
+    // ISO 26262 ASIL-B: Default to error state (false) for safety
+    // If a new constructor forgets to initialize, it fails safely
+    // ═══════════════════════════════════════════════════════════════════════
+    bool hasValue_{false};
 };
 
 /**

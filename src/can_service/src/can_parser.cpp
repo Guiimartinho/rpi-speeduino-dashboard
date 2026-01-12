@@ -118,9 +118,20 @@ uint64_t CanParser::extractRawValue(const CanFrame& frame, const CanSignalDef& s
             result = (result << 8) | frame.data[signal.start_byte + i];
         }
     } else {
-        // Little-endian: LSB first
-        for (int8_t i = static_cast<int8_t>(bytesNeeded - 1); i >= 0 && (signal.start_byte + static_cast<uint8_t>(i)) < frame.dlc; i--) {
-            result = (result << 8) | frame.data[signal.start_byte + static_cast<uint8_t>(i)];
+        // ═══════════════════════════════════════════════════════════════════════
+        // MISRA C++:2008 Rule 5-0-8: Use unsigned types consistently
+        // FIX: Replaced signed int8_t loop counter with unsigned uint8_t
+        // Little-endian: LSB first - process bytes from highest index to lowest
+        // ═══════════════════════════════════════════════════════════════════════
+        for (uint8_t j = 0; j < bytesNeeded; ++j) {
+            // Calculate byte index in reverse order (bytesNeeded-1 down to 0)
+            uint8_t byteIndex = static_cast<uint8_t>(bytesNeeded - 1U - j);
+            uint8_t frameIndex = static_cast<uint8_t>(signal.start_byte + byteIndex);
+
+            // Bounds check against frame DLC
+            if (frameIndex < frame.dlc) {
+                result = (result << 8) | frame.data[frameIndex];
+            }
         }
     }
 
@@ -164,20 +175,51 @@ void CanParser::updateEngineData() {
         return 0.0;
     };
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Safe integer conversion with clamping
+    // MISRA C++:2008 Rule 5-0-6: Narrowing conversions shall be bounds-checked
+    // Prevents undefined behavior from integer overflow
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Helper lambdas for safe clamping conversions
+    auto clampU16 = [](double val) -> uint16_t {
+        if (val < 0.0) return 0;
+        if (val > 65535.0) return 65535;
+        return static_cast<uint16_t>(val);
+    };
+
+    auto clampI16 = [](double val) -> int16_t {
+        if (val < -32768.0) return -32768;
+        if (val > 32767.0) return 32767;
+        return static_cast<int16_t>(val);
+    };
+
+    auto clampU8 = [](double val) -> uint8_t {
+        if (val < 0.0) return 0;
+        if (val > 255.0) return 255;
+        return static_cast<uint8_t>(val);
+    };
+
+    auto clampI8 = [](double val) -> int8_t {
+        if (val < -128.0) return -128;
+        if (val > 127.0) return 127;
+        return static_cast<int8_t>(val);
+    };
+
     m_engineData.timestamp_ms = m_lastUpdateTimestamp;
-    m_engineData.rpm = static_cast<uint16_t>(getValue("rpm"));
-    m_engineData.coolant_temp = static_cast<int8_t>(getValue("coolant_temp"));
-    m_engineData.intake_temp = static_cast<int8_t>(getValue("intake_temp"));
-    m_engineData.tps = static_cast<uint8_t>(getValue("tps"));
-    m_engineData.map_kpa = static_cast<uint16_t>(getValue("map") * 10);
-    m_engineData.lambda = static_cast<uint16_t>(getValue("lambda1") * 1000);
-    m_engineData.ignition_advance = static_cast<int16_t>(getValue("ignition_advance") * 10);
-    m_engineData.injector_duty = static_cast<uint8_t>(getValue("injector_duty"));
-    m_engineData.gear = static_cast<uint8_t>(getValue("gear"));
-    m_engineData.vehicle_speed = static_cast<uint16_t>(getValue("vehicle_speed") * 10);
-    m_engineData.fuel_pressure = static_cast<uint16_t>(getValue("fuel_pressure"));
-    m_engineData.oil_pressure = static_cast<uint16_t>(getValue("oil_pressure"));
-    m_engineData.oil_temp = static_cast<int8_t>(getValue("oil_temp"));
+    m_engineData.rpm = clampU16(getValue("rpm"));
+    m_engineData.coolant_temp = clampI8(getValue("coolant_temp"));
+    m_engineData.intake_temp = clampI8(getValue("intake_temp"));
+    m_engineData.tps = clampU8(getValue("tps"));
+    m_engineData.map_kpa = clampU16(getValue("map") * 10.0);
+    m_engineData.lambda = clampU16(getValue("lambda1") * 1000.0);
+    m_engineData.ignition_advance = clampI16(getValue("ignition_advance") * 10.0);
+    m_engineData.injector_duty = clampU8(getValue("injector_duty"));
+    m_engineData.gear = clampU8(getValue("gear"));
+    m_engineData.vehicle_speed = clampU16(getValue("vehicle_speed") * 10.0);
+    m_engineData.fuel_pressure = clampU16(getValue("fuel_pressure"));
+    m_engineData.oil_pressure = clampU16(getValue("oil_pressure"));
+    m_engineData.oil_temp = clampI8(getValue("oil_temp"));
 
     // Set flags
     m_engineData.flags = EngineData::FLAG_CAN_OK;

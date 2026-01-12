@@ -21,7 +21,8 @@ struct ParsedSignal {
 class CanParser {
 public:
     CanParser();
-    ~CanParser() = default;
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~CanParser() noexcept = default;
 
     // Initialize with signal definitions
     void loadSignals(const std::vector<CanSignalDef>& signals);
