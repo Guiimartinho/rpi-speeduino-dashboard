@@ -1,201 +1,200 @@
-# Instalacao Camera de Re - VW Gol Quadrado AP 1.8
+# Reverse Camera Installation - VW Gol Quadrado AP 1.8
 
-Este guia cobre a instalacao do sistema de deteccao de marcha re para
-VW Gol Quadrado (e outros VW classicos brasileiros) com motor AP 1.8,
-tanto na versao aspirada quanto turbo com Speeduino.
+This guide covers the installation of the reverse gear detection system for
+VW Gol Quadrado (and other classic Brazilian VW cars) with AP 1.8 engine,
+both naturally aspirated and turbocharged versions with Speeduino.
 
-## Visao Geral do Sistema
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        GOL QUADRADO - SISTEMA DE RE                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   CAIXA DE CAMBIO                    RASPBERRY PI 4                     │
-│   ┌─────────────┐                    ┌─────────────┐                    │
-│   │ Interruptor │    CIRCUITO        │             │                    │
-│   │   de Re     │───►INTERFACE ──────►│  GPIO 17   │                    │
-│   │  (+12V)     │    (12V→3.3V)      │             │                    │
-│   └─────────────┘                    └──────┬──────┘                    │
-│         │                                   │                           │
-│         │                                   ▼                           │
-│         │                           ┌─────────────┐                     │
-│         │                           │   Camera    │                     │
-│         ▼                           │    de Re    │                     │
-│   ┌─────────────┐                   └─────────────┘                     │
-│   │  Luz de Re  │                                                       │
-│   │ (Lanterna)  │                                                       │
-│   └─────────────┘                                                       │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-## Localizacao do Sinal de Re
-
-### Interruptor na Caixa de Cambio
+## System Overview
 
 ```
-    VISTA SUPERIOR DO MOTOR (Gol Quadrado)
-
-              FRENTE DO CARRO
-                   ↑
-    ┌──────────────────────────────┐
-    │                              │
-    │     ┌────────────────┐       │
-    │     │                │       │
-    │     │   MOTOR AP     │       │
-    │     │                │       │
-    │     └───────┬────────┘       │
-    │             │                │
-    │      ┌──────┴──────┐         │
-    │      │   CAIXA DE  │         │
-    │      │   CAMBIO    │         │
-    │      │             │         │
-    │   ──►│ (X) ← INTERRUPTOR     │
-    │      │      DE RE  │         │
-    │      └─────────────┘         │
-    │                              │
-    └──────────────────────────────┘
-
-    Localizacao: Lado ESQUERDO da caixa de cambio
-                 (olhando de cima, lado do motorista)
++-------------------------------------------------------------------------+
+|                    GOL QUADRADO - REVERSE SYSTEM                         |
++-------------------------------------------------------------------------+
+|                                                                         |
+|   GEARBOX                           RASPBERRY PI 4                      |
+|   +-----------+                     +-----------+                       |
+|   | Reverse   |    INTERFACE        |           |                       |
+|   | Switch    |--->(12V->3.3V)----->|  GPIO 17  |                       |
+|   | (+12V)    |    CIRCUIT          |           |                       |
+|   +-----------+                     +-----+-----+                       |
+|         |                                 |                             |
+|         |                                 v                             |
+|         |                         +-----------+                         |
+|         |                         |  Reverse  |                         |
+|         v                         |  Camera   |                         |
+|   +-----------+                   +-----------+                         |
+|   | Reverse   |                                                         |
+|   | Light     |                                                         |
+|   +-----------+                                                         |
+|                                                                         |
++-------------------------------------------------------------------------+
 ```
 
-### Cores dos Fios (Referencia)
+## Locating the Reverse Signal
 
-| Funcao              | Cor Comum           | Alternativa      |
+### Gearbox Reverse Switch
+
+```
+    TOP VIEW OF ENGINE (Gol Quadrado)
+
+              FRONT OF CAR
+                   ^
+    +------------------------------+
+    |                              |
+    |     +----------------+       |
+    |     |                |       |
+    |     |   AP ENGINE    |       |
+    |     |                |       |
+    |     +-------+--------+       |
+    |             |                |
+    |      +------+------+         |
+    |      |   GEARBOX   |         |
+    |      |             |         |
+    |   -->| (X) <- REVERSE SWITCH |
+    |      |             |         |
+    |      +-------------+         |
+    |                              |
+    +------------------------------+
+
+    Location: LEFT side of gearbox
+              (looking from above, driver's side)
+```
+
+### Wire Colors (Reference)
+
+| Function            | Common Color        | Alternative      |
 |---------------------|---------------------|------------------|
-| Sinal Re (+12V)     | Preto/Verde         | Verde            |
-| Negativo (GND)      | Marrom              | Preto            |
+| Reverse Signal (+12V)| Black/Green        | Green            |
+| Ground (GND)        | Brown               | Black            |
 
-**IMPORTANTE:** Sempre confirme com multimetro antes de conectar!
+**IMPORTANT:** Always confirm with a multimeter before connecting!
 
-## Teste com Multimetro
-
-```
-    PROCEDIMENTO DE TESTE
-
-    1. Localize o conector do interruptor de re
-
-    2. Com ignicao LIGADA (motor pode estar desligado):
-
-       ┌─────────────────────────────────────────┐
-       │  MULTIMETRO em modo DC Volts (20V)      │
-       │                                         │
-       │  Ponta Vermelha → Fio do interruptor    │
-       │  Ponta Preta    → Chassi (GND)          │
-       │                                         │
-       │  NEUTRO:    ~0V                         │
-       │  RE ENGATADA: ~12-14V ✓                 │
-       └─────────────────────────────────────────┘
-
-    3. Se ler ~12V com re engatada, encontrou o fio correto!
-```
-
-## Circuito de Interface (12V para 3.3V)
-
-### OPCAO A: Optoacoplador PC817 (RECOMENDADO)
-
-Isolamento galvanico total - mais seguro para o Raspberry Pi.
+## Multimeter Test
 
 ```
-    ESQUEMA ELETRICO - OPTOACOPLADOR
+    TEST PROCEDURE
 
+    1. Locate the reverse switch connector
 
-        LADO CARRO (12V)              │            LADO RASPBERRY (3.3V)
-                                      │
-                                      │
-    Sinal Re ────────┐                │
-    (+12V)           │                │
-                    ┌┴┐               │
-                    │ │ R1            │
-                    │ │ 1K            │
-                    └┬┘               │
-                     │                │                    3.3V (Pin 1)
-                     │    ┌───────────┼───────────────────────┬────
-                     │    │  PC817    │                       │
-                     ▼    │ ┌─────┐   │                      ┌┴┐
-                   ──┬──  │ │1   4│   │                      │ │ R2
-                     │    │ │ ●───┼───┼──────────────────────┤ │ 10K
-                  [LED]   │ │     │   │                      └┬┘
-                     │    │ │2   3│   │                       │
-                   ──┴──  │ │ ●   │   │                       ├───── GPIO17 (Pin 11)
-                     │    │ └──┬──┘   │                       │
-                     │    │    │      │                       │
-    GND Carro ───────┴────┼────┘      │                       │
-                          │           │                      GND (Pin 9)
-                          │           │
+    2. With ignition ON (engine can be off):
 
-    PINAGEM PC817:
-    ┌────────┐
-    │ 1    4 │   1 = Anodo LED (entrada +)
-    │ ●    ● │   2 = Catodo LED (entrada -)
-    │        │   3 = Emissor Fototransistor
-    │ ●    ● │   4 = Coletor Fototransistor
-    │ 2    3 │
-    └────────┘
+       +---------------------------------------------+
+       |  MULTIMETER in DC Volts mode (20V)         |
+       |                                            |
+       |  Red Probe   -> Switch wire                |
+       |  Black Probe -> Chassis (GND)              |
+       |                                            |
+       |  NEUTRAL:    ~0V                           |
+       |  REVERSE ENGAGED: ~12-14V                  |
+       +---------------------------------------------+
+
+    3. If reading ~12V with reverse engaged, you found the correct wire!
 ```
 
-**Lista de Componentes:**
-- 1x Optoacoplador PC817 ou 4N25
-- 1x Resistor 1KΩ 1/4W
-- 1x Resistor 10KΩ 1/4W
-- Fios, conectores, tubo termoretrátil
+## Interface Circuit (12V to 3.3V)
 
-### OPCAO B: Divisor de Tensao com Zener
+### OPTION A: PC817 Optocoupler (RECOMMENDED)
 
-Mais simples, mas sem isolamento.
+Full galvanic isolation - safer for Raspberry Pi.
 
 ```
-    ESQUEMA ELETRICO - DIVISOR DE TENSAO
+    ELECTRICAL SCHEMATIC - OPTOCOUPLER
 
 
-    Sinal Re (+12V)
-         │
-         │
-        ┌┴┐
-        │ │ R1 = 10K
-        │ │
-        └┬┘
-         │
-         ├─────────────────────────► GPIO17 (Pin 11)
-         │
-        ┌┴┐
-        │ │ R2 = 3.3K
-        │ │
-        └┬┘
-         │
-        ─┴─  D1 = Zener 3.3V
-        ───  (protecao extra)
-         │
-         │
+        CAR SIDE (12V)                |            RASPBERRY SIDE (3.3V)
+                                      |
+                                      |
+    Reverse Signal ------+            |
+    (+12V)               |            |
+                        +-+           |
+                        | | R1        |
+                        | | 1K        |
+                        +-+           |
+                         |            |                    3.3V (Pin 1)
+                         |    +-------+-------------------------+----
+                         |    |  PC817|                         |
+                         v    | +-----+   |                    +-+
+                       --+--  | |1   4|   |                    | | R2
+                         |    | | o---+---+--------------------+ | 10K
+                      [LED]   | |     |   |                    +-+
+                         |    | |2   3|   |                     |
+                       --+--  | | o   |   |                     +------ GPIO17 (Pin 11)
+                         |    | +--+--+   |                     |
+                         |    |    |      |                     |
+    Car GND -------------+----+----+      |                    GND (Pin 9)
+                              |           |
+                              |           |
+
+    PC817 PINOUT:
+    +--------+
+    | 1    4 |   1 = LED Anode (input +)
+    | o    o |   2 = LED Cathode (input -)
+    |        |   3 = Phototransistor Emitter
+    | o    o |   4 = Phototransistor Collector
+    | 2    3 |
+    +--------+
+```
+
+**Component List:**
+- 1x PC817 or 4N25 Optocoupler
+- 1x 1K 1/4W Resistor
+- 1x 10K 1/4W Resistor
+- Wires, connectors, heat shrink tubing
+
+### OPTION B: Voltage Divider with Zener
+
+Simpler, but without isolation.
+
+```
+    ELECTRICAL SCHEMATIC - VOLTAGE DIVIDER
+
+
+    Reverse Signal (+12V)
+         |
+         |
+        +-+
+        | | R1 = 10K
+        | |
+        +-+
+         |
+         +-------------------------> GPIO17 (Pin 11)
+         |
+        +-+
+        | | R2 = 3.3K
+        | |
+        +-+
+         |
+        -+-  D1 = Zener 3.3V
+        ---  (extra protection)
+         |
+         |
         GND
 
 
-    CALCULO:
-    Vout = Vin × R2/(R1+R2)
-    Vout = 12V × 3.3K/(10K+3.3K)
-    Vout = 12V × 0.248
-    Vout = 2.98V ✓ (seguro para GPIO)
+    CALCULATION:
+    Vout = Vin x R2/(R1+R2)
+    Vout = 12V x 3.3K/(10K+3.3K)
+    Vout = 12V x 0.248
+    Vout = 2.98V (safe for GPIO)
 ```
 
-**Lista de Componentes:**
-- 1x Resistor 10KΩ 1/4W
-- 1x Resistor 3.3KΩ 1/4W
-- 1x Diodo Zener 3.3V 500mW
-- Fios, conectores
+**Component List:**
+- 1x 10K 1/4W Resistor
+- 1x 3.3K 1/4W Resistor
+- 1x 3.3V 500mW Zener Diode
+- Wires, connectors
 
-## Pinagem Raspberry Pi 4
+## Raspberry Pi 4 Pinout
 
 ```
-    HEADER GPIO - RASPBERRY PI 4
+    GPIO HEADER - RASPBERRY PI 4
 
            3.3V  (1) (2)  5V
     GPIO2  SDA1  (3) (4)  5V
     GPIO3  SCL1  (5) (6)  GND
           GPIO4  (7) (8)  GPIO14 TXD
             GND  (9) (10) GPIO15 RXD
-   ════► GPIO17 (11) (12) GPIO18        ◄════ USAR ESTE PINO!
+   ====> GPIO17 (11) (12) GPIO18        <==== USE THIS PIN!
          GPIO27 (13) (14) GND
          GPIO22 (15) (16) GPIO23
            3.3V (17) (18) GPIO24
@@ -212,225 +211,225 @@ Mais simples, mas sem isolamento.
             GND (39) (40) GPIO21
 
 
-    CONEXOES NECESSARIAS:
+    REQUIRED CONNECTIONS:
 
-    ┌──────────────────────────────────────┐
-    │  Funcao          │  Pino  │  GPIO    │
-    ├──────────────────┼────────┼──────────┤
-    │  3.3V (pull-up)  │   1    │   -      │
-    │  GND             │   9    │   -      │
-    │  Sinal Re        │  11    │  GPIO17  │
-    └──────────────────────────────────────┘
+    +--------------------------------------+
+    |  Function        |  Pin   |  GPIO   |
+    +------------------+--------+---------+
+    |  3.3V (pull-up)  |   1    |   -     |
+    |  GND             |   9    |   -     |
+    |  Reverse Signal  |  11    |  GPIO17 |
+    +--------------------------------------+
 ```
 
-## Diagrama de Instalacao Completo
+## Complete Installation Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│  ┌─────────────┐                                                            │
-│  │   BATERIA   │                                                            │
-│  │    12V      │                                                            │
-│  └──────┬──────┘                                                            │
-│         │                                                                   │
-│         │ +12V                                                              │
-│         │                                                                   │
-│  ┌──────┴──────┐         ┌─────────────┐                                    │
-│  │   FUSIVEL   │         │ INTERRUPTOR │                                    │
-│  │    10A      │────────►│   DE RE     │                                    │
-│  └─────────────┘         │(caixa cambio)│                                    │
-│                          └──────┬──────┘                                    │
-│                                 │                                           │
-│                    ┌────────────┴────────────┐                              │
-│                    │                         │                              │
-│                    ▼                         ▼                              │
-│            ┌─────────────┐          ┌─────────────────┐                     │
-│            │  LUZ DE RE  │          │    CIRCUITO     │                     │
-│            │  (original) │          │   INTERFACE     │                     │
-│            └──────┬──────┘          │  (12V → 3.3V)   │                     │
-│                   │                 └────────┬────────┘                     │
-│                   │                          │                              │
-│                   ▼                          ▼                              │
-│                  GND                 ┌─────────────────┐                    │
-│                                      │  RASPBERRY PI   │                    │
-│                                      │                 │                    │
-│                                      │   ┌─────────┐   │     ┌──────────┐   │
-│                                      │   │ GPIO17  │◄──┼─────│ INTERFACE│   │
-│                                      │   └────┬────┘   │     └──────────┘   │
-│                                      │        │        │                    │
-│                                      │        ▼        │                    │
-│                                      │  ┌──────────┐   │     ┌──────────┐   │
-│                                      │  │ REVERSE  │   │     │  CAMERA  │   │
-│                                      │  │ DETECTOR │───┼────►│   DE RE  │   │
-│                                      │  └──────────┘   │     └──────────┘   │
-│                                      │        │        │                    │
-│                                      │        ▼        │                    │
-│                                      │  ┌──────────┐   │     ┌──────────┐   │
-│                                      │  │   HMI    │───┼────►│   TELA   │   │
-│                                      │  │ LAUNCHER │   │     │ TOUCHSCR │   │
-│                                      │  └──────────┘   │     └──────────┘   │
-│                                      │                 │                    │
-│                                      └─────────────────┘                    │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  +-------------+                                                            |
+|  |   BATTERY   |                                                            |
+|  |    12V      |                                                            |
+|  +------+------+                                                            |
+|         |                                                                   |
+|         | +12V                                                              |
+|         |                                                                   |
+|  +------+------+         +-------------+                                    |
+|  |    FUSE     |         |   REVERSE   |                                    |
+|  |    10A      |-------->|   SWITCH    |                                    |
+|  +-------------+         | (gearbox)   |                                    |
+|                          +------+------+                                    |
+|                                 |                                           |
+|                    +------------+------------+                              |
+|                    |                         |                              |
+|                    v                         v                              |
+|            +-------------+          +-----------------+                     |
+|            | REVERSE     |          |    INTERFACE    |                     |
+|            | LIGHT       |          |    CIRCUIT      |                     |
+|            | (original)  |          |  (12V -> 3.3V)  |                     |
+|            +------+------+          +--------+--------+                     |
+|                   |                          |                              |
+|                   v                          v                              |
+|                  GND                 +-----------------+                    |
+|                                      |  RASPBERRY PI   |                    |
+|                                      |                 |                    |
+|                                      |   +---------+   |     +----------+   |
+|                                      |   | GPIO17  |<--+-----| INTERFACE|   |
+|                                      |   +----+----+   |     +----------+   |
+|                                      |        |        |                    |
+|                                      |        v        |                    |
+|                                      |  +----------+   |     +----------+   |
+|                                      |  | REVERSE  |   |     |  CAMERA  |   |
+|                                      |  | DETECTOR |---+---->|  REVERSE |   |
+|                                      |  +----------+   |     +----------+   |
+|                                      |        |        |                    |
+|                                      |        v        |                    |
+|                                      |  +----------+   |     +----------+   |
+|                                      |  |   HMI    |---+---->|  TOUCH   |   |
+|                                      |  | LAUNCHER |   |     |  SCREEN  |   |
+|                                      |  +----------+   |     +----------+   |
+|                                      |                 |                    |
+|                                      +-----------------+                    |
+|                                                                             |
++-----------------------------------------------------------------------------+
 ```
 
-## Configuracao do Software
+## Software Configuration
 
-### Arquivo de Configuracao
+### Configuration File
 
-Crie/edite o arquivo `/etc/speeduino-ui/reverse.yaml`:
+Create/edit the file `/etc/speeduino-ui/reverse.yaml`:
 
 ```yaml
-# Configuracao de Deteccao de Marcha Re
-# VW Gol Quadrado AP 1.8 (Aspirado ou Turbo)
+# Reverse Gear Detection Configuration
+# VW Gol Quadrado AP 1.8 (Naturally Aspirated or Turbo)
 
 reverse:
-  # Modo de deteccao: "gpio" para carros classicos sem CAN
+  # Detection mode: "gpio" for classic cars without CAN
   detection_mode: "gpio"
 
-  # Preset para configuracao rapida (opcional)
-  # Valores: "gol_quadrado", "classic_vw", "speeduino_can", "haltech"
+  # Preset for quick configuration (optional)
+  # Values: "gol_quadrado", "classic_vw", "speeduino_can", "haltech"
   preset: "gol_quadrado"
 
-  # ═══════════════════════════════════════════════════════════════
-  # CAN - DESABILITADO para Gol Quadrado
-  # ═══════════════════════════════════════════════════════════════
+  # ===================================================================
+  # CAN - DISABLED for Gol Quadrado
+  # ===================================================================
   can_enabled: false
 
-  # ═══════════════════════════════════════════════════════════════
-  # GPIO - HABILITADO
-  # ═══════════════════════════════════════════════════════════════
+  # ===================================================================
+  # GPIO - ENABLED
+  # ===================================================================
   gpio_enabled: true
   gpio_chip: "gpiochip0"      # Raspberry Pi 4
-  gpio_line: 17               # GPIO17 = Pino 11 do header
+  gpio_line: 17               # GPIO17 = Pin 11 on header
 
-  # active_low depende do seu circuito:
-  # - Optoacoplador PC817: true (LED aceso = transistor conduz = LOW)
-  # - Divisor de tensao: false (12V = HIGH proporcional)
+  # active_low depends on your circuit:
+  # - PC817 Optocoupler: true (LED on = transistor conducts = LOW)
+  # - Voltage divider: false (12V = proportional HIGH)
   gpio_active_low: true
 
-  # ═══════════════════════════════════════════════════════════════
+  # ===================================================================
   # DEBOUNCE
-  # ═══════════════════════════════════════════════════════════════
-  # Carros antigos podem ter interruptores com mais bounce
-  # Aumente se houver ativacoes falsas
+  # ===================================================================
+  # Older cars may have switches with more bounce
+  # Increase if false activations occur
   debounce_ms: 100
 ```
 
-### Teste do GPIO
+### GPIO Test
 
-Antes de rodar o sistema completo, teste o GPIO:
+Before running the full system, test the GPIO:
 
 ```bash
-# Instalar gpioget (se necessario)
+# Install gpioget (if needed)
 sudo apt install gpiod
 
-# Testar leitura do GPIO17
-# Com re em NEUTRO:
+# Test GPIO17 reading
+# With gear in NEUTRAL:
 gpioget gpiochip0 17
-# Deve retornar: 1 (se active_low) ou 0 (se active_high)
+# Should return: 1 (if active_low) or 0 (if active_high)
 
-# Com re ENGATADA:
+# With REVERSE ENGAGED:
 gpioget gpiochip0 17
-# Deve retornar: 0 (se active_low) ou 1 (se active_high)
+# Should return: 0 (if active_low) or 1 (if active_high)
 ```
 
-## Consideracoes para Versao Turbo
+## Turbo Version Considerations
 
-Para Gol Quadrado com motor AP Turbo + Speeduino:
+For Gol Quadrado with Turbo AP Engine + Speeduino:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     GOL QUADRADO TURBO                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   A SPEEDUINO GERENCIA:                                         │
-│   ✓ Injecao eletronica                                         │
-│   ✓ Ignicao (avanco)                                           │
-│   ✓ Controle de boost (se configurado)                         │
-│   ✓ Wideband / Lambda                                          │
-│                                                                 │
-│   O CIRCUITO ORIGINAL DO CARRO MANTEM:                         │
-│   ✓ Luz de re ← USA ESTE SINAL (GPIO)                          │
-│   ✓ Luz de freio                                                │
-│   ✓ Setas / Pisca                                               │
-│   ✓ Farois                                                      │
-│                                                                 │
-│   FUTURO (se Speeduino tiver CAN):                             │
-│   - Pode adicionar deteccao por CAN tambem                     │
-│   - Configura detection_mode: "both"                           │
-│   - GPIO funciona como fallback                                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------+
+|                     GOL QUADRADO TURBO                           |
++-----------------------------------------------------------------+
+|                                                                 |
+|   SPEEDUINO MANAGES:                                            |
+|   * Electronic fuel injection                                   |
+|   * Ignition (timing advance)                                   |
+|   * Boost control (if configured)                               |
+|   * Wideband / Lambda                                           |
+|                                                                 |
+|   ORIGINAL CAR WIRING MAINTAINS:                                |
+|   * Reverse light <- USE THIS SIGNAL (GPIO)                     |
+|   * Brake lights                                                |
+|   * Turn signals                                                |
+|   * Headlights                                                  |
+|                                                                 |
+|   FUTURE (if Speeduino has CAN):                                |
+|   - Can add CAN detection as well                               |
+|   - Configure detection_mode: "both"                            |
+|   - GPIO works as fallback                                      |
+|                                                                 |
++-----------------------------------------------------------------+
 ```
 
 ## Troubleshooting
 
-### Camera nao ativa ao engatar re
+### Camera does not activate when engaging reverse
 
-1. **Verificar sinal 12V:**
+1. **Check 12V signal:**
    ```bash
-   # Com multimetro no fio do interruptor
-   # Re engatada deve mostrar ~12V
+   # With multimeter on switch wire
+   # Reverse engaged should show ~12V
    ```
 
-2. **Verificar GPIO:**
+2. **Check GPIO:**
    ```bash
    gpioget gpiochip0 17
-   # Deve mudar entre 0 e 1 ao engatar/desengatar re
+   # Should toggle between 0 and 1 when engaging/disengaging reverse
    ```
 
-3. **Verificar logs:**
+3. **Check logs:**
    ```bash
    journalctl -u reverse_service -f
-   # Deve mostrar "Reverse gear ENGAGED/DISENGAGED"
+   # Should show "Reverse gear ENGAGED/DISENGAGED"
    ```
 
-### Ativacoes falsas (liga/desliga rapidamente)
+### False activations (rapidly turning on/off)
 
-- Aumentar `debounce_ms` para 150 ou 200
-- Verificar conexoes (mau contato causa ruido)
-- Verificar aterramento do circuito
+- Increase `debounce_ms` to 150 or 200
+- Check connections (poor contact causes noise)
+- Check circuit ground
 
-### GPIO sempre em 0 ou sempre em 1
+### GPIO always at 0 or always at 1
 
-- Verificar se o optoacoplador/circuito esta funcionando
-- Testar com LED antes de conectar ao Pi
-- Verificar `gpio_active_low` esta correto para seu circuito
+- Check if optocoupler/circuit is working
+- Test with LED before connecting to Pi
+- Check if `gpio_active_low` is correct for your circuit
 
-## Seguranca
+## Safety
 
 ```
-⚠️  ATENCAO - TRABALHO COM SISTEMA ELETRICO AUTOMOTIVO
+WARNING - WORKING WITH AUTOMOTIVE ELECTRICAL SYSTEM
 
-1. SEMPRE desconecte o terminal negativo da bateria antes
-   de fazer qualquer conexao eletrica
+1. ALWAYS disconnect the negative battery terminal before
+   making any electrical connections
 
-2. Use fusivel de protecao no circuito (5A ou 10A)
+2. Use a protection fuse in the circuit (5A or 10A)
 
-3. Use conectores automotivos apropriados (a prova d'agua
-   se possivel)
+3. Use appropriate automotive connectors (waterproof
+   if possible)
 
-4. Proteja a fiacao com tubo corrugado ou espiral
+4. Protect wiring with corrugated tubing or spiral wrap
 
-5. Fixe bem todos os componentes para evitar vibracao
+5. Securely mount all components to prevent vibration
 
-6. O circuito de interface DEVE ser usado - NUNCA conecte
-   12V diretamente ao GPIO do Raspberry Pi!
+6. Interface circuit MUST be used - NEVER connect
+   12V directly to Raspberry Pi GPIO!
 ```
 
-## Proximos Passos
+## Next Steps
 
-1. [ ] Montar circuito de interface em protoboard para teste
-2. [ ] Testar com multimetro antes de conectar ao Pi
-3. [ ] Instalar e testar no veiculo com motor desligado
-4. [ ] Testar com motor ligado (verificar ruido eletrico)
-5. [ ] Fixar instalacao permanente
-6. [ ] Ajustar debounce se necessario
+1. [ ] Build interface circuit on breadboard for testing
+2. [ ] Test with multimeter before connecting to Pi
+3. [ ] Install and test in vehicle with engine off
+4. [ ] Test with engine running (check for electrical noise)
+5. [ ] Complete permanent installation
+6. [ ] Adjust debounce if necessary
 
 ---
 
-**Versao:** 1.0
-**Data:** 2024
-**Compatibilidade:** VW Gol Quadrado, Gol G1, Saveiro, Parati, Voyage (com motor AP)
+**Version:** 1.0
+**Date:** 2024
+**Compatibility:** VW Gol Quadrado, Gol G1, Saveiro, Parati, Voyage (with AP engine)
