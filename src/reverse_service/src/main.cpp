@@ -25,6 +25,19 @@
 #include <cstring>
 #endif
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Reverse Service Timing Constants
+// ISO 26262: Named constants for polling and GPIO check intervals
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// Poll timeout for CAN socket in milliseconds
+    constexpr int POLL_TIMEOUT_MS = 50;
+    /// GPIO check interval in milliseconds
+    constexpr int GPIO_CHECK_INTERVAL_MS = 50;
+    /// Idle sleep duration when no CAN socket in milliseconds
+    constexpr int IDLE_SLEEP_MS = 50;
+} // anonymous namespace
+
 namespace {
 
 std::atomic<bool> g_running{true};
@@ -88,7 +101,7 @@ int main(int argc, char* argv[]) {
     // Initialize logger
     Logger::init("reverse_service");
     if (verbose) {
-        Logger::setLevel(LogLevel::DEBUG);
+        Logger::setLevel(LogLevel::Dbg);
     }
 
     LOG_INFO("Speeduino Reverse Detection Service starting...");
@@ -203,7 +216,7 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Reverse service initialized, starting main loop");
 
     // GPIO check interval
-    const auto gpioInterval = std::chrono::milliseconds(50);
+    const auto gpioInterval = std::chrono::milliseconds(GPIO_CHECK_INTERVAL_MS);
     auto lastGpioCheck = std::chrono::steady_clock::now();
 
     // Main loop
@@ -215,7 +228,7 @@ int main(int argc, char* argv[]) {
             pfd.fd = canSocket;
             pfd.events = POLLIN;
 
-            int ret = poll(&pfd, 1, 50);  // 50ms timeout
+            int ret = poll(&pfd, 1, POLL_TIMEOUT_MS);
             if (ret > 0 && (pfd.revents & POLLIN)) {
                 struct can_frame cf;
                 ssize_t nbytes = read(canSocket, &cf, sizeof(cf));
@@ -225,10 +238,10 @@ int main(int argc, char* argv[]) {
             }
         } else {
             // No CAN, just sleep a bit
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(std::chrono::milliseconds(IDLE_SLEEP_MS));
         }
 #else
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(IDLE_SLEEP_MS));
 #endif
 
         // Check GPIO at interval
