@@ -20,6 +20,17 @@
 
 namespace speeduino {
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Config Watcher Constants
+// ISO 26262: Named constants for file system monitoring
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// Poll timeout for inotify in milliseconds
+    constexpr int CONFIG_WATCHER_POLL_TIMEOUT_MS = 100;
+    /// Buffer size for inotify events
+    constexpr size_t INOTIFY_BUFFER_SIZE = 4096;
+} // anonymous namespace
+
 ConfigWatcher::ConfigWatcher() {
 #ifdef __linux__
     inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -238,8 +249,7 @@ bool ConfigWatcher::isSupported() {
 void ConfigWatcher::watchLoop() {
 #ifdef __linux__
     constexpr size_t kEventSize = sizeof(struct inotify_event);
-    constexpr size_t kBufferSize = 4096;
-    char buffer[kBufferSize];
+    char buffer[INOTIFY_BUFFER_SIZE];
 
     while (running_.load(std::memory_order_acquire)) {
         // Poll with timeout to allow clean shutdown
@@ -247,7 +257,7 @@ void ConfigWatcher::watchLoop() {
         pfd.fd = inotifyFd_;
         pfd.events = POLLIN;
 
-        int ret = poll(&pfd, 1, 100);  // 100ms timeout
+        int ret = poll(&pfd, 1, CONFIG_WATCHER_POLL_TIMEOUT_MS);
 
         if (ret < 0) {
             if (errno == EINTR) continue;
@@ -260,7 +270,7 @@ void ConfigWatcher::watchLoop() {
         }
 
         // Read events
-        ssize_t length = read(inotifyFd_, buffer, kBufferSize);
+        ssize_t length = read(inotifyFd_, buffer, INOTIFY_BUFFER_SIZE);
         if (length < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue;
