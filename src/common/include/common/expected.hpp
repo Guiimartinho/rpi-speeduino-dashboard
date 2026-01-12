@@ -14,7 +14,7 @@
 #include <string>
 #include <utility>
 #include <type_traits>
-#include <cassert>
+#include <stdexcept>
 
 namespace speeduino {
 
@@ -91,35 +91,52 @@ public:
         return hasValue();
     }
 
-    // Access the value (undefined if !hasValue())
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Use throw instead of assert for Release safety
+    // assert() is disabled in Release builds (NDEBUG), causing UB
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Access the value (throws if !hasValue())
     [[nodiscard]] T& value() & {
-        assert(hasValue() && "Accessing value of Expected in error state");
+        if (!hasValue()) {
+            throw std::logic_error("Accessing value of Expected in error state");
+        }
         return std::get<T>(data_);
     }
 
     [[nodiscard]] const T& value() const& {
-        assert(hasValue() && "Accessing value of Expected in error state");
+        if (!hasValue()) {
+            throw std::logic_error("Accessing value of Expected in error state");
+        }
         return std::get<T>(data_);
     }
 
     [[nodiscard]] T&& value() && {
-        assert(hasValue() && "Accessing value of Expected in error state");
+        if (!hasValue()) {
+            throw std::logic_error("Accessing value of Expected in error state");
+        }
         return std::get<T>(std::move(data_));
     }
 
-    // Access the error (undefined if hasValue())
+    // Access the error (throws if hasValue())
     [[nodiscard]] E& error() & {
-        assert(!hasValue() && "Accessing error of Expected in value state");
+        if (hasValue()) {
+            throw std::logic_error("Accessing error of Expected in value state");
+        }
         return std::get<E>(data_);
     }
 
     [[nodiscard]] const E& error() const& {
-        assert(!hasValue() && "Accessing error of Expected in value state");
+        if (hasValue()) {
+            throw std::logic_error("Accessing error of Expected in value state");
+        }
         return std::get<E>(data_);
     }
 
     [[nodiscard]] E&& error() && {
-        assert(!hasValue() && "Accessing error of Expected in value state");
+        if (hasValue()) {
+            throw std::logic_error("Accessing error of Expected in value state");
+        }
         return std::get<E>(std::move(data_));
     }
 
@@ -263,17 +280,27 @@ public:
         return hasValue_;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Use throw instead of assert for Release safety
+    // ═══════════════════════════════════════════════════════════════════════
+
     void value() const {
-        assert(hasValue() && "Accessing value of Expected<void> in error state");
+        if (!hasValue()) {
+            throw std::logic_error("Accessing value of Expected<void> in error state");
+        }
     }
 
     [[nodiscard]] E& error() & {
-        assert(!hasValue() && "Accessing error of Expected<void> in value state");
+        if (hasValue()) {
+            throw std::logic_error("Accessing error of Expected<void> in value state");
+        }
         return error_;
     }
 
     [[nodiscard]] const E& error() const& {
-        assert(!hasValue() && "Accessing error of Expected<void> in value state");
+        if (hasValue()) {
+            throw std::logic_error("Accessing error of Expected<void> in value state");
+        }
         return error_;
     }
 
