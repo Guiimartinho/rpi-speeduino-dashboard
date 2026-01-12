@@ -9,6 +9,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <memory>
+#include <chrono>
 
 namespace speeduino {
 
@@ -137,6 +138,15 @@ private:
     std::unique_ptr<QTimer> m_usbCheckTimer;
     std::unique_ptr<QFileSystemWatcher> m_usbWatcher;
     QString m_lastDetectedDevice;
+
+    // FIX #9: Crash loop prevention (ISO 26262)
+    // Limits automatic restarts to prevent infinite crash loops
+    static constexpr int MAX_CRASH_RESTARTS = 3;
+    static constexpr int INITIAL_RESTART_DELAY_MS = 2000;
+    static constexpr int MAX_RESTART_DELAY_MS = 30000;
+    int m_crashRestartCount{0};
+    int m_currentRestartDelayMs{INITIAL_RESTART_DELAY_MS};
+    std::chrono::steady_clock::time_point m_lastSuccessfulStart;
 
     // Android Auto USB identifiers (vendor:product)
     static const QStringList AA_USB_IDS;

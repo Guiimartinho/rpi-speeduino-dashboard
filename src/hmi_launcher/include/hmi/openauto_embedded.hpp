@@ -49,9 +49,18 @@ public slots:
     void run();
     void stop();
 
+signals:
+    // FIX #10: Signal emitted when exception loop limit exceeded
+    void fatalError(const QString& message);
+
 private:
     boost::asio::io_service& m_ioService;
     std::atomic<bool> m_running{false};
+
+    // FIX #10: Exception loop prevention constants
+    static constexpr int MAX_CONSECUTIVE_EXCEPTIONS = 10;
+    static constexpr int INITIAL_RETRY_DELAY_MS = 100;
+    static constexpr int MAX_RETRY_DELAY_MS = 5000;
 };
 
 /**

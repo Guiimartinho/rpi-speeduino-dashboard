@@ -63,16 +63,44 @@ void OpenAutoIOWorker::run()
     m_running.store(true, std::memory_order_release);
     qInfo() << "[OpenAutoEmbedded] IO worker thread started";
 
+    // FIX #10: Exception loop prevention with exponential backoff (ISO 26262)
+    int consecutiveExceptions = 0;
+    int currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
+
     while (m_running.load(std::memory_order_acquire)) {
         try {
             m_ioService.run();
+
+            // Successful run resets the exception counter
+            consecutiveExceptions = 0;
+            currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
+
             if (m_running.load(std::memory_order_acquire)) {
                 m_ioService.reset();
             }
         } catch (const std::exception& e) {
-            qWarning() << "[OpenAutoEmbedded] IO service exception:" << e.what();
-            // Brief delay before retry to prevent tight error loop
-            QThread::msleep(100);
+            consecutiveExceptions++;
+            qWarning() << "[OpenAutoEmbedded] IO service exception (" << consecutiveExceptions
+                       << "/" << MAX_CONSECUTIVE_EXCEPTIONS << "):" << e.what();
+
+            // FIX #10: Check if we've exceeded maximum consecutive exceptions
+            if (consecutiveExceptions >= MAX_CONSECUTIVE_EXCEPTIONS) {
+                QString fatalMsg = QString("IO service fatal error: %1 consecutive exceptions. "
+                                          "Last error: %2")
+                                          .arg(consecutiveExceptions)
+                                          .arg(e.what());
+                qCritical() << "[OpenAutoEmbedded]" << fatalMsg;
+                emit fatalError(fatalMsg);
+                m_running.store(false, std::memory_order_release);
+                break;
+            }
+
+            // Exponential backoff delay before retry
+            qDebug() << "[OpenAutoEmbedded] Retry delay:" << currentRetryDelayMs << "ms";
+            QThread::msleep(static_cast<unsigned long>(currentRetryDelayMs));
+
+            // Double delay for next exception (capped at max)
+            currentRetryDelayMs = qMin(currentRetryDelayMs * 2, MAX_RETRY_DELAY_MS);
         }
     }
 
@@ -170,12 +198,14 @@ void OpenAutoEmbedded::setVideoContainer(QQuickItem* container)
     QQuickWindow* window = container->window();
     if (!window) {
         qWarning() << "[OpenAutoEmbedded] Container has no window, deferring...";
-        // Use QPointer to avoid dangling pointer in lambda if container is destroyed
+        // FIX #6: Use QPointer for BOTH container AND this to prevent use-after-free
+        // ISO 26262: Lambda captures must be safe even if objects are destroyed
         QPointer<QQuickItem> weakContainer(container);
-        connect(container, &QQuickItem::windowChanged, this, [this, weakContainer](QQuickWindow* win) {
-            // Safety check: container still exists and has window
-            if (weakContainer && win) {
-                setVideoContainer(weakContainer.data());
+        QPointer<OpenAutoEmbedded> weakThis(this);
+        connect(container, &QQuickItem::windowChanged, this, [weakThis, weakContainer](QQuickWindow* win) {
+            // Safety check: both this and container still exist
+            if (weakThis && weakContainer && win) {
+                weakThis->setVideoContainer(weakContainer.data());
             }
         }, Qt::UniqueConnection);
         return;
@@ -480,9 +510,14 @@ void OpenAutoEmbedded::restart()
 
 void OpenAutoEmbedded::sendTouch(int x, int y, int action)
 {
-    // Thread-safe state check
+    // FIX #3 & #4: Thread-safe state check with early capture of widget pointer
+    // ISO 26262: Prevent TOCTOU race and ensure no memory leak
+    QWidget* videoWidgetPtr = nullptr;
     bool isRunning;
     bool isConnected;
+    int widgetWidth = 0;
+    int widgetHeight = 0;
+
     {
         QMutexLocker locker(&m_stateMutex);
         isRunning = m_running;
@@ -493,12 +528,17 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
         return;
     }
 
+    // Capture widget pointer and dimensions under implied single-threaded access
+    // (m_videoWidget is only modified from main thread)
     if (!m_videoWidget) {
         qWarning() << "[OpenAutoEmbedded] Video widget is null, cannot send touch";
         return;
     }
+    videoWidgetPtr = m_videoWidget.get();
+    widgetWidth = m_videoWidget->width();
+    widgetHeight = m_videoWidget->height();
 
-    // ISO 26262: Validate touch coordinates
+    // ISO 26262: Validate touch coordinates BEFORE creating any events
     if (x < 0 || y < 0 || x > MAX_COORDINATE || y > MAX_COORDINATE) {
         qWarning() << "[OpenAutoEmbedded] Touch coordinates out of bounds:" << x << y;
         return;
@@ -509,14 +549,14 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     // We synthesize mouse events here which will be captured by the InputDevice eventFilter.
 
     // Safe coordinate clamping for extra safety
-    const int safeX = safeCoordinate(x, 0, m_videoWidget->width());
-    const int safeY = safeCoordinate(y, 0, m_videoWidget->height());
+    const int safeX = safeCoordinate(x, 0, widgetWidth);
+    const int safeY = safeCoordinate(y, 0, widgetHeight);
 
     QPointF localPos(safeX, safeY);
 
     // Calculate global position (only valid if widget is properly parented)
     QPointF globalPos = localPos;
-    if (m_videoWidget->parentWidget()) {
+    if (m_videoWidget && m_videoWidget->parentWidget()) {
         QPoint gp = m_videoWidget->mapToGlobal(QPoint(safeX, safeY));
         globalPos = QPointF(gp.x(), gp.y());
     }
@@ -526,10 +566,8 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     Qt::MouseButtons buttons;
 
     // Thread-safe touch state access
-    bool wasTouchPressed;
     {
         QMutexLocker locker(&m_stateMutex);
-        wasTouchPressed = m_touchPressed;
 
         switch (action) {
             case TOUCH_ACTION_PRESS:
@@ -553,6 +591,13 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
         }
     }
 
+    // FIX #3: Final null check before event creation (defensive programming)
+    // Only create the event if we're certain we can post it
+    if (!videoWidgetPtr) {
+        qWarning() << "[OpenAutoEmbedded] Widget became null before event post";
+        return;
+    }
+
     // Create and post the mouse event to the video widget
     // The InputDevice eventFilter will intercept it and forward to Android Auto
     QMouseEvent* mouseEvent = new QMouseEvent(
@@ -565,14 +610,16 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     );
 
     // Post the event to the video widget (will be handled by InputDevice eventFilter)
-    QCoreApplication::postEvent(m_videoWidget.get(), mouseEvent);
+    // Qt takes ownership of the event - no leak possible after this call
+    QCoreApplication::postEvent(videoWidgetPtr, mouseEvent);
 
     qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action;
 }
 
 void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
 {
-    // Thread-safe state check
+    // FIX #3 & #4: Thread-safe state check with pointer capture
+    QWidget* videoWidgetPtr = nullptr;
     bool isRunning;
     bool isConnected;
     {
@@ -585,8 +632,16 @@ void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
         return;
     }
 
+    // Capture widget pointer for safe use
     if (!m_videoWidget) {
         qWarning() << "[OpenAutoEmbedded] Video widget is null, cannot send key";
+        return;
+    }
+    videoWidgetPtr = m_videoWidget.get();
+
+    // Final null check before event creation
+    if (!videoWidgetPtr) {
+        qWarning() << "[OpenAutoEmbedded] Widget became null before key event post";
         return;
     }
 
@@ -599,7 +654,8 @@ void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
         Qt::NoModifier
     );
 
-    QCoreApplication::postEvent(m_videoWidget.get(), keyEvent);
+    // Qt takes ownership of the event - no leak possible after this call
+    QCoreApplication::postEvent(videoWidgetPtr, keyEvent);
 
     qDebug() << "[OpenAutoEmbedded] Key event posted:" << keyCode << "pressed:" << pressed;
 }
@@ -638,7 +694,10 @@ void OpenAutoEmbedded::onProjectionActive(bool active)
 {
     qInfo() << "[OpenAutoEmbedded] Projection active:" << active;
 
-    // Thread-safe state read for visibility decision
+    // FIX #7: Thread-safe state read for visibility decision
+    // DEADLOCK PREVENTION: Lock is released BEFORE calling setConnected() or emitting signals
+    // This ensures no deadlock can occur from signal-slot chains re-acquiring the mutex
+    // ISO 26262: All mutex operations must have bounded lock time
     bool isVisible;
     bool isRegistered;
     {
@@ -646,9 +705,10 @@ void OpenAutoEmbedded::onProjectionActive(bool active)
         isVisible = m_videoVisible;
         isRegistered = m_containerRegistered;
     }
+    // CRITICAL: Lock released here - safe to call methods that may re-lock
 
     if (active) {
-        setConnected(true);
+        setConnected(true);  // May acquire m_stateMutex internally (safe - not held here)
         emit projectionStarted();
 
         // Show video widget if screen is visible
@@ -718,9 +778,13 @@ bool OpenAutoEmbedded::initializeOpenauto()
 
         // Create ServiceFactory with our video widget as the activeArea
         // The callback will be called when projection starts/stops
-        auto activeCallback = [this](bool active) {
-            QMetaObject::invokeMethod(this, "onProjectionActive", Qt::QueuedConnection,
-                                      Q_ARG(bool, active));
+        // FIX #6: Use QPointer to safely handle callback if object is destroyed
+        QPointer<OpenAutoEmbedded> weakThis(this);
+        auto activeCallback = [weakThis](bool active) {
+            if (weakThis) {
+                QMetaObject::invokeMethod(weakThis.data(), "onProjectionActive", Qt::QueuedConnection,
+                                          Q_ARG(bool, active));
+            }
         };
 
         m_serviceFactory = std::make_unique<openauto::service::ServiceFactory>(
@@ -763,12 +827,21 @@ bool OpenAutoEmbedded::initializeOpenauto()
         );
 
         // Start IO worker thread
+        // FIX #2: Worker lifecycle managed explicitly by unique_ptr
+        // DO NOT use deleteLater - it causes double-free with unique_ptr ownership
         m_ioThread = std::make_unique<QThread>();
         m_ioWorker = std::make_unique<OpenAutoIOWorker>(*m_ioService);
         m_ioWorker->moveToThread(m_ioThread.get());
 
         connect(m_ioThread.get(), &QThread::started, m_ioWorker.get(), &OpenAutoIOWorker::run);
-        connect(m_ioThread.get(), &QThread::finished, m_ioWorker.get(), &QObject::deleteLater);
+        // NOTE: Removed deleteLater connection - worker is deleted in cleanupOpenauto()
+
+        // FIX #10: Connect fatal error signal to handle IO thread exception loop
+        connect(m_ioWorker.get(), &OpenAutoIOWorker::fatalError, this, [this](const QString& message) {
+            setError(message);
+            // Schedule stop on main thread to avoid cross-thread issues
+            QMetaObject::invokeMethod(this, "stop", Qt::QueuedConnection);
+        });
 
         m_ioThread->start();
 
@@ -783,7 +856,9 @@ bool OpenAutoEmbedded::initializeOpenauto()
 
 void OpenAutoEmbedded::cleanupOpenauto()
 {
-    // Stop IO worker first
+    // FIX #2: Proper worker lifecycle management (no deleteLater, explicit ownership)
+
+    // Stop IO worker first (signals worker to exit its run loop)
     if (m_ioWorker) {
         m_ioWorker->stop();
     }
@@ -801,12 +876,6 @@ void OpenAutoEmbedded::cleanupOpenauto()
         }
     }
 
-    // CRITICAL: Release ownership of worker - Qt's deleteLater will delete it
-    // If we don't release, unique_ptr destructor would cause double-free
-    if (m_ioWorker) {
-        m_ioWorker.release();
-    }
-
     // Clear app and components in reverse order of creation
     m_app.reset();
     m_connectedAccessoriesEnumerator.reset();
@@ -817,9 +886,10 @@ void OpenAutoEmbedded::cleanupOpenauto()
     m_usbWrapper.reset();
     m_configuration.reset();
 
-    // CRITICAL: Reset thread BEFORE io_service
-    // The worker is already deleted by deleteLater when thread finished, so don't reset it
-    // (m_ioWorker.reset() would cause double-free)
+    // FIX #2: Now that thread is stopped, safe to delete worker via unique_ptr
+    // Worker must be deleted AFTER thread stops but BEFORE io_service is destroyed
+    // because worker holds reference to io_service
+    m_ioWorker.reset();  // Explicit deletion, no double-free risk
     m_ioThread.reset();
 
     // Now safe to reset io_service (no references remain)

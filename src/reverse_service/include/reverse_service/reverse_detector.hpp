@@ -50,7 +50,8 @@ public:
         CAN = 0,
         GPIO = 1
     };
-    Source getSource() const { return m_source; }
+    // FIX #5: Thread-safe getter using atomic load
+    Source getSource() const { return m_source.load(std::memory_order_acquire); }
 
 private:
     void setState(bool engaged, Source source);
@@ -62,7 +63,8 @@ private:
 
     std::atomic<bool> m_engaged{false};
     std::atomic<uint32_t> m_lastChangeTimestamp{0};
-    Source m_source{Source::CAN};
+    // FIX #5: Made atomic to prevent data race between CAN/GPIO threads and readers
+    std::atomic<Source> m_source{Source::CAN};
 
     // Debounce
     std::chrono::steady_clock::time_point m_lastTransition;

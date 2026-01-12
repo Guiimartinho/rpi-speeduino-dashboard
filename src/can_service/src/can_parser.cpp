@@ -45,6 +45,16 @@ void CanParser::loadSignals(const std::vector<CanSignalDef>& signals) {
 }
 
 void CanParser::parseFrame(const CanFrame& frame) {
+    // FIX #8: ISO 26262 CAN DLC validation
+    // CAN 2.0 max DLC is 8, CAN FD max is 64
+    // Validate DLC before any array access to prevent buffer overread
+    constexpr uint8_t CAN_MAX_DLC = 64;  // CAN FD max
+    if (frame.dlc > CAN_MAX_DLC) {
+        LOG_WARN("Invalid CAN DLC " + std::to_string(frame.dlc) +
+                 " for frame 0x" + std::to_string(frame.id) + ", ignoring");
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(m_mutex);
 
     // Find all signals for this CAN ID
@@ -76,12 +86,31 @@ void CanParser::parseFrame(const CanFrame& frame) {
 }
 
 uint64_t CanParser::extractRawValue(const CanFrame& frame, const CanSignalDef& signal) const {
+    // FIX #8: Comprehensive bounds validation (ISO 26262)
+    // Check start byte is within DLC
     if (signal.start_byte >= frame.dlc) {
+        return 0;
+    }
+
+    // Validate signal length (max 64 bits for uint64_t result)
+    constexpr uint8_t MAX_SIGNAL_BITS = 64;
+    if (signal.length_bits == 0 || signal.length_bits > MAX_SIGNAL_BITS) {
+        return 0;
+    }
+
+    // Validate start_bit is within byte bounds
+    if (signal.start_bit >= 8) {
         return 0;
     }
 
     uint64_t result = 0;
     uint8_t bytesNeeded = (signal.length_bits + 7) / 8;
+
+    // Prevent overflow in index calculation
+    // Check that start_byte + bytesNeeded won't overflow uint8_t
+    if (bytesNeeded > 8 || signal.start_byte > (255 - bytesNeeded)) {
+        return 0;
+    }
 
     if (signal.is_big_endian) {
         // Big-endian: MSB first
@@ -90,8 +119,8 @@ uint64_t CanParser::extractRawValue(const CanFrame& frame, const CanSignalDef& s
         }
     } else {
         // Little-endian: LSB first
-        for (int8_t i = bytesNeeded - 1; i >= 0 && (signal.start_byte + i) < frame.dlc; i--) {
-            result = (result << 8) | frame.data[signal.start_byte + i];
+        for (int8_t i = static_cast<int8_t>(bytesNeeded - 1); i >= 0 && (signal.start_byte + static_cast<uint8_t>(i)) < frame.dlc; i--) {
+            result = (result << 8) | frame.data[signal.start_byte + static_cast<uint8_t>(i)];
         }
     }
 

@@ -29,20 +29,49 @@ bool ReverseDetector::init(const ReverseConfig& config) {
     m_config = config;
 
     LOG_INFO("Initializing reverse detector");
-    LOG_INFO("  CAN enabled: " + std::string(config.can_enabled ? "yes" : "no"));
-    if (config.can_enabled) {
+    LOG_INFO("  Detection mode: " + config.detection_mode);
+
+    // Determine effective CAN/GPIO enabled based on detection_mode
+    bool effectiveCanEnabled = config.can_enabled;
+    bool effectiveGpioEnabled = config.gpio_enabled;
+
+    if (config.detection_mode == "gpio") {
+        effectiveCanEnabled = false;
+        effectiveGpioEnabled = true;
+    } else if (config.detection_mode == "can" || config.detection_mode == "speeduino_can") {
+        effectiveCanEnabled = true;
+        effectiveGpioEnabled = false;
+    } else if (config.detection_mode == "both") {
+        // Use individual settings, CAN takes priority
+        effectiveCanEnabled = config.can_enabled;
+        effectiveGpioEnabled = config.gpio_enabled;
+    }
+
+    // Store effective settings in config copy
+    m_config.can_enabled = effectiveCanEnabled;
+    m_config.gpio_enabled = effectiveGpioEnabled;
+
+    LOG_INFO("  CAN enabled: " + std::string(m_config.can_enabled ? "yes" : "no"));
+    if (m_config.can_enabled) {
         LOG_INFO("  CAN ID: 0x" + std::to_string(config.can_id));
         LOG_INFO("  Byte index: " + std::to_string(config.byte_index));
         LOG_INFO("  Bit mask: 0x" + std::to_string(config.bit_mask));
     }
 
-    LOG_INFO("  GPIO enabled: " + std::string(config.gpio_enabled ? "yes" : "no"));
-    if (config.gpio_enabled) {
+    LOG_INFO("  GPIO enabled: " + std::string(m_config.gpio_enabled ? "yes" : "no"));
+    if (m_config.gpio_enabled) {
         LOG_INFO("  GPIO chip: " + config.gpio_chip);
         LOG_INFO("  GPIO line: " + std::to_string(config.gpio_line));
+        LOG_INFO("  GPIO active_low: " + std::string(config.gpio_active_low ? "yes" : "no"));
+        LOG_INFO("  Debounce: " + std::to_string(config.debounce_ms) + "ms");
 
         if (!initGpio()) {
-            LOG_WARN("GPIO initialization failed, CAN-only mode");
+            LOG_WARN("GPIO initialization failed");
+            if (!m_config.can_enabled) {
+                LOG_ERROR("No reverse detection source available!");
+            } else {
+                LOG_WARN("Falling back to CAN-only mode");
+            }
         }
     }
 
@@ -124,11 +153,12 @@ void ReverseDetector::checkGpio() {
 }
 
 void ReverseDetector::setState(bool engaged, Source source) {
-    bool changed = (engaged != m_engaged);
+    bool changed = (engaged != m_engaged.load(std::memory_order_acquire));
 
-    m_engaged = engaged;
-    m_source = source;
-    m_lastChangeTimestamp = getMonotonicMs();
+    m_engaged.store(engaged, std::memory_order_release);
+    // FIX #5: Thread-safe source update using atomic store
+    m_source.store(source, std::memory_order_release);
+    m_lastChangeTimestamp.store(getMonotonicMs(), std::memory_order_release);
 
     if (changed) {
         const char* sourceStr = (source == Source::CAN) ? "CAN" : "GPIO";

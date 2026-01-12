@@ -426,10 +426,29 @@ void OpenAutoController::onProcessStarted() {
         QMutexLocker locker(&m_stateMutex);
         m_running = true;
     }
+
+    // FIX #9: Record successful start time for crash loop detection
+    m_lastSuccessfulStart = std::chrono::steady_clock::now();
+
     emit runningChanged();
     emit started();
     qInfo() << "[OpenAutoController] Process started (PID:" << m_process->processId() << ")";
     emit showNotification("OpenAuto", "Android Auto is ready. Connect your phone.");
+
+    // FIX #9: Reset crash counter after successful start + stable period
+    // Use delayed reset to confirm process is stable (not immediately crashing)
+    QTimer::singleShot(5000, this, [this]() {
+        bool isStillRunning;
+        {
+            QMutexLocker locker(&m_stateMutex);
+            isStillRunning = m_running;
+        }
+        if (isStillRunning) {
+            m_crashRestartCount = 0;
+            m_currentRestartDelayMs = INITIAL_RESTART_DELAY_MS;
+            qInfo() << "[OpenAutoController] Process stable, crash counter reset";
+        }
+    });
 }
 
 void OpenAutoController::onProcessFinished(int exitCode, QProcess::ExitStatus status) {
@@ -450,13 +469,37 @@ void OpenAutoController::onProcessFinished(int exitCode, QProcess::ExitStatus st
         emit crashed(msg);
         emit showNotification("OpenAuto Error", msg);
 
-        // Auto-restart on crash if autoStart is enabled
+        // FIX #9: Crash loop prevention with exponential backoff (ISO 26262)
         if (shouldAutoRestart) {
-            qInfo() << "[OpenAutoController] Auto-restarting after crash...";
-            QTimer::singleShot(2000, this, &OpenAutoController::start);
+            m_crashRestartCount++;
+
+            if (m_crashRestartCount > MAX_CRASH_RESTARTS) {
+                QString loopMsg = QString("OpenAuto crash loop detected (%1 crashes). "
+                                         "Automatic restart disabled. Manual intervention required.")
+                                         .arg(m_crashRestartCount);
+                setError(loopMsg);
+                emit showNotification("OpenAuto Error", "Crash loop detected - restart disabled");
+                qCritical() << "[OpenAutoController]" << loopMsg;
+                // Reset for future manual restart attempts
+                m_crashRestartCount = 0;
+                m_currentRestartDelayMs = INITIAL_RESTART_DELAY_MS;
+            } else {
+                qInfo() << "[OpenAutoController] Auto-restarting after crash"
+                        << "(" << m_crashRestartCount << "/" << MAX_CRASH_RESTARTS << ")"
+                        << "delay:" << m_currentRestartDelayMs << "ms";
+
+                // Schedule restart with current delay
+                QTimer::singleShot(m_currentRestartDelayMs, this, &OpenAutoController::start);
+
+                // Exponential backoff for next crash (double delay, capped at max)
+                m_currentRestartDelayMs = qMin(m_currentRestartDelayMs * 2, MAX_RESTART_DELAY_MS);
+            }
         }
     } else {
         qInfo() << "[OpenAutoController] Stopped normally with exit code" << exitCode;
+        // FIX #9: Reset crash counter on clean exit
+        m_crashRestartCount = 0;
+        m_currentRestartDelayMs = INITIAL_RESTART_DELAY_MS;
         emit stopped();
     }
 }
@@ -501,7 +544,11 @@ void OpenAutoController::onReadyReadStdout() {
         output.contains("AndroidAuto started", Qt::CaseInsensitive) ||
         output.contains("Projection started", Qt::CaseInsensitive)) {
         setConnected(true);
-        m_connectionType = "USB";
+        // FIX #1: Thread-safe connection type update (race condition fix)
+        {
+            QMutexLocker locker(&m_stateMutex);
+            m_connectionType = "USB";
+        }
         emit connectionTypeChanged();
         emit showNotification("Android Auto", "Phone connected successfully!");
     }
@@ -511,7 +558,11 @@ void OpenAutoController::onReadyReadStdout() {
         setConnected(false);
     }
     else if (output.contains("Wireless connection", Qt::CaseInsensitive)) {
-        m_connectionType = "Wireless";
+        // FIX #1: Thread-safe connection type update (race condition fix)
+        {
+            QMutexLocker locker(&m_stateMutex);
+            m_connectionType = "Wireless";
+        }
         emit connectionTypeChanged();
     }
 }
