@@ -13,7 +13,7 @@ TEST(ExpectedTest, ValueConstruction) {
     Expected<int, std::string> result(42);
 
     EXPECT_TRUE(result.hasValue());
-    EXPECT_FALSE(result.hasError());
+    EXPECT_FALSE(result.hasValue() == false);  // No hasError(), use !hasValue()
     EXPECT_EQ(result.value(), 42);
 }
 
@@ -21,21 +21,23 @@ TEST(ExpectedTest, ErrorConstruction) {
     Expected<int, std::string> result(Unexpected<std::string>("error"));
 
     EXPECT_FALSE(result.hasValue());
-    EXPECT_TRUE(result.hasError());
+    EXPECT_TRUE(!result.hasValue());  // No hasError(), use !hasValue()
     EXPECT_EQ(result.error(), "error");
 }
 
-TEST(ExpectedTest, MakeExpected) {
-    auto result = makeExpected<int, std::string>(42);
+TEST(ExpectedTest, DirectConstruction) {
+    // Use direct construction instead of makeExpected
+    Expected<int, std::string> result(42);
 
     EXPECT_TRUE(result.hasValue());
     EXPECT_EQ(result.value(), 42);
 }
 
 TEST(ExpectedTest, MakeUnexpected) {
-    auto result = makeUnexpected<int, std::string>("failure");
+    // makeUnexpected takes only one template argument (inferred from parameter)
+    Expected<int, std::string> result(makeUnexpected(std::string("failure")));
 
-    EXPECT_TRUE(result.hasError());
+    EXPECT_FALSE(result.hasValue());
     EXPECT_EQ(result.error(), "failure");
 }
 
@@ -61,7 +63,7 @@ TEST(ExpectedTest, AndThen) {
     EXPECT_TRUE(doubled.hasValue());
     EXPECT_EQ(doubled.value(), 42);
 
-    EXPECT_TRUE(stillFailed.hasError());
+    EXPECT_FALSE(stillFailed.hasValue());
     EXPECT_EQ(stillFailed.error(), "error");
 }
 
@@ -75,7 +77,7 @@ TEST(ExpectedTest, Map) {
     EXPECT_TRUE(doubled.hasValue());
     EXPECT_EQ(doubled.value(), 42);
 
-    EXPECT_TRUE(stillFailed.hasError());
+    EXPECT_FALSE(stillFailed.hasValue());
 }
 
 TEST(ExpectedTest, OrElse) {
@@ -106,20 +108,20 @@ TEST(ExpectedTest, BoolConversion) {
 }
 
 TEST(ExpectedTest, ResultAlias) {
-    Result<int> success = makeExpected<int, Error>(42);
-    Result<int> failure = makeUnexpected<int, Error>(Error{ErrorCode::IoError, "test"});
+    Result<int> success(42);
+    Result<int> failure(makeUnexpected(Error{ErrorCode::IoError, "test"}));
 
     EXPECT_TRUE(success.hasValue());
-    EXPECT_TRUE(failure.hasError());
+    EXPECT_FALSE(failure.hasValue());
     EXPECT_EQ(failure.error().code, ErrorCode::IoError);
 }
 
 TEST(ExpectedTest, VoidResultAlias) {
-    VoidResult success = makeExpected<void, Error>();
-    VoidResult failure = makeUnexpected<void, Error>(Error{ErrorCode::InvalidArgument, "test"});
+    VoidResult success{};  // Default construction for void value
+    VoidResult failure(makeUnexpected(Error{ErrorCode::InvalidArgument, "test"}));
 
     EXPECT_TRUE(success.hasValue());
-    EXPECT_TRUE(failure.hasError());
+    EXPECT_FALSE(failure.hasValue());
 }
 
 TEST(ExpectedTest, MoveSemantics) {
