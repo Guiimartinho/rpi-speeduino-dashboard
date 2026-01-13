@@ -165,8 +165,7 @@ ApplicationWindow {
 
         function onShowNotification(title, message) {
             console.log("Main: OpenAuto notification -", title, ":", message)
-            // TODO: Show visual notification in UI
-            // notificationPopup.show(title, message)
+            notificationPopup.show(title, message)
         }
     }
 
@@ -269,6 +268,13 @@ ApplicationWindow {
             id: reverseOverlay
             anchors.fill: parent
             z: 1000
+        }
+
+        // Notification Popup (below reverse overlay)
+        Components.NotificationPopup {
+            id: notificationPopup
+            anchors.fill: parent
+            z: 999
         }
     }
 
@@ -411,5 +417,17 @@ ApplicationWindow {
     Shortcut {
         sequence: "F6"
         onActivated: State.AppState.hideReverseCamera()
+    }
+    Shortcut {
+        sequence: "F7"
+        onActivated: notificationPopup.show("Android Auto", "Phone connected successfully")
+    }
+    Shortcut {
+        sequence: "F8"
+        onActivated: notificationPopup.show("Warning", "Engine temperature high!", Components.NotificationPopup.Warning)
+    }
+    Shortcut {
+        sequence: "F9"
+        onActivated: notificationPopup.show("Critical", "Oil pressure low!", Components.NotificationPopup.Critical)
     }
 }

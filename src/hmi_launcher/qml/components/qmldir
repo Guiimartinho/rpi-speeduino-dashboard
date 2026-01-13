@@ -24,6 +24,7 @@ TabBar 1.0 TabBar.qml
 TabButton 1.0 TabButton.qml
 StatusBar 1.0 StatusBar.qml
 IconButton 1.0 IconButton.qml
+NotificationPopup 1.0 NotificationPopup.qml
 
 # ═══════════════════════════════════════════════════════════════
 # ADVANCED GAUGES

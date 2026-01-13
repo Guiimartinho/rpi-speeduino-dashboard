@@ -44,20 +44,8 @@ TEST(ScopeGuardTest, MoveConstructor) {
     EXPECT_TRUE(executed);
 }
 
-TEST(ScopeGuardTest, MoveAssignment) {
-    int counter = 0;
-
-    {
-        ScopeGuard guard1([&counter]() { counter += 1; });
-        ScopeGuard guard2([&counter]() { counter += 10; });
-        guard2 = std::move(guard1);
-        // guard2's original action (+=10) should execute on assignment
-        // guard1 should be dismissed
-    }
-
-    // Only guard1's action should run at scope exit (+=1)
-    EXPECT_EQ(counter, 11);  // 10 from assignment + 1 from scope exit
-}
+// Note: Move assignment is intentionally deleted in ScopeGuard
+// to prevent accidental resource leaks. Only move construction is allowed.
 
 TEST(ScopeExitTest, ExecutesOnNormalExit) {
     bool executed = false;
