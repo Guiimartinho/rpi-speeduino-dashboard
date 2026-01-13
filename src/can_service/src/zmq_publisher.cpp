@@ -28,9 +28,9 @@ bool ZmqPublisher::init(const std::string& endpoint) {
         m_context = std::make_unique<zmq::context_t>(1);
         m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::pub);
 
-        // Set socket options
-        m_socket->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
-        m_socket->set(zmq::sockopt::sndhwm, ZMQ_PUBLISHER_HWM);
+        // Set socket options (use legacy API for compatibility)
+        m_socket->setsockopt(ZMQ_LINGER, &ZMQ_LINGER_MS, sizeof(ZMQ_LINGER_MS));
+        m_socket->setsockopt(ZMQ_SNDHWM, &ZMQ_PUBLISHER_HWM, sizeof(ZMQ_PUBLISHER_HWM));
 
         m_socket->bind(endpoint);
 
@@ -104,7 +104,8 @@ bool ZmqCommandServer::init(const std::string& endpoint) {
         m_context = std::make_unique<zmq::context_t>(1);
         m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::rep);
 
-        m_socket->set(zmq::sockopt::linger, ZMQ_LINGER_MS);
+        // Set socket options (use legacy API for compatibility)
+        m_socket->setsockopt(ZMQ_LINGER, &ZMQ_LINGER_MS, sizeof(ZMQ_LINGER_MS));
 
         m_socket->bind(endpoint);
 

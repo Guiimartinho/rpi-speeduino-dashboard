@@ -184,6 +184,12 @@ void CanParser::updateEngineData() {
         return 0.0;
     };
 
+    // Check if signal exists and is valid
+    auto hasValue = [this](const std::string& name) -> bool {
+        auto it = m_values.find(name);
+        return it != m_values.end() && it->second.valid;
+    };
+
     // ═══════════════════════════════════════════════════════════════════════
     // ISO 26262 ASIL-B: Safe integer conversion with clamping
     // MISRA C++:2008 Rule 5-0-6: Narrowing conversions shall be bounds-checked
@@ -215,6 +221,9 @@ void CanParser::updateEngineData() {
         return static_cast<int8_t>(val);
     };
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // CORE DATA (all protocols)
+    // ═══════════════════════════════════════════════════════════════════════
     m_engineData.timestamp_ms = m_lastUpdateTimestamp;
     m_engineData.rpm = clampU16(getValue("rpm"));
     m_engineData.coolant_temp = clampI8(getValue("coolant_temp"));
@@ -226,18 +235,121 @@ void CanParser::updateEngineData() {
     m_engineData.injector_duty = clampU8(getValue("injector_duty"));
     m_engineData.gear = clampU8(getValue("gear"));
     m_engineData.vehicle_speed = clampU16(getValue("vehicle_speed") * 10.0);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRESSURES (Haltech, some BMW)
+    // ═══════════════════════════════════════════════════════════════════════
     m_engineData.fuel_pressure = clampU16(getValue("fuel_pressure"));
     m_engineData.oil_pressure = clampU16(getValue("oil_pressure"));
-    m_engineData.oil_temp = clampI8(getValue("oil_temp"));
+    m_engineData.boost_target = clampU16(getValue("boost_target") * 10.0);
+    m_engineData.baro = clampU16(getValue("baro") * 10.0);
 
-    // Set flags
-    m_engineData.flags = EngineData::FLAG_CAN_OK;
+    // ═══════════════════════════════════════════════════════════════════════
+    // TEMPERATURES
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.oil_temp = clampI8(getValue("oil_temp"));
+    m_engineData.fuel_temp = clampI8(getValue("fuel_temp"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ELECTRICAL
+    // ═══════════════════════════════════════════════════════════════════════
+    // Battery voltage comes as V, convert to mV for storage
+    m_engineData.battery_voltage = clampU16(getValue("battery_voltage") * 1000.0);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FUEL SYSTEM (Haltech, BMW)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.fuel_consumption = clampU16(getValue("fuel_consumption") * 100.0);
+    m_engineData.fuel_load = clampU8(getValue("fuel_load"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INJECTION (Haltech - per cylinder data)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.pw1 = clampU16(getValue("pw1"));
+    m_engineData.pw2 = clampU16(getValue("pw2"));
+    m_engineData.pw3 = clampU16(getValue("pw3"));
+    m_engineData.pw4 = clampU16(getValue("pw4"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // VVT (Variable Valve Timing - Haltech)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.vvt_intake = clampI16(getValue("vvt_intake") * 10.0);
+    m_engineData.vvt_exhaust = clampI16(getValue("vvt_exhaust") * 10.0);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TORQUE (BMW only)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.torque_indexed = clampU8(getValue("torque_indexed"));
+    m_engineData.torque_indicated = clampU8(getValue("torque_indicated"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATUS FLAGS - Build from multiple sources
+    // ═══════════════════════════════════════════════════════════════════════
+    uint16_t flags = EngineData::FLAG_CAN_OK;
+
+    // Engine running flag
     if (m_engineData.rpm > 0) {
-        m_engineData.flags |= EngineData::FLAG_ENGINE_RUN;
+        flags |= EngineData::FLAG_ENGINE_RUN;
     }
-    if (m_engineData.coolant_temp > COOLANT_OVERHEAT_THRESHOLD_C) {
-        m_engineData.flags |= EngineData::FLAG_OVERHEAT;
+
+    // Overheat flag - from coolant temp or explicit flag
+    if (m_engineData.coolant_temp > COOLANT_OVERHEAT_THRESHOLD_C ||
+        getValue("overheat_flag") > 0.5) {
+        flags |= EngineData::FLAG_OVERHEAT;
     }
+
+    // CEL flag - check engine light
+    if (getValue("cel_flag") > 0.5 || getValue("check_engine") > 0.5) {
+        flags |= EngineData::FLAG_CEL_ON;
+    }
+
+    // Clutch flag
+    if (getValue("clutch_flag") > 0.5 || getValue("clutch_switch") > 0.5) {
+        flags |= EngineData::FLAG_CLUTCH_IN;
+    }
+
+    // Brake flag
+    if (getValue("brake_flag") > 0.5 || getValue("brake_switch") > 0.5) {
+        flags |= EngineData::FLAG_BRAKE_ON;
+    }
+
+    // Cruise control flag
+    if (getValue("cruise_flag") > 0.5 || getValue("cruise_active") > 0.5) {
+        flags |= EngineData::FLAG_CRUISE_ON;
+    }
+
+    // Launch control flags (Haltech)
+    if (hasValue("launch_soft") && getValue("launch_soft") > 0.5) {
+        flags |= EngineData::FLAG_LAUNCH_SOFT;
+    }
+    if (hasValue("launch_hard") && getValue("launch_hard") > 0.5) {
+        flags |= EngineData::FLAG_LAUNCH_HARD;
+    }
+
+    // Flat shift flag (Haltech)
+    if (hasValue("flat_shift_active") && getValue("flat_shift_active") > 0.5) {
+        flags |= EngineData::FLAG_FLAT_SHIFT;
+    }
+
+    // Rev limiter flag
+    if (hasValue("rev_limit_active") && getValue("rev_limit_active") > 0.5) {
+        flags |= EngineData::FLAG_REV_LIMIT;
+    }
+
+    // Low oil pressure warning (safety critical)
+    constexpr uint16_t LOW_OIL_PRESSURE_KPA = 100;  // 1 bar minimum
+    if (m_engineData.rpm > 1000 && m_engineData.oil_pressure < LOW_OIL_PRESSURE_KPA) {
+        flags |= EngineData::FLAG_LOW_OIL_P;
+    }
+
+    // Low fuel pressure warning (safety critical)
+    constexpr uint16_t LOW_FUEL_PRESSURE_KPA = 200;  // 2 bar minimum for EFI
+    if (m_engineData.rpm > 0 && m_engineData.fuel_pressure > 0 &&
+        m_engineData.fuel_pressure < LOW_FUEL_PRESSURE_KPA) {
+        flags |= EngineData::FLAG_LOW_FUEL_P;
+    }
+
+    m_engineData.flags = flags;
 }
 
 EngineData CanParser::getEngineData() const {
