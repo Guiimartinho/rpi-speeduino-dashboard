@@ -73,8 +73,8 @@ TEST_F(ZmqPublisherTest, PublishEngineDataIncrementsCount) {
 
     EngineData data{};
     data.rpm = 3500;
-    data.coolant_temp_c = 85;
-    data.tps_percent = 50;
+    data.coolant_temp = 85;
+    data.tps = 50;
 
     EXPECT_EQ(publisher.getPublishCount(), 0u);
 
@@ -112,8 +112,8 @@ TEST_F(ZmqPublisherTest, PublishSystemStatus) {
     ASSERT_TRUE(publisher.init(endpoint));
 
     SystemStatus status{};
-    status.cpu_usage_percent = 45;
-    status.memory_used_mb = 512;
+    status.cpu_temp = 45.0f;
+    status.can_connected = true;
     status.uptime_seconds = 3600;
 
     EXPECT_TRUE(publisher.publishSystemStatus(status));
@@ -221,7 +221,7 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
 
     int linger = 0;
     subscriber.set(zmq::sockopt::linger, linger);
-    subscriber.set(zmq::sockopt::subscribe, topics::ENGINE_DATA);
+    subscriber.set(zmq::sockopt::subscribe, topics::ENGINE);
 
     try {
         subscriber.connect(endpoint);
@@ -246,8 +246,8 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
     // Publish data
     EngineData sentData{};
     sentData.rpm = 4200;
-    sentData.coolant_temp_c = 90;
-    sentData.tps_percent = 75;
+    sentData.coolant_temp = 90;
+    sentData.tps = 75;
     sentData.map_kpa = 101;
     sentData.lambda = 1000;  // 1.0 * 1000
 
@@ -263,7 +263,7 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
         auto topicResult = subscriber.recv(topic, zmq::recv_flags::none);
         ASSERT_TRUE(topicResult.has_value());
         EXPECT_EQ(std::string(static_cast<char*>(topic.data()), topic.size()),
-                  topics::ENGINE_DATA);
+                  topics::ENGINE);
 
         // Receive data
         zmq::message_t data;
@@ -277,8 +277,8 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
         oh.get().convert(receivedData);
 
         EXPECT_EQ(receivedData.rpm, 4200);
-        EXPECT_EQ(receivedData.coolant_temp_c, 90);
-        EXPECT_EQ(receivedData.tps_percent, 75);
+        EXPECT_EQ(receivedData.coolant_temp, 90);
+        EXPECT_EQ(receivedData.tps, 75);
         EXPECT_EQ(receivedData.map_kpa, 101);
     }
 
