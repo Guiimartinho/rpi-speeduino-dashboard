@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include "can_service/obd_handler.hpp"
 
 using namespace speeduino;
@@ -219,6 +220,114 @@ TEST_F(OBDHandlerTest, InvalidResponseIgnored) {
     auto result = handler->requestPID(obd::PID_RPM);
 
     EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(OBDHandlerTest, GetSupportedPIDs_SingleRange) {
+    // Queue response for PID 0x00 (supported PIDs 01-20)
+    // Bitmap: 0xBE 0x1F 0xA8 0x10
+    // Byte 0: 0xBE = 10111110 -> PIDs 01, 03, 04, 05, 06, 07 supported
+    // Byte 1: 0x1F = 00011111 -> PIDs 0C, 0D, 0E, 0F, 10 supported
+    // Byte 2: 0xA8 = 10101000 -> PIDs 11, 13, 15 supported
+    // Byte 3: 0x10 = 00010000 -> PID 1C supported, PID 0x20 NOT set (no next range)
+    CanFrame response;
+    response.id = 0x7E8;
+    response.dlc = 8;
+    response.data = {0x06, 0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x10, 0x00};
+    interface->queueResponse(response);
+
+    auto supported = handler->getSupportedPIDs();
+
+    // Check expected PIDs are in the list
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x01) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x03) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x05) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x0C) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x0D) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x11) != supported.end());
+
+    // PID 02 should NOT be in the list (bit not set)
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x02) == supported.end());
+}
+
+TEST_F(OBDHandlerTest, GetSupportedPIDs_MultipleRanges) {
+    // First range: 0x00 (PIDs 01-20), with 0x20 bit set
+    CanFrame response1;
+    response1.id = 0x7E8;
+    response1.dlc = 8;
+    response1.data = {0x06, 0x41, 0x00, 0x80, 0x00, 0x00, 0x01, 0x00};  // Only PID 01 + next range
+    interface->queueResponse(response1);
+
+    // Second range: 0x20 (PIDs 21-40), no next range
+    CanFrame response2;
+    response2.id = 0x7E8;
+    response2.dlc = 8;
+    response2.data = {0x06, 0x41, 0x20, 0x80, 0x00, 0x00, 0x00, 0x00};  // Only PID 21
+    interface->queueResponse(response2);
+
+    auto supported = handler->getSupportedPIDs();
+
+    // Should have PIDs from both ranges
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x01) != supported.end());
+    EXPECT_TRUE(std::find(supported.begin(), supported.end(), 0x21) != supported.end());
+    EXPECT_EQ(supported.size(), 2);
+}
+
+TEST_F(OBDHandlerTest, VIN_MultiFrame_Complete) {
+    // First Frame: VIN starts with "WVWZZZ3CZ"
+    // Format: [10 14] [49 02 01] [W V W] = length 0x14 (20 bytes)
+    CanFrame ff;
+    ff.id = 0x7E8;
+    ff.dlc = 8;
+    ff.data = {0x10, 0x14, 0x49, 0x02, 0x01, 'W', 'V', 'W'};
+    interface->queueResponse(ff);
+
+    // Consecutive Frame 1: "ZZZ3CZW"
+    CanFrame cf1;
+    cf1.id = 0x7E8;
+    cf1.dlc = 8;
+    cf1.data = {0x21, 'Z', 'Z', 'Z', '3', 'C', 'Z', 'W'};
+    interface->queueResponse(cf1);
+
+    // Consecutive Frame 2: "E123456" + padding
+    CanFrame cf2;
+    cf2.id = 0x7E8;
+    cf2.dlc = 8;
+    cf2.data = {0x22, 'E', '1', '2', '3', '4', '5', '6'};
+    interface->queueResponse(cf2);
+
+    auto result = handler->getVIN();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->length(), 17);
+    EXPECT_EQ(*result, "WVWZZZ3CZWE123456");
+
+    // Verify flow control was sent
+    auto& sent = interface->getSentFrames();
+    bool foundFC = false;
+    for (const auto& frame : sent) {
+        if ((frame.data[0] & 0xF0) == 0x30) {  // Flow Control
+            foundFC = true;
+            EXPECT_EQ(frame.data[0], 0x30);  // CTS
+            EXPECT_EQ(frame.data[1], 0x00);  // No block size limit
+            EXPECT_EQ(frame.data[2], 0x00);  // No separation time
+            break;
+        }
+    }
+    EXPECT_TRUE(foundFC) << "Flow control frame not sent";
+}
+
+TEST_F(OBDHandlerTest, VIN_SingleFrame) {
+    // Some ECUs might respond with a short VIN in single frame (unusual but possible)
+    CanFrame sf;
+    sf.id = 0x7E8;
+    sf.dlc = 8;
+    sf.data = {0x07, 0x49, 0x02, 0x01, 'T', 'E', 'S', 'T'};
+    interface->queueResponse(sf);
+
+    auto result = handler->getVIN();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, "TEST");
 }
 
 int main(int argc, char** argv) {

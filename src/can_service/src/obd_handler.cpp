@@ -212,11 +212,22 @@ std::optional<CanFrame> OBDHandler::sendAndReceive(const CanFrame& request,
             const auto& response = *maybeResponse;
             // Check if it's an OBD-II response
             if (response.id == obd::RESPONSE_ECU) {
-                // Verify it's a positive response (mode + 0x40)
-                uint8_t responseMode = response.data[1];
                 uint8_t requestMode = request.data[1];
-                if (responseMode == (requestMode + 0x40)) {
-                    return response;
+                uint8_t pciType = (response.data[0] >> 4) & 0x0F;
+
+                if (pciType == 0x0) {
+                    // Single Frame: mode is at data[1]
+                    uint8_t responseMode = response.data[1];
+                    if (responseMode == (requestMode + 0x40)) {
+                        return response;
+                    }
+                }
+                else if (pciType == 0x1) {
+                    // First Frame (ISO-TP multi-frame): mode is at data[2]
+                    uint8_t responseMode = response.data[2];
+                    if (responseMode == (requestMode + 0x40)) {
+                        return response;
+                    }
                 }
             }
         }
@@ -254,16 +265,56 @@ std::vector<OBDLiveData> OBDHandler::requestPIDs(const std::vector<uint8_t>& pid
 std::vector<uint8_t> OBDHandler::getSupportedPIDs() {
     std::vector<uint8_t> supported;
 
-    auto response = requestPID(obd::PID_SUPPORTED_01_20);
-    if (!response) {
-        return supported;
+    // Query PIDs in ranges: 0x00 (01-20), 0x20 (21-40), 0x40 (41-60), etc.
+    // Each response contains a 4-byte bitmap where each bit represents a PID
+    // The last bit (PID 0x20, 0x40, etc.) indicates if the next range is supported
+
+    uint8_t rangePID = obd::PID_SUPPORTED_01_20;  // Start with 0x00
+
+    while (rangePID <= 0xE0) {  // Max range is 0xE0 (PIDs E1-FF)
+        CanFrame request = buildRequest(obd::MODE_01_LIVE_DATA, rangePID);
+        auto response = sendAndReceive(request);
+
+        if (!response) {
+            break;  // No response, stop querying
+        }
+
+        // Response format: [length, 0x41, PID, A, B, C, D]
+        // A, B, C, D form the 4-byte bitmap
+        if (response->data[1] != 0x41 || response->data[2] != rangePID) {
+            break;  // Invalid response
+        }
+
+        const uint8_t* bitmap = &response->data[3];
+        bool nextRangeSupported = false;
+
+        // Parse bitmap: 4 bytes, 8 bits each = 32 PIDs per range
+        // Bit 7 of byte 0 = first PID in range (rangePID + 1)
+        // Bit 0 of byte 3 = last PID in range (rangePID + 32) - indicates next range
+        for (int byteIdx = 0; byteIdx < 4; byteIdx++) {
+            for (int bitIdx = 7; bitIdx >= 0; bitIdx--) {
+                uint8_t pid = static_cast<uint8_t>(rangePID + (byteIdx * 8) + (7 - bitIdx) + 1);
+
+                if (bitmap[byteIdx] & (1 << bitIdx)) {
+                    // This PID is supported
+                    if (pid == rangePID + 0x20) {
+                        // This is the "next range supported" indicator
+                        nextRangeSupported = true;
+                    } else {
+                        supported.push_back(pid);
+                    }
+                }
+            }
+        }
+
+        if (!nextRangeSupported) {
+            break;  // No more ranges to query
+        }
+
+        rangePID += 0x20;  // Move to next range
     }
 
-    // Parse bitmap (4 bytes, MSB first)
-    // Each bit represents a PID (1-32)
-    // PID 1 is bit 7 of byte 0, PID 8 is bit 0 of byte 0, etc.
-    // TODO: Implement full bitmap parsing
-
+    LOG_INFO("OBD-II: Found " + std::to_string(supported.size()) + " supported PIDs");
     return supported;
 }
 
@@ -505,23 +556,115 @@ std::optional<std::string> OBDHandler::getVIN() {
         return std::nullopt;
     }
 
-    // VIN is typically multi-frame (17 characters)
-    // For now, handle single-frame response
-    // Full implementation would need ISO-TP for multi-frame
+    // VIN is 17 characters and requires ISO-TP multi-frame communication
+    // ISO 15765-2 frame types:
+    //   Single Frame (SF): PCI = 0x0X, data fits in one frame
+    //   First Frame (FF):  PCI = 0x1X XX, starts multi-frame sequence
+    //   Consecutive Frame (CF): PCI = 0x2X, continuation data
+    //   Flow Control (FC): PCI = 0x3X, acknowledge/control flow
 
-    if (response->data[1] != 0x49) {
-        return std::nullopt;
-    }
-
-    // Simple single-frame extraction
+    uint8_t pciType = (response->data[0] >> 4) & 0x0F;
     std::string vin;
-    for (int i = 4; i < 8 && response->data[i] != 0; i++) {
-        vin += static_cast<char>(response->data[i]);
-    }
 
-    // TODO: Implement full multi-frame VIN reading with ISO-TP
-    if (vin.length() < 17) {
-        LOG_DEBUG("OBD-II: Partial VIN received (multi-frame not implemented)");
+    if (pciType == 0x0) {
+        // Single Frame - unlikely for VIN but handle it
+        // Format: [length, 0x49, 0x02, count, VIN chars...]
+        if (response->data[1] != 0x49 || response->data[2] != obd::PID_VIN) {
+            return std::nullopt;
+        }
+        uint8_t dataLen = response->data[0] & 0x0F;
+        for (int i = 4; i < std::min(4 + static_cast<int>(dataLen) - 3, 8); i++) {
+            if (response->data[i] != 0) {
+                vin += static_cast<char>(response->data[i]);
+            }
+        }
+    }
+    else if (pciType == 0x1) {
+        // First Frame - multi-frame VIN response
+        // Format: [0x10 | len_high, len_low, 0x49, 0x02, count, VIN chars...]
+        uint16_t totalLen = ((response->data[0] & 0x0F) << 8) | response->data[1];
+        (void)totalLen;  // Total data length (typically 0x14 = 20 for VIN)
+
+        if (response->data[2] != 0x49 || response->data[3] != obd::PID_VIN) {
+            return std::nullopt;
+        }
+
+        // Extract first 3 VIN characters from First Frame
+        // Bytes: [0]=PCI_H, [1]=len_L, [2]=mode, [3]=PID, [4]=count, [5-7]=VIN
+        for (int i = 5; i < 8; i++) {
+            if (response->data[i] != 0) {
+                vin += static_cast<char>(response->data[i]);
+            }
+        }
+
+        // Send Flow Control to request remaining frames
+        // FC format: [0x30, BlockSize=0 (no limit), STmin=0 (no delay)]
+        CanFrame flowControl;
+        flowControl.id = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
+        flowControl.dlc = 8;
+        flowControl.data = {0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+        if (!m_interface.send(flowControl)) {
+            LOG_ERROR("OBD-II: Failed to send flow control for VIN");
+            return vin.empty() ? std::nullopt : std::make_optional(vin);
+        }
+
+        // Receive Consecutive Frames (need 2 more frames for remaining 14 VIN chars)
+        uint8_t expectedSeq = 1;
+        auto cfStart = std::chrono::steady_clock::now();
+        constexpr int CF_TIMEOUT_MS = 1000;
+
+        while (vin.length() < 17) {
+            auto elapsed = std::chrono::steady_clock::now() - cfStart;
+            if (elapsed > std::chrono::milliseconds(CF_TIMEOUT_MS)) {
+                LOG_WARN("OBD-II: Timeout waiting for VIN consecutive frames");
+                break;
+            }
+
+            auto cfResponse = m_interface.receive(100);
+            if (!cfResponse) {
+                continue;
+            }
+
+            // Check if it's a Consecutive Frame from the expected ECU
+            if (cfResponse->id != obd::RESPONSE_ECU) {
+                continue;
+            }
+
+            uint8_t cfPciType = (cfResponse->data[0] >> 4) & 0x0F;
+            if (cfPciType != 0x2) {
+                continue;  // Not a consecutive frame
+            }
+
+            uint8_t seqNum = cfResponse->data[0] & 0x0F;
+            if (seqNum != (expectedSeq & 0x0F)) {
+                LOG_WARN("OBD-II: VIN sequence mismatch, expected " +
+                         std::to_string(expectedSeq) + " got " + std::to_string(seqNum));
+                continue;
+            }
+
+            // Extract up to 7 VIN characters from Consecutive Frame
+            // CF format: [0x2X, data0, data1, data2, data3, data4, data5, data6]
+            for (int i = 1; i < 8 && vin.length() < 17; i++) {
+                if (cfResponse->data[i] != 0) {
+                    vin += static_cast<char>(cfResponse->data[i]);
+                }
+            }
+
+            expectedSeq++;
+        }
+
+        if (vin.length() == 17) {
+            LOG_INFO("OBD-II: VIN received: " + vin);
+        } else {
+            LOG_WARN("OBD-II: Incomplete VIN received (" +
+                     std::to_string(vin.length()) + "/17 chars)");
+        }
+    }
+    else {
+        LOG_WARN("OBD-II: Unexpected PCI type in VIN response: " +
+                 std::to_string(pciType));
+        return std::nullopt;
     }
 
     return vin.empty() ? std::nullopt : std::make_optional(vin);
@@ -535,13 +678,88 @@ std::optional<std::string> OBDHandler::getECUName() {
         return std::nullopt;
     }
 
-    if (response->data[1] != 0x49) {
-        return std::nullopt;
-    }
-
+    // ECU name can be up to 20 characters, may require multi-frame
+    uint8_t pciType = (response->data[0] >> 4) & 0x0F;
     std::string name;
-    for (int i = 4; i < 8 && response->data[i] != 0; i++) {
-        name += static_cast<char>(response->data[i]);
+
+    if (pciType == 0x0) {
+        // Single Frame
+        if (response->data[1] != 0x49 || response->data[2] != obd::PID_ECU_NAME) {
+            return std::nullopt;
+        }
+        for (int i = 4; i < 8 && response->data[i] != 0; i++) {
+            name += static_cast<char>(response->data[i]);
+        }
+    }
+    else if (pciType == 0x1) {
+        // First Frame - multi-frame ECU name response
+        if (response->data[2] != 0x49 || response->data[3] != obd::PID_ECU_NAME) {
+            return std::nullopt;
+        }
+
+        // Extract chars from First Frame
+        for (int i = 5; i < 8 && response->data[i] != 0; i++) {
+            name += static_cast<char>(response->data[i]);
+        }
+
+        // Send Flow Control
+        CanFrame flowControl;
+        flowControl.id = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
+        flowControl.dlc = 8;
+        flowControl.data = {0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+        if (!m_interface.send(flowControl)) {
+            return name.empty() ? std::nullopt : std::make_optional(name);
+        }
+
+        // Receive Consecutive Frames
+        uint8_t expectedSeq = 1;
+        auto cfStart = std::chrono::steady_clock::now();
+        constexpr int CF_TIMEOUT_MS = 1000;
+        constexpr size_t MAX_ECU_NAME_LEN = 20;
+
+        while (name.length() < MAX_ECU_NAME_LEN) {
+            auto elapsed = std::chrono::steady_clock::now() - cfStart;
+            if (elapsed > std::chrono::milliseconds(CF_TIMEOUT_MS)) {
+                break;
+            }
+
+            auto cfResponse = m_interface.receive(100);
+            if (!cfResponse || cfResponse->id != obd::RESPONSE_ECU) {
+                continue;
+            }
+
+            uint8_t cfPciType = (cfResponse->data[0] >> 4) & 0x0F;
+            if (cfPciType != 0x2) {
+                continue;
+            }
+
+            uint8_t seqNum = cfResponse->data[0] & 0x0F;
+            if (seqNum != (expectedSeq & 0x0F)) {
+                continue;
+            }
+
+            for (int i = 1; i < 8 && name.length() < MAX_ECU_NAME_LEN; i++) {
+                if (cfResponse->data[i] != 0) {
+                    name += static_cast<char>(cfResponse->data[i]);
+                } else {
+                    // Null terminator found, stop reading
+                    break;
+                }
+            }
+
+            expectedSeq++;
+
+            // Check if we hit a null terminator
+            bool foundNull = false;
+            for (int i = 1; i < 8; i++) {
+                if (cfResponse->data[i] == 0) {
+                    foundNull = true;
+                    break;
+                }
+            }
+            if (foundNull) break;
+        }
     }
 
     return name.empty() ? std::nullopt : std::make_optional(name);
