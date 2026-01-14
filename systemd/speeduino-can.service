@@ -4,6 +4,7 @@ Documentation=https://github.com/speeduino/speeduino-ui
 Before=can_service.service reverse_service.service
 DefaultDependencies=no
 After=systemd-modules-load.service
+ConditionPathExists=/sys/class/net/can0
 
 [Service]
 Type=oneshot
@@ -13,13 +14,35 @@ RemainAfterExit=yes
 ExecStartPre=/sbin/modprobe can
 ExecStartPre=/sbin/modprobe can_raw
 ExecStartPre=/sbin/modprobe can_dev
+ExecStartPre=/sbin/modprobe can_bcm
+ExecStartPre=/sbin/modprobe can_gw
 
-# Configure can0 interface
-ExecStart=/sbin/ip link set can0 type can bitrate 500000 restart-ms 100
+# Configure can0 interface with bus-off auto-recovery
+ExecStart=/sbin/ip link set can0 down
+ExecStart=/sbin/ip link set can0 type can bitrate 500000 sample-point 0.875 restart-ms 100
+ExecStart=/sbin/ip link set can0 txqueuelen 1000
 ExecStart=/sbin/ip link set can0 up
 
 # Shutdown
 ExecStop=/sbin/ip link set can0 down
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=false
+ProtectKernelModules=false
+PrivateTmp=true
+PrivateDevices=false
+
+# Capabilities needed for network configuration
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_MODULE
+AmbientCapabilities=CAP_NET_ADMIN
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=speeduino-can
 
 [Install]
 WantedBy=multi-user.target

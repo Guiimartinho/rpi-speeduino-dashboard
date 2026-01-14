@@ -21,7 +21,8 @@ struct ParsedSignal {
 class CanParser {
 public:
     CanParser();
-    ~CanParser() = default;
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~CanParser() noexcept = default;
 
     // Initialize with signal definitions
     void loadSignals(const std::vector<CanSignalDef>& signals);
@@ -47,6 +48,9 @@ private:
 
     // Apply scale and offset
     double applyScaling(uint64_t raw, const CanSignalDef& signal) const;
+
+    // Update aggregated engine data from parsed signals
+    void updateEngineData();
 
     // Signal definitions indexed by CAN ID
     std::unordered_multimap<uint32_t, CanSignalDef> m_signalsByCanId;

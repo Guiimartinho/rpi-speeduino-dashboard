@@ -21,7 +21,7 @@ uint32_t getMonotonicMs() {
 
 ReverseDetector::ReverseDetector() = default;
 
-ReverseDetector::~ReverseDetector() {
+ReverseDetector::~ReverseDetector() noexcept {
     shutdown();
 }
 
@@ -29,33 +29,65 @@ bool ReverseDetector::init(const ReverseConfig& config) {
     m_config = config;
 
     LOG_INFO("Initializing reverse detector");
-    LOG_INFO("  CAN enabled: " + std::string(config.can_enabled ? "yes" : "no"));
-    if (config.can_enabled) {
+    LOG_INFO("  Detection mode: " + config.detection_mode);
+
+    // Determine effective CAN/GPIO enabled based on detection_mode
+    bool effectiveCanEnabled = config.can_enabled;
+    bool effectiveGpioEnabled = config.gpio_enabled;
+
+    if (config.detection_mode == "gpio") {
+        effectiveCanEnabled = false;
+        effectiveGpioEnabled = true;
+    } else if (config.detection_mode == "can" || config.detection_mode == "speeduino_can") {
+        effectiveCanEnabled = true;
+        effectiveGpioEnabled = false;
+    } else if (config.detection_mode == "both") {
+        // Use individual settings, CAN takes priority
+        effectiveCanEnabled = config.can_enabled;
+        effectiveGpioEnabled = config.gpio_enabled;
+    }
+
+    // Store effective settings in config copy
+    m_config.can_enabled = effectiveCanEnabled;
+    m_config.gpio_enabled = effectiveGpioEnabled;
+
+    LOG_INFO("  CAN enabled: " + std::string(m_config.can_enabled ? "yes" : "no"));
+    if (m_config.can_enabled) {
         LOG_INFO("  CAN ID: 0x" + std::to_string(config.can_id));
         LOG_INFO("  Byte index: " + std::to_string(config.byte_index));
         LOG_INFO("  Bit mask: 0x" + std::to_string(config.bit_mask));
     }
 
-    LOG_INFO("  GPIO enabled: " + std::string(config.gpio_enabled ? "yes" : "no"));
-    if (config.gpio_enabled) {
+    LOG_INFO("  GPIO enabled: " + std::string(m_config.gpio_enabled ? "yes" : "no"));
+    if (m_config.gpio_enabled) {
         LOG_INFO("  GPIO chip: " + config.gpio_chip);
         LOG_INFO("  GPIO line: " + std::to_string(config.gpio_line));
+        LOG_INFO("  GPIO active_low: " + std::string(config.gpio_active_low ? "yes" : "no"));
+        LOG_INFO("  Debounce: " + std::to_string(config.debounce_ms) + "ms");
 
         if (!initGpio()) {
-            LOG_WARN("GPIO initialization failed, CAN-only mode");
+            LOG_WARN("GPIO initialization failed");
+            if (!m_config.can_enabled) {
+                LOG_ERROR("No reverse detection source available!");
+            } else {
+                LOG_WARN("Falling back to CAN-only mode");
+            }
         }
     }
 
-    m_lastTransition = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
+        m_lastTransition = std::chrono::steady_clock::now();
+    }
 
     return true;
 }
 
 void ReverseDetector::shutdown() {
 #ifdef HAS_GPIOD
-    if (m_gpioLine) {
-        gpiod_line_release(m_gpioLine);
-        m_gpioLine = nullptr;
+    if (m_gpioRequest) {
+        gpiod_line_request_release(m_gpioRequest);
+        m_gpioRequest = nullptr;
     }
     if (m_gpioChip) {
         gpiod_chip_close(m_gpioChip);
@@ -85,16 +117,31 @@ void ReverseDetector::procesCanFrame(uint32_t can_id, const uint8_t* data, uint8
     uint8_t value = data[m_config.byte_index] & m_config.bit_mask;
     bool reverseDetected = (value == m_config.expected_value);
 
-    // Apply debounce
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_lastTransition).count();
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
+    // ═══════════════════════════════════════════════════════════════════════
+    bool shouldSetState = false;
+    bool pendingValue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
 
-    if (reverseDetected != m_pendingState) {
-        m_pendingState = reverseDetected;
-        m_lastTransition = now;
-    } else if (elapsed >= m_config.debounce_ms && m_pendingState != m_engaged) {
-        setState(m_pendingState, Source::CAN);
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_lastTransition).count();
+
+        if (reverseDetected != m_pendingState) {
+            m_pendingState = reverseDetected;
+            m_lastTransition = now;
+        } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
+                   m_pendingState != m_engaged.load(std::memory_order_acquire)) {
+            shouldSetState = true;
+            pendingValue = m_pendingState;
+        }
+    }
+
+    // Call setState outside mutex to avoid potential deadlock with callback
+    if (shouldSetState) {
+        setState(pendingValue, Source::CAN);
     }
 }
 
@@ -110,25 +157,41 @@ void ReverseDetector::checkGpio() {
         gpioState = !gpioState;
     }
 
-    // Apply debounce
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_lastTransition).count();
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
+    // ═══════════════════════════════════════════════════════════════════════
+    bool shouldSetState = false;
+    bool pendingValue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_debounceMutex);
 
-    if (gpioState != m_pendingState) {
-        m_pendingState = gpioState;
-        m_lastTransition = now;
-    } else if (elapsed >= m_config.debounce_ms && m_pendingState != m_engaged) {
-        setState(m_pendingState, Source::GPIO);
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_lastTransition).count();
+
+        if (gpioState != m_pendingState) {
+            m_pendingState = gpioState;
+            m_lastTransition = now;
+        } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
+                   m_pendingState != m_engaged.load(std::memory_order_acquire)) {
+            shouldSetState = true;
+            pendingValue = m_pendingState;
+        }
+    }
+
+    // Call setState outside mutex to avoid potential deadlock with callback
+    if (shouldSetState) {
+        setState(pendingValue, Source::GPIO);
     }
 }
 
 void ReverseDetector::setState(bool engaged, Source source) {
-    bool changed = (engaged != m_engaged);
+    bool changed = (engaged != m_engaged.load(std::memory_order_acquire));
 
-    m_engaged = engaged;
-    m_source = source;
-    m_lastChangeTimestamp = getMonotonicMs();
+    m_engaged.store(engaged, std::memory_order_release);
+    // FIX #5: Thread-safe source update using atomic store
+    m_source.store(source, std::memory_order_release);
+    m_lastChangeTimestamp.store(getMonotonicMs(), std::memory_order_release);
 
     if (changed) {
         const char* sourceStr = (source == Source::CAN) ? "CAN" : "GPIO";
@@ -145,26 +208,74 @@ void ReverseDetector::setState(bool engaged, Source source) {
 
 bool ReverseDetector::initGpio() {
 #ifdef HAS_GPIOD
-    m_gpioChip = gpiod_chip_open_by_name(m_config.gpio_chip.c_str());
+    // gpiod v2 API - open chip by path
+    std::string chipPath = "/dev/" + m_config.gpio_chip;
+    m_gpioChip = gpiod_chip_open(chipPath.c_str());
     if (!m_gpioChip) {
-        LOG_ERROR("Failed to open GPIO chip: " + m_config.gpio_chip);
+        LOG_ERROR("Failed to open GPIO chip: " + chipPath);
         return false;
     }
 
-    m_gpioLine = gpiod_chip_get_line(m_gpioChip, m_config.gpio_line);
-    if (!m_gpioLine) {
-        LOG_ERROR("Failed to get GPIO line: " + std::to_string(m_config.gpio_line));
+    // Store the offset for later use
+    m_gpioOffset = m_config.gpio_line;
+
+    // Create line settings for input
+    struct gpiod_line_settings* settings = gpiod_line_settings_new();
+    if (!settings) {
+        LOG_ERROR("Failed to create GPIO line settings");
         gpiod_chip_close(m_gpioChip);
         m_gpioChip = nullptr;
         return false;
     }
 
-    int ret = gpiod_line_request_input(m_gpioLine, "reverse_service");
-    if (ret < 0) {
-        LOG_ERROR("Failed to request GPIO line as input");
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+
+    // Create line config
+    struct gpiod_line_config* lineConfig = gpiod_line_config_new();
+    if (!lineConfig) {
+        LOG_ERROR("Failed to create GPIO line config");
+        gpiod_line_settings_free(settings);
         gpiod_chip_close(m_gpioChip);
         m_gpioChip = nullptr;
-        m_gpioLine = nullptr;
+        return false;
+    }
+
+    // Add line with settings
+    unsigned int offsets[] = {m_gpioOffset};
+    if (gpiod_line_config_add_line_settings(lineConfig, offsets, 1, settings) < 0) {
+        LOG_ERROR("Failed to add GPIO line settings");
+        gpiod_line_config_free(lineConfig);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
+        return false;
+    }
+
+    // Create request config
+    struct gpiod_request_config* reqConfig = gpiod_request_config_new();
+    if (!reqConfig) {
+        LOG_ERROR("Failed to create GPIO request config");
+        gpiod_line_config_free(lineConfig);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
+        return false;
+    }
+
+    gpiod_request_config_set_consumer(reqConfig, "reverse_service");
+
+    // Request the line
+    m_gpioRequest = gpiod_chip_request_lines(m_gpioChip, reqConfig, lineConfig);
+
+    // Cleanup config objects
+    gpiod_request_config_free(reqConfig);
+    gpiod_line_config_free(lineConfig);
+    gpiod_line_settings_free(settings);
+
+    if (!m_gpioRequest) {
+        LOG_ERROR("Failed to request GPIO line: " + std::to_string(m_config.gpio_line));
+        gpiod_chip_close(m_gpioChip);
+        m_gpioChip = nullptr;
         return false;
     }
 
@@ -180,11 +291,11 @@ bool ReverseDetector::initGpio() {
 
 bool ReverseDetector::readGpio() {
 #ifdef HAS_GPIOD
-    if (!m_gpioLine) {
+    if (!m_gpioRequest) {
         return false;
     }
-    int value = gpiod_line_get_value(m_gpioLine);
-    return value > 0;
+    enum gpiod_line_value value = gpiod_line_request_get_value(m_gpioRequest, m_gpioOffset);
+    return value == GPIOD_LINE_VALUE_ACTIVE;
 #else
     return false;
 #endif

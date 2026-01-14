@@ -1,0 +1,3 @@
+module screens
+DashScreen 1.0 DashScreen.qml
+HomeScreen 1.0 HomeScreen.qml

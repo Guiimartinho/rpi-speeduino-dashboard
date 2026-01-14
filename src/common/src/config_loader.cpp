@@ -3,10 +3,16 @@
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include <fstream>
+#include <climits>
+#include <stdexcept>
 
 namespace speeduino {
 
-// Static members
+// ═══════════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Thread-safe static members with mutex protection
+// Static mutex must be defined before other static members
+// ═══════════════════════════════════════════════════════════════════════════════
+std::shared_mutex ConfigLoader::s_mutex;
 SystemConfig ConfigLoader::s_systemConfig;
 std::vector<CanSignalDef> ConfigLoader::s_signals;
 std::vector<CanCommandDef> ConfigLoader::s_allowedCommands;
@@ -16,15 +22,63 @@ bool ConfigLoader::s_loaded = false;
 
 namespace {
 
-// Helper to parse hex strings like "0x360"
+// ═══════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Safe hex/decimal parsing with bounds checking
+// MISRA C++:2008 Rule 5-0-3: Check input validity before processing
+// ═══════════════════════════════════════════════════════════════════════════
 uint32_t parseHexOrDec(const YAML::Node& node) {
-    if (!node.IsDefined() || node.IsNull()) return 0;
-
-    std::string value = node.as<std::string>();
-    if (value.substr(0, 2) == "0x" || value.substr(0, 2) == "0X") {
-        return std::stoul(value, nullptr, 16);
+    if (!node.IsDefined() || node.IsNull()) {
+        return 0;
     }
-    return node.as<uint32_t>();
+
+    try {
+        std::string value = node.as<std::string>();
+
+        // Bounds check: prevent substr from throwing
+        if (value.empty()) {
+            return 0;
+        }
+
+        // Check for hex prefix safely
+        bool isHex = false;
+        if (value.size() >= 2) {
+            if ((value[0] == '0') && (value[1] == 'x' || value[1] == 'X')) {
+                isHex = true;
+            }
+        }
+
+        if (isHex) {
+            // Validate hex string has actual digits after prefix
+            if (value.size() <= 2) {
+                LOG_WARN("Empty hex value in config, using 0");
+                return 0;
+            }
+
+            // stoul can throw std::out_of_range or std::invalid_argument
+            unsigned long parsed = std::stoul(value, nullptr, 16);
+
+            // Check for overflow (unsigned long may be larger than uint32_t)
+            if (parsed > UINT32_MAX) {
+                LOG_WARN("Hex value " + value + " exceeds uint32_t max, clamping");
+                return UINT32_MAX;
+            }
+
+            return static_cast<uint32_t>(parsed);
+        }
+
+        // Decimal parsing
+        return node.as<uint32_t>();
+
+    } catch (const std::out_of_range& e) {
+        LOG_ERROR("Config value out of range: " + std::string(e.what()));
+        return 0;
+    } catch (const std::invalid_argument& e) {
+        LOG_ERROR("Invalid config value format: " + std::string(e.what()));
+        return 0;
+    } catch (const YAML::Exception& e) {
+        LOG_ERROR("YAML parse error: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 void loadHaltechSignals(std::vector<CanSignalDef>& signals) {
@@ -74,6 +128,9 @@ void loadBMWSignals(std::vector<CanSignalDef>& signals) {
 } // anonymous namespace
 
 bool ConfigLoader::loadFromDirectory(std::string_view config_dir) {
+    // ISO 26262: Exclusive lock for writing - prevents data races
+    std::unique_lock<std::shared_mutex> lock(s_mutex);
+
     std::filesystem::path dir(config_dir);
 
     bool success = true;
@@ -134,16 +191,36 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
 
         if (config["reverse"]) {
             auto rev = config["reverse"];
+
+            // Check for preset first - this sets defaults for specific vehicles
+            if (rev["preset"]) {
+                std::string preset = rev["preset"].as<std::string>();
+                s_reverseConfig.applyPreset(preset);
+                LOG_INFO("Applied reverse detection preset: " + preset);
+            }
+
+            // Detection mode (can override preset)
+            if (rev["detection_mode"]) {
+                s_reverseConfig.detection_mode = rev["detection_mode"].as<std::string>();
+            }
+
+            // CAN settings (can override preset)
             if (rev["can_enabled"]) s_reverseConfig.can_enabled = rev["can_enabled"].as<bool>();
             if (rev["can_id"]) s_reverseConfig.can_id = parseHexOrDec(rev["can_id"]);
             if (rev["byte_index"]) s_reverseConfig.byte_index = rev["byte_index"].as<uint8_t>();
             if (rev["bit_mask"]) s_reverseConfig.bit_mask = parseHexOrDec(rev["bit_mask"]);
             if (rev["expected_value"]) s_reverseConfig.expected_value = parseHexOrDec(rev["expected_value"]);
+
+            // GPIO settings (can override preset)
             if (rev["gpio_enabled"]) s_reverseConfig.gpio_enabled = rev["gpio_enabled"].as<bool>();
             if (rev["gpio_chip"]) s_reverseConfig.gpio_chip = rev["gpio_chip"].as<std::string>();
             if (rev["gpio_line"]) s_reverseConfig.gpio_line = rev["gpio_line"].as<uint32_t>();
             if (rev["gpio_active_low"]) s_reverseConfig.gpio_active_low = rev["gpio_active_low"].as<bool>();
-            if (rev["debounce_ms"]) s_systemConfig.reverse_debounce_ms = rev["debounce_ms"].as<uint32_t>();
+
+            // Debounce setting
+            if (rev["debounce_ms"]) s_reverseConfig.debounce_ms = rev["debounce_ms"].as<uint32_t>();
+
+            LOG_INFO("Reverse detection mode: " + s_reverseConfig.detection_mode);
         }
 
         if (config["allowed_commands"]) {
@@ -228,27 +305,37 @@ bool ConfigLoader::loadSteeringConfig(std::string_view path) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ISO 26262 ASIL-B: Thread-safe getters with shared_lock (multiple readers OK)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const SystemConfig& ConfigLoader::getSystemConfig() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_systemConfig;
 }
 
 const std::vector<CanSignalDef>& ConfigLoader::getSignals() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_signals;
 }
 
 const std::vector<CanCommandDef>& ConfigLoader::getAllowedCommands() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_allowedCommands;
 }
 
 const std::vector<SteeringButtonDef>& ConfigLoader::getSteeringButtons() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_steeringButtons;
 }
 
 const ReverseConfig& ConfigLoader::getReverseConfig() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_reverseConfig;
 }
 
 std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& sig : s_signals) {
         if (sig.name == name) return sig;
     }
@@ -256,6 +343,7 @@ std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
 }
 
 bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
         if (cmd.can_id == can_id) return true;
     }
@@ -263,6 +351,7 @@ bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
 }
 
 uint32_t ConfigLoader::getCommandRateLimit(uint32_t can_id) {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
         if (cmd.can_id == can_id) return cmd.rate_limit_hz;
     }

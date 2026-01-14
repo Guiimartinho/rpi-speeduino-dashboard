@@ -1,0 +1,54 @@
+module Components
+
+# ═══════════════════════════════════════════════════════════════
+# CORE GAUGE COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+ArcGauge 1.0 ArcGauge.qml
+CompactGauge 1.0 CompactGauge.qml
+SafeGauge 1.0 SafeGauge.qml
+Gauge 1.0 Gauge.qml
+
+# ═══════════════════════════════════════════════════════════════
+# DISPLAY COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+ShiftLightBar 1.0 ShiftLightBar.qml
+GearIndicator 1.0 GearIndicator.qml
+WarningIndicator 1.0 WarningIndicator.qml
+StatusIndicator 1.0 StatusIndicator.qml
+
+# ═══════════════════════════════════════════════════════════════
+# NAVIGATION & UI
+# ═══════════════════════════════════════════════════════════════
+NavBar 1.0 NavBar.qml
+TabBar 1.0 TabBar.qml
+TabButton 1.0 TabButton.qml
+StatusBar 1.0 StatusBar.qml
+IconButton 1.0 IconButton.qml
+NotificationPopup 1.0 NotificationPopup.qml
+
+# ═══════════════════════════════════════════════════════════════
+# ADVANCED GAUGES
+# ═══════════════════════════════════════════════════════════════
+GForceMeter 1.0 GForceMeter.qml
+ChartGauge 1.0 ChartGauge.qml
+VEMapDisplay 1.0 VEMapDisplay.qml
+
+# ═══════════════════════════════════════════════════════════════
+# TIMING & PERFORMANCE
+# ═══════════════════════════════════════════════════════════════
+LapTimer 1.0 LapTimer.qml
+PerformanceMeter 1.0 PerformanceMeter.qml
+
+# ═══════════════════════════════════════════════════════════════
+# DATA MANAGEMENT
+# ═══════════════════════════════════════════════════════════════
+DataLogger 1.0 DataLogger.qml
+PeakRecall 1.0 PeakRecall.qml
+TripComputer 1.0 TripComputer.qml
+
+# ═══════════════════════════════════════════════════════════════
+# SINGLETONS (Managers)
+# ═══════════════════════════════════════════════════════════════
+singleton NightModeManager 1.0 NightModeManager.qml
+singleton WarningManager 1.0 WarningManager.qml
+singleton DisplayModeManager 1.0 DisplayModeManager.qml

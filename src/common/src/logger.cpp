@@ -12,7 +12,7 @@
 
 namespace speeduino {
 
-LogLevel Logger::s_minLevel = LogLevel::INFO;
+LogLevel Logger::s_minLevel = LogLevel::Info;
 std::string Logger::s_serviceName = "speeduino";
 bool Logger::s_initialized = false;
 
@@ -20,12 +20,12 @@ namespace {
 
 const char* levelToString(LogLevel level) {
     switch (level) {
-        case LogLevel::TRACE: return "TRACE";
-        case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO:  return "INFO ";
-        case LogLevel::WARN:  return "WARN ";
-        case LogLevel::ERROR: return "ERROR";
-        case LogLevel::FATAL: return "FATAL";
+        case LogLevel::Trace: return "TRACE";
+        case LogLevel::Dbg:   return "DEBUG";
+        case LogLevel::Info:  return "INFO ";
+        case LogLevel::Warn:  return "WARN ";
+        case LogLevel::Err:   return "ERROR";
+        case LogLevel::Fatal: return "FATAL";
         default:              return "?????";
     }
 }
@@ -33,12 +33,12 @@ const char* levelToString(LogLevel level) {
 #ifdef __linux__
 int levelToSyslog(LogLevel level) {
     switch (level) {
-        case LogLevel::TRACE: return LOG_DEBUG;
-        case LogLevel::DEBUG: return LOG_DEBUG;
-        case LogLevel::INFO:  return LOG_INFO;
-        case LogLevel::WARN:  return LOG_WARNING;
-        case LogLevel::ERROR: return LOG_ERR;
-        case LogLevel::FATAL: return LOG_CRIT;
+        case LogLevel::Trace: return LOG_DEBUG;
+        case LogLevel::Dbg:   return LOG_DEBUG;
+        case LogLevel::Info:  return LOG_INFO;
+        case LogLevel::Warn:  return LOG_WARNING;
+        case LogLevel::Err:   return LOG_ERR;
+        case LogLevel::Fatal: return LOG_CRIT;
         default:              return LOG_INFO;
     }
 }
@@ -134,27 +134,27 @@ void Logger::logImpl(LogLevel level, std::string_view message,
 }
 
 void Logger::trace(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::TRACE, message, loc);
+    logImpl(LogLevel::Trace, message, loc);
 }
 
 void Logger::debug(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::DEBUG, message, loc);
+    logImpl(LogLevel::Dbg, message, loc);
 }
 
 void Logger::info(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::INFO, message, loc);
+    logImpl(LogLevel::Info, message, loc);
 }
 
 void Logger::warn(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::WARN, message, loc);
+    logImpl(LogLevel::Warn, message, loc);
 }
 
 void Logger::error(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::ERROR, message, loc);
+    logImpl(LogLevel::Err, message, loc);
 }
 
 void Logger::fatal(std::string_view message, const std::source_location& loc) {
-    logImpl(LogLevel::FATAL, message, loc);
+    logImpl(LogLevel::Fatal, message, loc);
 }
 
 } // namespace speeduino

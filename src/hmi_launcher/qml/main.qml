@@ -2,165 +2,432 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
+// Module imports
+import "styles" as Styles
+import "state" as State
+import "components" as Components
+import "screens" as Screens
+
+/**
+ * main.qml
+ * Root application window with tab-based navigation
+ *
+ * Architecture:
+ * - StatusBar (top) - system status and warnings
+ * - Content Area (center) - screens loaded via StackView
+ * - TabBar (bottom) - persistent navigation
+ * - ReverseOverlay (z:1000) - priority camera overlay
+ *
+ * State Management:
+ * - AppState singleton manages all navigation
+ * - Theme singleton provides responsive sizing
+ * - DataProvider (C++) provides engine data
+ */
 ApplicationWindow {
     id: window
     visible: true
     width: 800
     height: 480
     title: "Speeduino UI"
-    color: "#1a1a1a"
+    color: Styles.Theme.backgroundPrimary
 
+    // ═══════════════════════════════════════════════════════════════
+    // C++ CONTEXT PROPERTIES (injected by main.cpp, null in preview)
+    // ═══════════════════════════════════════════════════════════════
+    property var dataProvider: null
+    property var systemMonitor: null
+    property var cameraController: null
+    property var openAutoController: null
+    property var canService: null
+
+    // Fullscreen property
+    property bool isFullscreen: false
+
+    // Fullscreen mode (can be toggled)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
 
-    // State machine for screen management
-    property string currentScreen: "home"
-    property string previousScreen: "home"
+    // Update Theme with window dimensions for responsive scaling
+    Component.onCompleted: {
+        Styles.Theme.windowWidth = Qt.binding(function() { return window.width })
+        Styles.Theme.windowHeight = Qt.binding(function() { return window.height })
+        console.log("Main: Window initialized", window.width, "x", window.height)
+    }
 
-    // Handle reverse gear - priority override
+    // ═══════════════════════════════════════════════════════════════
+    // DATA PROVIDER CONNECTIONS
+    // ═══════════════════════════════════════════════════════════════
+
+    // Engine data object with reactive properties
+    property alias engineData: engineDataObj
+    QtObject {
+        id: engineDataObj
+        property real rpm: dataProvider ? dataProvider.rpm : 0
+        property real coolantTemp: dataProvider ? dataProvider.coolantTemp : 0
+        property real intakeTemp: dataProvider ? dataProvider.intakeTemp : 0
+        property real tps: dataProvider ? dataProvider.tps : 0
+        property real mapKpa: dataProvider ? dataProvider.mapKpa : 0
+        property real lambda: dataProvider ? dataProvider.lambda : 1.0
+        property real ignitionAdvance: dataProvider ? dataProvider.ignitionAdvance : 0
+        property real injectorDuty: dataProvider ? dataProvider.injectorDuty : 0
+        property real vehicleSpeed: dataProvider ? dataProvider.vehicleSpeed : 0
+        property int gear: dataProvider ? dataProvider.gear : 0
+        property bool canOk: dataProvider ? dataProvider.canConnected : false
+        property bool celOn: dataProvider ? dataProvider.celOn : false
+        property bool overheat: dataProvider ? dataProvider.overheat : false
+    }
+
+    // System info object with reactive properties
+    property alias systemInfo: systemInfoObj
+    QtObject {
+        id: systemInfoObj
+        property string canInterface: "can0"
+        property string canBitrate: "500000"
+        property int canRxCount: dataProvider ? dataProvider.canRxCount : 0
+        property int canTxCount: dataProvider ? dataProvider.canTxCount : 0
+        property int canErrorCount: dataProvider ? dataProvider.canErrorCount : 0
+        property real cpuTemp: systemMonitor ? systemMonitor.cpuTemp : 0
+        property real cpuUsage: systemMonitor ? systemMonitor.cpuUsage : 0
+        property real memUsage: systemMonitor ? systemMonitor.memUsage : 0
+        property string uptime: systemMonitor ? systemMonitor.uptime : "0:00:00"
+    }
+
+    // Sync AppState with DataProvider
     Connections {
         target: dataProvider
+        enabled: dataProvider !== undefined
+
+        function onCanConnectedChanged() {
+            State.AppState.canConnected = dataProvider.canConnected
+            State.AppState.updateSystemMode()
+        }
+
         function onReverseChanged() {
-            if (dataProvider.reverseEngaged) {
-                previousScreen = currentScreen
-                currentScreen = "camera"
-                cameraController.start()
-            } else {
-                cameraController.stop()
-                currentScreen = previousScreen
+            State.AppState.setReverseEngaged(dataProvider.reverseEngaged)
+        }
+
+        function onCelOnChanged() {
+            State.AppState.celOn = dataProvider.celOn
+        }
+
+        function onOverheatChanged() {
+            State.AppState.overheat = dataProvider.overheat
+            State.AppState.updateSystemMode()
+        }
+    }
+
+    // Sync with CameraController
+    Connections {
+        target: cameraController
+        enabled: cameraController !== undefined
+
+        function onCameraAvailableChanged() {
+            State.AppState.cameraAvailable = cameraController.cameraAvailable
+            State.AppState.updateSystemMode()
+        }
+
+        function onCameraActiveChanged() {
+            State.AppState.cameraActive = cameraController.cameraActive
+        }
+    }
+
+    // Sync with OpenAutoController
+    Connections {
+        target: openAutoController
+        enabled: openAutoController !== undefined
+
+        function onRunningChanged() {
+            State.AppState.setOpenAutoRunning(openAutoController.running)
+        }
+
+        function onConnectedChanged() {
+            State.AppState.setOpenAutoConnected(openAutoController.connected)
+        }
+
+        function onPhoneNameChanged() {
+            State.AppState.setOpenAutoPhoneName(openAutoController.phoneName)
+        }
+
+        function onConnectionTypeChanged() {
+            State.AppState.setOpenAutoConnectionType(openAutoController.connectionType)
+        }
+
+        function onPhoneConnected(deviceName) {
+            console.log("Main: Phone connected -", deviceName)
+            State.AppState.setOpenAutoPhoneName(deviceName)
+            State.AppState.setOpenAutoConnected(true)
+        }
+
+        function onPhoneDisconnected() {
+            console.log("Main: Phone disconnected")
+            State.AppState.setOpenAutoPhoneName("")
+            State.AppState.setOpenAutoConnected(false)
+        }
+
+        function onShowNotification(title, message) {
+            console.log("Main: OpenAuto notification -", title, ":", message)
+            notificationPopup.show(title, message)
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SCREEN CHANGE HANDLER
+    // ═══════════════════════════════════════════════════════════════
+
+    Connections {
+        target: State.AppState
+
+        function onScreenChanged(newScreen, oldScreen) {
+            console.log("Main: Screen changed from", State.AppState.screenName(oldScreen),
+                       "to", State.AppState.screenName(newScreen))
+
+            // Load the appropriate screen
+            switch (newScreen) {
+                case State.AppState.screenHome:
+                    contentLoader.sourceComponent = homeScreenComponent
+                    break
+                case State.AppState.screenDash:
+                    contentLoader.sourceComponent = dashScreenComponent
+                    break
+                case State.AppState.screenConfig:
+                    contentLoader.sourceComponent = configScreenComponent
+                    break
+                case State.AppState.screenOpenAuto:
+                    contentLoader.sourceComponent = openAutoScreenComponent
+                    break
+            }
+        }
+
+        function onOverlayChanged(newOverlay, oldOverlay) {
+            console.log("Main: Overlay changed to", newOverlay)
+
+            // Handle camera overlay
+            if (newOverlay === State.AppState.overlayReverseCamera) {
+                if (cameraController) cameraController.start()
+            } else if (oldOverlay === State.AppState.overlayReverseCamera) {
+                if (cameraController) cameraController.stop()
             }
         }
     }
 
-    // Screen stack
-    StackView {
-        id: stackView
+    // ═══════════════════════════════════════════════════════════════
+    // LAYOUT
+    // ═══════════════════════════════════════════════════════════════
+
+    // Main layout container
+    Item {
+        id: mainContainer
         anchors.fill: parent
-        initialItem: homeScreen
 
-        // Disable transitions for faster switching
-        pushEnter: null
-        pushExit: null
-        popEnter: null
-        popExit: null
-    }
+        // Status Bar (Top)
+        Components.StatusBar {
+            id: statusBar
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            z: 100
+        }
 
-    // Home screen
-    Component {
-        id: homeScreen
-        Home {
-            onDashClicked: {
-                currentScreen = "dash"
-                stackView.replace(dashScreen)
-            }
-            onAndroidAutoClicked: {
-                currentScreen = "android_auto"
-                openAutoController.start()
-            }
-            onSettingsClicked: {
-                currentScreen = "settings"
-                stackView.replace(settingsScreen)
+        // Content Area (Center)
+        Item {
+            id: contentArea
+            anchors.top: statusBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: tabBar.top
+
+            // Screen loader
+            Loader {
+                id: contentLoader
+                anchors.fill: parent
+                sourceComponent: homeScreenComponent
+                asynchronous: false
+
+                // Pass engine data to loaded screens
+                onLoaded: {
+                    if (item && item.hasOwnProperty("engineData")) {
+                        item.engineData = Qt.binding(function() { return window.engineData })
+                    }
+                    if (item && item.hasOwnProperty("systemInfo")) {
+                        item.systemInfo = Qt.binding(function() { return window.systemInfo })
+                    }
+                }
             }
         }
-    }
 
-    // Dash screen
-    Component {
-        id: dashScreen
-        Dash {
-            onBackClicked: {
-                currentScreen = "home"
-                stackView.replace(homeScreen)
-            }
+        // Tab Bar (Bottom)
+        Components.TabBar {
+            id: tabBar
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            z: 100
         }
-    }
 
-    // Reverse camera screen
-    Component {
-        id: cameraScreen
-        ReverseCamera {}
-    }
-
-    // Settings screen
-    Component {
-        id: settingsScreen
-        Settings {
-            onBackClicked: {
-                currentScreen = "home"
-                stackView.replace(homeScreen)
-            }
-        }
-    }
-
-    // Overlay for reverse camera (highest priority)
-    Loader {
-        anchors.fill: parent
-        active: currentScreen === "camera"
-        sourceComponent: cameraScreen
-        z: 1000
-    }
-
-    // Status bar (always visible except during camera)
-    Rectangle {
-        id: statusBar
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 30
-        color: "#2a2a2a"
-        visible: currentScreen !== "camera"
-
-        RowLayout {
+        // Reverse Camera Overlay (Highest Priority)
+        Screens.ReverseOverlay {
+            id: reverseOverlay
             anchors.fill: parent
-            anchors.margins: 5
+            z: 1000
+        }
 
-            // CAN status
-            Rectangle {
-                width: 12
-                height: 12
-                radius: 6
-                color: dataProvider.canConnected ? "#00ff00" : "#ff0000"
+        // Notification Popup (below reverse overlay)
+        Components.NotificationPopup {
+            id: notificationPopup
+            anchors.fill: parent
+            z: 999
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SCREEN COMPONENTS
+    // ═══════════════════════════════════════════════════════════════
+
+    Component {
+        id: homeScreenComponent
+        Screens.HomeScreen {
+            engineData: window.engineData
+        }
+    }
+
+    Component {
+        id: dashScreenComponent
+        Screens.DashScreen {
+            engineData: window.engineData
+        }
+    }
+
+    Component {
+        id: configScreenComponent
+        Screens.ConfigScreen {
+            systemInfo: window.systemInfo
+
+            onRestartCanService: {
+                console.log("Main: Restart CAN service requested")
+                if (canService) canService.restart()
             }
 
-            Text {
-                text: dataProvider.canConnected ? "CAN OK" : "CAN OFFLINE"
-                color: dataProvider.canConnected ? "#00ff00" : "#ff0000"
-                font.pixelSize: 12
-            }
-
-            Item { Layout.fillWidth: true }
-
-            // Warning indicators
-            Text {
-                visible: dataProvider.celOn
-                text: "CEL"
-                color: "#ff6600"
-                font.pixelSize: 14
-                font.bold: true
-            }
-
-            Text {
-                visible: dataProvider.overheat
-                text: "OVERHEAT"
-                color: "#ff0000"
-                font.pixelSize: 14
-                font.bold: true
-
-                SequentialAnimation on opacity {
-                    running: dataProvider.overheat
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.3; duration: 300 }
-                    NumberAnimation { to: 1.0; duration: 300 }
+            onRestartOpenAuto: {
+                console.log("Main: Restart OpenAuto requested")
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.restart()
+                } else if (openAutoController) {
+                    openAutoController.stop()
+                    openAutoController.start()
                 }
             }
 
-            Item { Layout.fillWidth: true }
+            onTestCamera: {
+                console.log("Main: Camera test requested")
+                State.AppState.showReverseCamera()
+            }
 
-            // Clock / info
-            Text {
-                text: Qt.formatTime(new Date(), "hh:mm")
-                color: "#ffffff"
-                font.pixelSize: 14
+            onCalibrateDisplay: {
+                console.log("Main: Display calibration requested")
+                // Would launch touch calibration utility
             }
         }
+    }
+
+    Component {
+        id: openAutoScreenComponent
+        Screens.OpenAutoScreen {
+            onRequestStart: {
+                console.log("Main: OpenAuto start requested")
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.start()
+                } else if (openAutoController) {
+                    openAutoController.start()
+                }
+            }
+
+            onRequestStop: {
+                console.log("Main: OpenAuto stop requested")
+                // Use embedded OpenAuto by default, fall back to process-based
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.stop()
+                } else if (openAutoController) {
+                    openAutoController.stop()
+                }
+            }
+
+            onTouchEvent: function(x, y, type) {
+                // Forward touch events to OpenAuto
+                // CRITICAL: Route to openAutoEmbedded when in embedded mode
+                // (Note: OpenAutoScreen.qml already calls sendTouch directly,
+                //  this is for backwards compatibility with process mode)
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.sendTouch(x, y, type)
+                } else if (openAutoController) {
+                    openAutoController.sendTouch(x, y, type)
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // KEYBOARD SHORTCUTS (Development/Debug)
+    // ═══════════════════════════════════════════════════════════════
+
+    Shortcut {
+        sequence: "F11"
+        onActivated: {
+            window.visibility = (window.visibility === Window.FullScreen)
+                              ? Window.Windowed
+                              : Window.FullScreen
+        }
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        onActivated: {
+            if (State.AppState.currentOverlay !== State.AppState.overlayNone) {
+                if (State.AppState.currentOverlay !== State.AppState.overlayReverseCamera ||
+                    !State.AppState.reverseEngaged) {
+                    State.AppState.hideOverlay()
+                }
+            } else if (State.AppState.canGoBack()) {
+                State.AppState.goBack()
+            }
+        }
+    }
+
+    // Debug shortcuts (remove in production)
+    Shortcut {
+        sequence: "F1"
+        onActivated: State.AppState.goHome()
+    }
+    Shortcut {
+        sequence: "F2"
+        onActivated: State.AppState.goDash()
+    }
+    Shortcut {
+        sequence: "F3"
+        onActivated: State.AppState.goConfig()
+    }
+    Shortcut {
+        sequence: "F4"
+        onActivated: State.AppState.goOpenAuto()
+    }
+    Shortcut {
+        sequence: "F5"
+        onActivated: State.AppState.showReverseCamera()
+    }
+    Shortcut {
+        sequence: "F6"
+        onActivated: State.AppState.hideReverseCamera()
+    }
+    Shortcut {
+        sequence: "F7"
+        onActivated: notificationPopup.show("Android Auto", "Phone connected successfully")
+    }
+    Shortcut {
+        sequence: "F8"
+        onActivated: notificationPopup.show("Warning", "Engine temperature high!", Components.NotificationPopup.Warning)
+    }
+    Shortcut {
+        sequence: "F9"
+        onActivated: notificationPopup.show("Critical", "Oil pressure low!", Components.NotificationPopup.Critical)
     }
 }

@@ -7,6 +7,13 @@
 #include <functional>
 #include <atomic>
 #include <chrono>
+#include <mutex>
+
+// Forward declarations for gpiod v2 types
+#ifdef HAS_GPIOD
+struct gpiod_chip;
+struct gpiod_line_request;
+#endif
 
 namespace speeduino {
 
@@ -16,7 +23,8 @@ using ReverseStateCallback = std::function<void(bool engaged, uint8_t source)>;
 class ReverseDetector {
 public:
     ReverseDetector();
-    ~ReverseDetector();
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~ReverseDetector() noexcept;
 
     // Initialize with config
     bool init(const ReverseConfig& config);
@@ -44,7 +52,8 @@ public:
         CAN = 0,
         GPIO = 1
     };
-    Source getSource() const { return m_source; }
+    // FIX #5: Thread-safe getter using atomic load
+    Source getSource() const { return m_source.load(std::memory_order_acquire); }
 
 private:
     void setState(bool engaged, Source source);
@@ -56,16 +65,23 @@ private:
 
     std::atomic<bool> m_engaged{false};
     std::atomic<uint32_t> m_lastChangeTimestamp{0};
-    Source m_source{Source::CAN};
+    // FIX #5: Made atomic to prevent data race between CAN/GPIO threads and readers
+    std::atomic<Source> m_source{Source::CAN};
 
-    // Debounce
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 DATA RACE FIX: Debounce state protected by mutex
+    // Both procesCanFrame() and checkGpio() may run on different threads
+    // MISRA C++:2008 Rule 14-7-1: All shared data requires synchronization
+    // ═══════════════════════════════════════════════════════════════════════
+    mutable std::mutex m_debounceMutex;
     std::chrono::steady_clock::time_point m_lastTransition;
     bool m_pendingState{false};
 
-    // GPIO handle (platform-specific)
+    // GPIO handle (platform-specific) - gpiod v2 API
 #ifdef HAS_GPIOD
-    struct gpiod_chip* m_gpioChip{nullptr};
-    struct gpiod_line* m_gpioLine{nullptr};
+    gpiod_chip* m_gpioChip{nullptr};
+    gpiod_line_request* m_gpioRequest{nullptr};
+    unsigned int m_gpioOffset{0};
 #endif
 
     bool m_gpioInitialized{false};

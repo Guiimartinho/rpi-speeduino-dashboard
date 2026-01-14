@@ -4,6 +4,8 @@
 #include "common/zmq_messages.hpp"
 #include <QObject>
 #include <QThread>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QString>
 #include <memory>
 #include <atomic>
@@ -73,27 +75,27 @@ public:
     explicit DataProvider(QObject* parent = nullptr);
     ~DataProvider();
 
-    // Property getters
-    int rpm() const { return m_data.rpm; }
-    int coolantTemp() const { return m_data.coolant_temp; }
-    int intakeTemp() const { return m_data.intake_temp; }
-    int tps() const { return m_data.tps; }
-    double mapKpa() const { return m_data.map_kpa / 10.0; }
-    double lambda() const { return m_data.lambda / 1000.0; }
-    double ignitionAdvance() const { return m_data.ignition_advance / 10.0; }
-    int injectorDuty() const { return m_data.injector_duty; }
-    int gear() const { return m_data.gear; }
-    double vehicleSpeed() const { return m_data.vehicle_speed / 10.0; }
-    int fuelPressure() const { return m_data.fuel_pressure; }
-    int oilPressure() const { return m_data.oil_pressure; }
-    int oilTemp() const { return m_data.oil_temp; }
+    // Thread-safe property getters (data may be updated from worker thread)
+    int rpm() const;
+    int coolantTemp() const;
+    int intakeTemp() const;
+    int tps() const;
+    double mapKpa() const;
+    double lambda() const;
+    double ignitionAdvance() const;
+    int injectorDuty() const;
+    int gear() const;
+    double vehicleSpeed() const;
+    int fuelPressure() const;
+    int oilPressure() const;
+    int oilTemp() const;
 
-    bool celOn() const { return m_data.isCelOn(); }
-    bool overheat() const { return m_data.isOverheat(); }
-    bool canConnected() const { return m_data.isCanOk(); }
-    bool engineRunning() const { return m_data.isEngineRunning(); }
+    bool celOn() const;
+    bool overheat() const;
+    bool canConnected() const;
+    bool engineRunning() const;
 
-    bool reverseEngaged() const { return m_reverseEngaged; }
+    bool reverseEngaged() const;
 
     // Start/stop data reception
     Q_INVOKABLE void start();
@@ -110,11 +112,16 @@ private slots:
     void onSteeringEventReceived(const SteeringEvent& event);
 
 private:
+    // Thread synchronization - protects m_data and m_reverseEngaged
+    mutable QMutex m_dataMutex;
+
+    // Shared state (protected by m_dataMutex)
     EngineData m_data;
     bool m_reverseEngaged{false};
 
+    // Worker thread management
     QThread m_workerThread;
-    ZmqWorker* m_worker{nullptr};
+    std::unique_ptr<ZmqWorker> m_worker;
 };
 
 } // namespace speeduino

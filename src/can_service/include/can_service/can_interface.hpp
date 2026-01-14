@@ -38,36 +38,37 @@ using CanFrameCallback = std::function<void(const CanFrame&)>;
 class CanInterface {
 public:
     CanInterface();
-    ~CanInterface();
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    virtual ~CanInterface() noexcept;
 
     // Non-copyable
     CanInterface(const CanInterface&) = delete;
     CanInterface& operator=(const CanInterface&) = delete;
 
     // Initialize interface
-    bool open(const std::string& interface_name);
+    virtual bool open(const std::string& interface_name);
 
     // Close interface
-    void close();
+    virtual void close();
 
     // Check if connected
-    bool isConnected() const;
+    virtual bool isConnected() const;
 
     // Send a frame
-    bool send(const CanFrame& frame);
+    virtual bool send(const CanFrame& frame);
 
     // Receive a frame (blocking with timeout)
-    std::optional<CanFrame> receive(int timeout_ms = 100);
+    virtual std::optional<CanFrame> receive(int timeout_ms = 100);
 
     // Set receive callback (called from read thread)
-    void setCallback(CanFrameCallback callback);
+    virtual void setCallback(CanFrameCallback callback);
 
     // Start/stop async receive loop
-    void startReceiveLoop();
-    void stopReceiveLoop();
+    virtual void startReceiveLoop();
+    virtual void stopReceiveLoop();
 
     // Get status
-    CanStatus getStatus() const;
+    virtual CanStatus getStatus() const;
 
     // Get file descriptor (for poll/select)
     int getFd() const { return m_socket; }

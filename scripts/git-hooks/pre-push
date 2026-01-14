@@ -1,0 +1,228 @@
+#!/bin/bash
+#
+# Pre-push hook for speeduino-ui-openauto
+# Runs validation before allowing pushes to remote
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Read push information from stdin
+while read -r local_ref local_sha remote_ref remote_sha; do
+    echo -e "${BLUE}Push: $local_ref -> $remote_ref${NC}"
+done
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+ERRORS=0
+
+echo -e "${YELLOW}Running pre-push checks on branch: $CURRENT_BRANCH${NC}"
+
+# =============================================================================
+# CHECK 1: Protected branch warning
+# =============================================================================
+echo -e "\n${YELLOW}Checking branch protection...${NC}"
+
+PROTECTED_BRANCHES=("main" "master" "production")
+
+for branch in "${PROTECTED_BRANCHES[@]}"; do
+    if [ "$CURRENT_BRANCH" = "$branch" ]; then
+        echo -e "${RED}========================================${NC}"
+        echo -e "${RED}WARNING: Pushing directly to $branch!${NC}"
+        echo -e "${RED}========================================${NC}"
+        echo -e "${YELLOW}Consider using a feature branch and PR instead.${NC}"
+        echo ""
+        read -r -p "Are you sure you want to push to $branch? [y/N] " response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo -e "${RED}Push cancelled.${NC}"
+            exit 1
+        fi
+    fi
+done
+echo -e "${GREEN}  [OK] Branch check passed${NC}"
+
+# =============================================================================
+# CHECK 2: Verify build (if CMake/build system available)
+# =============================================================================
+echo -e "\n${YELLOW}Checking build configuration...${NC}"
+
+if [ -f "CMakeLists.txt" ]; then
+    # Check if build directory exists and has cache
+    if [ -d "build" ] && [ -f "build/CMakeCache.txt" ]; then
+        echo -e "${GREEN}  [OK] Build directory exists${NC}"
+
+        # Optional: Quick build check (commented out for speed)
+        # if command -v cmake &> /dev/null; then
+        #     echo -e "${YELLOW}  Running quick build check...${NC}"
+        #     if cmake --build build --target hmi_launcher 2>/dev/null; then
+        #         echo -e "${GREEN}  [OK] Build successful${NC}"
+        #     else
+        #         echo -e "${RED}  [FAIL] Build failed${NC}"
+        #         ERRORS=$((ERRORS + 1))
+        #     fi
+        # fi
+    else
+        echo -e "${YELLOW}  [SKIP] No build directory (run cmake to create)${NC}"
+    fi
+else
+    echo -e "${YELLOW}  [SKIP] No CMakeLists.txt found${NC}"
+fi
+
+# =============================================================================
+# CHECK 3: Run tests (if available)
+# =============================================================================
+echo -e "\n${YELLOW}Checking for tests...${NC}"
+
+if [ -d "build" ] && [ -f "build/CTestTestfile.cmake" ]; then
+    echo -e "${YELLOW}  Running tests...${NC}"
+
+    if (cd build && ctest --output-on-failure -j4 2>/dev/null); then
+        echo -e "${GREEN}  [OK] All tests passed${NC}"
+    else
+        echo -e "${RED}  [FAIL] Tests failed${NC}"
+        ERRORS=$((ERRORS + 1))
+    fi
+elif [ -d "tests" ]; then
+    echo -e "${YELLOW}  [SKIP] Tests directory exists but no CTest config${NC}"
+else
+    echo -e "${YELLOW}  [SKIP] No tests configured${NC}"
+fi
+
+# =============================================================================
+# CHECK 4: Check for debug code / TODO markers in changes
+# =============================================================================
+echo -e "\n${YELLOW}Checking for debug code markers...${NC}"
+
+# Get files that changed between remote and local
+CHANGED_FILES=$(git diff --name-only origin/$CURRENT_BRANCH..HEAD 2>/dev/null || git diff --name-only HEAD~10..HEAD 2>/dev/null || echo "")
+
+if [ -n "$CHANGED_FILES" ]; then
+    DEBUG_PATTERNS=(
+        'console\.log'
+        'print\s*\('
+        'qDebug\s*\('
+        'TODO'
+        'FIXME'
+        'HACK'
+        'XXX'
+        'debugger'
+    )
+
+    WARNINGS=0
+    for pattern in "${DEBUG_PATTERNS[@]}"; do
+        for file in $CHANGED_FILES; do
+            if [ -f "$file" ]; then
+                MATCHES=$(grep -nE "$pattern" "$file" 2>/dev/null || true)
+                if [ -n "$MATCHES" ]; then
+                    if [ $WARNINGS -eq 0 ]; then
+                        echo -e "${YELLOW}  Debug markers found (review before release):${NC}"
+                    fi
+                    echo -e "${YELLOW}    $file:${NC}"
+                    echo "$MATCHES" | head -3 | while read -r line; do
+                        echo -e "${YELLOW}      $line${NC}"
+                    done
+                    WARNINGS=$((WARNINGS + 1))
+                fi
+            fi
+        done
+    done
+
+    if [ $WARNINGS -eq 0 ]; then
+        echo -e "${GREEN}  [OK] No debug markers found${NC}"
+    else
+        echo -e "${YELLOW}  [WARN] Found $WARNINGS files with debug markers${NC}"
+    fi
+else
+    echo -e "${YELLOW}  [SKIP] No changed files to check${NC}"
+fi
+
+# =============================================================================
+# CHECK 5: Verify commit messages format
+# =============================================================================
+echo -e "\n${YELLOW}Checking commit message format...${NC}"
+
+# Get commits being pushed
+COMMITS=$(git log origin/$CURRENT_BRANCH..HEAD --format="%H %s" 2>/dev/null || git log HEAD~5..HEAD --format="%H %s" 2>/dev/null || echo "")
+
+if [ -n "$COMMITS" ]; then
+    # Check for conventional commits format
+    CONVENTIONAL_PATTERN='^[a-f0-9]+ (feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+'
+
+    BAD_COMMITS=0
+    echo "$COMMITS" | while read -r line; do
+        if [[ ! "$line" =~ $CONVENTIONAL_PATTERN ]]; then
+            if [ $BAD_COMMITS -eq 0 ]; then
+                echo -e "${YELLOW}  Non-conventional commit messages:${NC}"
+            fi
+            echo -e "${YELLOW}    - ${line:0:80}${NC}"
+            BAD_COMMITS=$((BAD_COMMITS + 1))
+        fi
+    done
+
+    # Note: This is a warning, not a blocker
+    echo -e "${GREEN}  [OK] Commit messages checked${NC}"
+else
+    echo -e "${YELLOW}  [SKIP] No commits to check${NC}"
+fi
+
+# =============================================================================
+# CHECK 6: Check for merge conflicts markers
+# =============================================================================
+echo -e "\n${YELLOW}Checking for conflict markers...${NC}"
+
+if [ -n "$CHANGED_FILES" ]; then
+    CONFLICT_FOUND=0
+    for file in $CHANGED_FILES; do
+        if [ -f "$file" ]; then
+            if grep -qE '^(<<<<<<<|=======|>>>>>>>)' "$file" 2>/dev/null; then
+                echo -e "${RED}  [FAIL] Conflict markers in: $file${NC}"
+                CONFLICT_FOUND=1
+                ERRORS=$((ERRORS + 1))
+            fi
+        fi
+    done
+
+    if [ $CONFLICT_FOUND -eq 0 ]; then
+        echo -e "${GREEN}  [OK] No conflict markers${NC}"
+    fi
+else
+    echo -e "${YELLOW}  [SKIP] No files to check${NC}"
+fi
+
+# =============================================================================
+# CHECK 7: Verify .gitignore is respected
+# =============================================================================
+echo -e "\n${YELLOW}Checking for ignored files...${NC}"
+
+IGNORED_TRACKED=$(git ls-files -i --exclude-standard 2>/dev/null || true)
+
+if [ -n "$IGNORED_TRACKED" ]; then
+    echo -e "${YELLOW}  [WARN] These files are tracked but should be ignored:${NC}"
+    echo "$IGNORED_TRACKED" | head -5 | while read -r f; do
+        echo -e "${YELLOW}    - $f${NC}"
+    done
+else
+    echo -e "${GREEN}  [OK] No improperly tracked files${NC}"
+fi
+
+# =============================================================================
+# FINAL RESULT
+# =============================================================================
+echo ""
+if [ $ERRORS -gt 0 ]; then
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}Pre-push checks FAILED ($ERRORS errors)${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo -e "${YELLOW}Fix the issues above or use 'git push --no-verify' to skip${NC}"
+    exit 1
+else
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}All pre-push checks passed!${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    exit 0
+fi

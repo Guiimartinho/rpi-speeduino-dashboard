@@ -8,12 +8,102 @@
 
 namespace speeduino {
 
-// ZMQ IPC endpoints
+// ═══════════════════════════════════════════════════════════════════════════════
+// ZMQ IPC Endpoints Configuration
+// ISO 26262: Configurable endpoints for testing and deployment flexibility
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * @struct ZmqEndpointsConfig
+ * @brief Configurable ZMQ IPC endpoints
+ *
+ * Default values are for production use.
+ * Can be overridden via configuration file or for testing.
+ */
+struct ZmqEndpointsConfig {
+    std::string engine_data = "ipc:///tmp/speeduino_data.ipc";
+    std::string can_command = "ipc:///tmp/speeduino_cmd.ipc";
+    std::string reverse_trigger = "ipc:///tmp/reverse_trigger.ipc";
+    std::string steering_events = "ipc:///tmp/steering_events.ipc";
+
+    // Validation helper
+    bool isValid() const {
+        return !engine_data.empty() &&
+               !can_command.empty() &&
+               !reverse_trigger.empty() &&
+               !steering_events.empty();
+    }
+};
+
+/**
+ * @class ZmqEndpoints
+ * @brief Singleton for managing ZMQ endpoint configuration
+ *
+ * Usage:
+ *   // Get default endpoints
+ *   auto& ep = ZmqEndpoints::instance();
+ *   publisher.bind(ep.engineData());
+ *
+ *   // Override for testing
+ *   ZmqEndpointsConfig testConfig;
+ *   testConfig.engine_data = "ipc:///tmp/test_engine.ipc";
+ *   ZmqEndpoints::configure(testConfig);
+ */
+class ZmqEndpoints {
+public:
+    static ZmqEndpoints& instance() {
+        static ZmqEndpoints instance;
+        return instance;
+    }
+
+    // Configure endpoints (call before using any endpoint)
+    static void configure(const ZmqEndpointsConfig& config) {
+        instance().config_ = config;
+    }
+
+    // Reset to default configuration
+    static void reset() {
+        instance().config_ = ZmqEndpointsConfig{};
+    }
+
+    // Endpoint getters
+    const std::string& engineData() const { return config_.engine_data; }
+    const std::string& canCommand() const { return config_.can_command; }
+    const std::string& reverseTrigger() const { return config_.reverse_trigger; }
+    const std::string& steeringEvents() const { return config_.steering_events; }
+
+    // Get full configuration
+    const ZmqEndpointsConfig& config() const { return config_; }
+
+private:
+    ZmqEndpoints() = default;
+    ZmqEndpointsConfig config_;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Legacy namespace for backward compatibility
+// DEPRECATED: Use ZmqEndpoints::instance() instead
+// ═══════════════════════════════════════════════════════════════════════════════
 namespace endpoints {
+    // Default endpoints (for backward compatibility)
     constexpr const char* ENGINE_DATA = "ipc:///tmp/speeduino_data.ipc";
     constexpr const char* CAN_COMMAND = "ipc:///tmp/speeduino_cmd.ipc";
     constexpr const char* REVERSE_TRIGGER = "ipc:///tmp/reverse_trigger.ipc";
     constexpr const char* STEERING_EVENTS = "ipc:///tmp/steering_events.ipc";
+
+    // Helper to get configured endpoint (preferred)
+    inline const std::string& getEngineData() {
+        return ZmqEndpoints::instance().engineData();
+    }
+    inline const std::string& getCanCommand() {
+        return ZmqEndpoints::instance().canCommand();
+    }
+    inline const std::string& getReverseTrigger() {
+        return ZmqEndpoints::instance().reverseTrigger();
+    }
+    inline const std::string& getSteeringEvents() {
+        return ZmqEndpoints::instance().steeringEvents();
+    }
 }
 
 // Topic prefixes for PUB/SUB
@@ -24,8 +114,20 @@ namespace topics {
     constexpr const char* STATUS = "STATUS";
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
 // Engine data structure - published at 50Hz
+// ISO 26262 ASIL-B: Complete engine telemetry for dashboard display
+//
+// Supports data from:
+//   - Haltech (IC-7/IC-10) - Most complete
+//   - BMW E46 PT-CAN
+//   - VAG (VW/Audi/Gol)
+//   - OBD-II fallback
+// ═══════════════════════════════════════════════════════════════════════════════
 struct EngineData {
+    // ═══════════════════════════════════════════════════════════════════════
+    // CORE DATA (all protocols)
+    // ═══════════════════════════════════════════════════════════════════════
     uint32_t timestamp_ms = 0;      // Monotonic timestamp
     uint16_t rpm = 0;               // Engine RPM
     int8_t   coolant_temp = 0;      // Coolant temperature (Celsius)
@@ -35,32 +137,103 @@ struct EngineData {
     uint16_t lambda = 0;            // Lambda (x 1000, 1000 = stoich)
     int16_t  ignition_advance = 0;  // Ignition advance (degrees x 10)
     uint8_t  injector_duty = 0;     // Injector duty cycle (0-100%)
-    uint8_t  gear = 0;              // Current gear (0=N, 1-6)
+    uint8_t  gear = 0;              // Current gear (0=N, 1-6, 7=R)
     uint16_t vehicle_speed = 0;     // Speed (km/h x 10)
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRESSURES (Haltech, some BMW)
+    // ═══════════════════════════════════════════════════════════════════════
     uint16_t fuel_pressure = 0;     // Fuel pressure (kPa)
     uint16_t oil_pressure = 0;      // Oil pressure (kPa)
+    uint16_t boost_target = 0;      // Boost target (kPa x 10) - Haltech
+    uint16_t baro = 0;              // Barometric pressure (kPa x 10)
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TEMPERATURES
+    // ═══════════════════════════════════════════════════════════════════════
     int8_t   oil_temp = 0;          // Oil temperature (Celsius)
+    int8_t   fuel_temp = 0;         // Fuel temperature (Celsius) - Haltech
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ELECTRICAL
+    // ═══════════════════════════════════════════════════════════════════════
     uint16_t battery_voltage = 0;   // Battery (mV)
-    uint8_t  flags = 0;             // Status flags (bitfield)
 
-    // Flag bits
-    static constexpr uint8_t FLAG_CEL_ON     = 0x01;
-    static constexpr uint8_t FLAG_OVERHEAT   = 0x02;
-    static constexpr uint8_t FLAG_CAN_OK     = 0x04;
-    static constexpr uint8_t FLAG_ENGINE_RUN = 0x08;
-    static constexpr uint8_t FLAG_CLUTCH_IN  = 0x10;
-    static constexpr uint8_t FLAG_BRAKE_ON   = 0x20;
+    // ═══════════════════════════════════════════════════════════════════════
+    // FUEL SYSTEM (Haltech, BMW)
+    // ═══════════════════════════════════════════════════════════════════════
+    uint16_t fuel_consumption = 0;  // Fuel consumption (L/h x 100) - BMW
+    uint8_t  fuel_load = 0;         // Fuel load percentage - Haltech
 
-    // Helper methods
+    // ═══════════════════════════════════════════════════════════════════════
+    // INJECTION (Haltech - per cylinder data)
+    // ═══════════════════════════════════════════════════════════════════════
+    uint16_t pw1 = 0;               // Pulse width cyl 1 (microseconds)
+    uint16_t pw2 = 0;               // Pulse width cyl 2 (microseconds)
+    uint16_t pw3 = 0;               // Pulse width cyl 3 (microseconds)
+    uint16_t pw4 = 0;               // Pulse width cyl 4 (microseconds)
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // VVT (Variable Valve Timing - Haltech)
+    // ═══════════════════════════════════════════════════════════════════════
+    int16_t  vvt_intake = 0;        // VVT intake angle (degrees x 10)
+    int16_t  vvt_exhaust = 0;       // VVT exhaust angle (degrees x 10)
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TORQUE (BMW only)
+    // ═══════════════════════════════════════════════════════════════════════
+    uint8_t  torque_indexed = 0;    // Indexed torque (%) - BMW
+    uint8_t  torque_indicated = 0;  // Indicated torque (%) - BMW
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATUS FLAGS
+    // ═══════════════════════════════════════════════════════════════════════
+    uint16_t flags = 0;             // Status flags (expanded bitfield)
+
+    // Flag bits (lower byte - common flags)
+    static constexpr uint16_t FLAG_CEL_ON       = 0x0001;  // Check engine light
+    static constexpr uint16_t FLAG_OVERHEAT     = 0x0002;  // Overheat warning
+    static constexpr uint16_t FLAG_CAN_OK       = 0x0004;  // CAN bus healthy
+    static constexpr uint16_t FLAG_ENGINE_RUN   = 0x0008;  // Engine running
+    static constexpr uint16_t FLAG_CLUTCH_IN    = 0x0010;  // Clutch pedal pressed
+    static constexpr uint16_t FLAG_BRAKE_ON     = 0x0020;  // Brake pedal pressed
+    static constexpr uint16_t FLAG_CRUISE_ON    = 0x0040;  // Cruise control active
+
+    // Flag bits (upper byte - extended flags)
+    static constexpr uint16_t FLAG_LAUNCH_SOFT  = 0x0100;  // Soft launch active
+    static constexpr uint16_t FLAG_LAUNCH_HARD  = 0x0200;  // Hard launch active
+    static constexpr uint16_t FLAG_FLAT_SHIFT   = 0x0400;  // Flat shift active
+    static constexpr uint16_t FLAG_REV_LIMIT    = 0x0800;  // Rev limiter active
+    static constexpr uint16_t FLAG_LOW_OIL_P    = 0x1000;  // Low oil pressure
+    static constexpr uint16_t FLAG_LOW_FUEL_P   = 0x2000;  // Low fuel pressure
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // HELPER METHODS
+    // ═══════════════════════════════════════════════════════════════════════
     bool isCelOn() const { return flags & FLAG_CEL_ON; }
     bool isOverheat() const { return flags & FLAG_OVERHEAT; }
     bool isCanOk() const { return flags & FLAG_CAN_OK; }
     bool isEngineRunning() const { return flags & FLAG_ENGINE_RUN; }
+    bool isBrakeOn() const { return flags & FLAG_BRAKE_ON; }
+    bool isCruiseOn() const { return flags & FLAG_CRUISE_ON; }
+    bool isLaunching() const { return flags & (FLAG_LAUNCH_SOFT | FLAG_LAUNCH_HARD); }
+    bool isFlatShifting() const { return flags & FLAG_FLAT_SHIFT; }
+
+    // Get AFR from lambda (for display)
+    float getAFR() const { return lambda * 0.0147f; }  // lambda × 14.7
+
+    // Get boost in PSI (for display)
+    float getBoostPSI() const {
+        int16_t boost_kpa = static_cast<int16_t>(map_kpa / 10) - 101;
+        return boost_kpa * 0.145038f;
+    }
 
     MSGPACK_DEFINE(timestamp_ms, rpm, coolant_temp, intake_temp, tps,
                    map_kpa, lambda, ignition_advance, injector_duty, gear,
-                   vehicle_speed, fuel_pressure, oil_pressure, oil_temp,
-                   battery_voltage, flags)
+                   vehicle_speed, fuel_pressure, oil_pressure, boost_target,
+                   baro, oil_temp, fuel_temp, battery_voltage, fuel_consumption,
+                   fuel_load, pw1, pw2, pw3, pw4, vvt_intake, vvt_exhaust,
+                   torque_indexed, torque_indicated, flags)
 };
 
 // Reverse gear event

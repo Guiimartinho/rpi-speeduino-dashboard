@@ -10,7 +10,22 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <iostream>
 #include <getopt.h>
+
+// Forward declaration from signal_database.cpp
+namespace speeduino {
+std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAN Service Configuration Constants
+// ISO 26262: Named constants for timing and rate configuration
+// ═══════════════════════════════════════════════════════════════════════════════
+namespace {
+    /// CAN frame receive timeout in milliseconds
+    constexpr uint32_t CAN_RECEIVE_TIMEOUT_MS = 10;
+} // anonymous namespace
 
 namespace {
 
@@ -31,9 +46,6 @@ void printUsage(const char* progname) {
               << "  -v, --verbose            Enable debug logging\n"
               << "  -h, --help               Show this help\n";
 }
-
-// Forward declarations from signal_database.cpp
-std::vector<speeduino::CanSignalDef> getSignalsForProtocol(const std::string& protocol);
 
 } // anonymous namespace
 
@@ -78,7 +90,7 @@ int main(int argc, char* argv[]) {
     // Initialize logger
     Logger::init("can_service");
     if (verbose) {
-        Logger::setLevel(LogLevel::DEBUG);
+        Logger::setLevel(LogLevel::Dbg);
     }
 
     LOG_INFO("Speeduino CAN Service starting...");
@@ -128,9 +140,27 @@ int main(int argc, char* argv[]) {
 
     LOG_INFO("CAN service initialized, starting main loop");
 
-    // Calculate publish interval
+    // ═══════════════════════════════════════════════════════════════════════
+    // ISO 26262 ASIL-B: Validate publish rate before division
+    // MISRA C++:2008 Rule 5-0-5: Division by zero shall be prevented
+    // ═══════════════════════════════════════════════════════════════════════
+    constexpr uint32_t DEFAULT_PUBLISH_RATE_HZ = 50;
+    constexpr uint32_t MAX_PUBLISH_RATE_HZ = 1000;
+
+    uint32_t safePublishRate = sysConfig.zmq_publish_rate_hz;
+    if (safePublishRate == 0) {
+        LOG_WARN("ZMQ publish rate is 0, using default " +
+                 std::to_string(DEFAULT_PUBLISH_RATE_HZ) + " Hz");
+        safePublishRate = DEFAULT_PUBLISH_RATE_HZ;
+    } else if (safePublishRate > MAX_PUBLISH_RATE_HZ) {
+        LOG_WARN("ZMQ publish rate " + std::to_string(safePublishRate) +
+                 " exceeds max, clamping to " + std::to_string(MAX_PUBLISH_RATE_HZ) + " Hz");
+        safePublishRate = MAX_PUBLISH_RATE_HZ;
+    }
+
+    // Calculate publish interval (safe - safePublishRate guaranteed > 0)
     const auto publishInterval = std::chrono::microseconds(
-        1000000 / sysConfig.zmq_publish_rate_hz);
+        1000000 / safePublishRate);
     auto lastPublish = std::chrono::steady_clock::now();
 
     // Timeout tracking
@@ -140,7 +170,7 @@ int main(int argc, char* argv[]) {
     // Main loop
     while (g_running) {
         // Receive CAN frames (non-blocking with short timeout)
-        auto frame = canInterface.receive(10);
+        auto frame = canInterface.receive(CAN_RECEIVE_TIMEOUT_MS);
         if (frame) {
             parser.parseFrame(*frame);
         }

@@ -1,63 +1,189 @@
+# ═══════════════════════════════════════════════════════════════════════════════
 # Speeduino UI System Configuration
+# ISO 26262 ASIL-B: Complete CAN RX/TX configuration
+#
+# Reference: SCG-ECU 2.0 CAN Dashboard Master Reference (Jan 2026)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# CAN Bus settings
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAN BUS SETTINGS (RX - ECU → Dashboard)
+# ═══════════════════════════════════════════════════════════════════════════════
 can:
   interface: can0
   bitrate: 500000
   protocol: haltech  # Options: haltech, bmw, vag
   timeout_ms: 500
 
-# ZeroMQ IPC settings
-zmq:
-  publish_rate_hz: 50  # Engine data publish rate
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAN TX SETTINGS (Dashboard → ECU)
+# ═══════════════════════════════════════════════════════════════════════════════
+tx:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # OBD-II Handler
+  # Modes: 01 (live data), 03 (DTCs), 04 (clear), 07 (pending), 09 (VIN)
+  # ─────────────────────────────────────────────────────────────────────────────
+  obd:
+    enabled: true
+    request_id: 0x7DF       # Broadcast (use 0x7E0 for ECU-specific)
+    response_id: 0x7E8      # ECU response
+    timeout_ms: 100
+    retry_count: 3
+    # PIDs to poll periodically (for fallback when CAN broadcast unavailable)
+    poll_pids:
+      - 0x0C  # RPM
+      - 0x05  # Coolant temp
+      - 0x0D  # Speed
+      - 0x11  # TPS
 
-# Reverse camera settings
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Wideband Lambda Forwarder
+  # Use when ECU doesn't have integrated wideband input
+  # ─────────────────────────────────────────────────────────────────────────────
+  wideband:
+    enabled: false
+    format: aem_xseries     # aem_xseries, innovate_lc2, plx_sm_afr, spartan
+    can_id: 0x180           # Override default for format
+    rate_hz: 20
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # BMW Cluster Simulator
+  # Required when using original BMW E46/E39/E38 cluster with non-BMW ECU
+  # Prevents cluster warning lights and enables gear display
+  # ─────────────────────────────────────────────────────────────────────────────
+  bmw_sim:
+    enabled: false
+    # ASC - Traction control (prevents DSC warning)
+    asc_enabled: true
+    asc_id: 0x153
+    # EGS - Transmission (gear display on cluster)
+    egs_enabled: true
+    egs_id: 0x43F
+    # SAS - Steering angle (optional, for some clusters)
+    sas_enabled: false
+    sas_id: 0x1D2
+    # ABS - Wheel speeds (optional, for speedometer)
+    abs_enabled: false
+    abs_front_id: 0x1F0
+    abs_rear_id: 0x1F5
+    rate_hz: 10
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ZeroMQ IPC SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+zmq:
+  publish_rate_hz: 50       # Engine data publish rate (match CAN protocol)
+  engine_data: "ipc:///tmp/speeduino_data.ipc"
+  can_command: "ipc:///tmp/speeduino_cmd.ipc"
+  reverse_trigger: "ipc:///tmp/reverse_trigger.ipc"
+  steering_events: "ipc:///tmp/steering_events.ipc"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAMERA SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
 camera:
   device: /dev/video0
   width: 640
   height: 480
   fps: 30
 
-# OpenAuto settings
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPENAUTO SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
 openauto:
   path: /usr/local/bin/openauto
 
-# Reverse gear detection
+# ═══════════════════════════════════════════════════════════════════════════════
+# REVERSE GEAR DETECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Detection modes:
+#   "can"           - CAN bus only (modern ECUs)
+#   "gpio"          - GPIO only (classic cars like Gol Quadrado)
+#   "both"          - Try CAN first, GPIO as fallback
+#   "speeduino_can" - Speeduino CAN broadcast
+#
+# Presets:
+#   "gol_quadrado"  - VW Gol Quadrado / Fusca / Kombi (GPIO)
+#   "classic_vw"    - Same as gol_quadrado
+#   "speeduino_can" - Speeduino with CAN enabled
+#   "haltech"       - Haltech ECU
+#
 reverse:
-  # CAN-based detection (primary)
-  can_enabled: true
-  can_id: 0x370      # Haltech VSS frame
-  byte_index: 3       # Gear byte
-  bit_mask: 0xFF      # Full byte
-  expected_value: 0x00  # Gear 0 = reverse (adjust for your setup)
-  debounce_ms: 100
+  detection_mode: both
+  # preset: haltech       # Uncomment to use preset
 
-  # GPIO fallback (optional)
-  # Connects to reverse lamp signal via optocoupler
+  # CAN-based detection
+  can_enabled: true
+  can_id: 0x370           # Haltech VSS frame
+  byte_index: 3           # Gear byte
+  bit_mask: 0xFF
+  expected_value: 0x00    # Gear 0 = reverse
+
+  # GPIO detection (classic cars)
   gpio_enabled: false
   gpio_chip: gpiochip0
-  gpio_line: 17       # GPIO17 (pin 11)
+  gpio_line: 17           # GPIO17 (pin 11)
   gpio_active_low: false
 
-# Allowed CAN commands (whitelist)
-# Only these CAN IDs can be sent from the UI
-allowed_commands:
-  - id: 0x7DF
-    rate_limit: 10    # Max 10 requests/second
-    description: "OBD-II broadcast request"
+  # Signal conditioning
+  debounce_ms: 100
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAN COMMAND WHITELIST
+# ISO 26262 ASIL-B: Only whitelisted CAN IDs can be transmitted
+# ═══════════════════════════════════════════════════════════════════════════════
+allowed_commands:
+  # OBD-II requests
+  - id: 0x7DF
+    rate_limit: 10
+    description: "OBD-II broadcast request"
   - id: 0x7E0
     rate_limit: 5
     description: "ECU-specific OBD-II request"
 
-# Display settings
+  # Wideband forwarder (if enabled)
+  - id: 0x180
+    rate_limit: 25
+    description: "AEM X-Series wideband"
+  - id: 0x190
+    rate_limit: 25
+    description: "Innovate LC-2 wideband"
+  - id: 0x181
+    rate_limit: 25
+    description: "PLX SM-AFR wideband"
+  - id: 0x182
+    rate_limit: 25
+    description: "14point7 Spartan wideband"
+
+  # BMW cluster simulator (if enabled)
+  - id: 0x153
+    rate_limit: 15
+    description: "BMW ASC1 (traction control)"
+  - id: 0x43F
+    rate_limit: 15
+    description: "BMW EGS (transmission)"
+  - id: 0x1D2
+    rate_limit: 55
+    description: "BMW SAS (steering angle)"
+  - id: 0x1F0
+    rate_limit: 25
+    description: "BMW ABS front wheels"
+  - id: 0x1F5
+    rate_limit: 25
+    description: "BMW ABS rear wheels"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DISPLAY SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
 display:
   width: 800
   height: 480
   fullscreen: true
   hide_cursor: true
 
-# Logging
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOGGING
+# ═══════════════════════════════════════════════════════════════════════════════
 logging:
-  level: info         # trace, debug, info, warn, error
+  level: info             # trace, debug, info, warn, error
   to_journald: true

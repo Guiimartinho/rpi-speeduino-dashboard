@@ -1,0 +1,77 @@
+# =============================================================================
+# Speeduino UI - Configuration for VW Gol Quadrado
+# =============================================================================
+# This configuration is optimized for classic Brazilian VW vehicles:
+#   - VW Gol Quadrado (G1) - AP 1.8 Aspirado / Turbo
+#   - VW Fusca (Beetle)
+#   - VW Kombi
+#   - VW Parati
+#   - VW Saveiro
+#   - Chevette, Opala, and other classic cars
+#
+# These vehicles have NO CAN bus - reverse detection uses GPIO from
+# the reverse light circuit (12V signal via optocoupler).
+#
+# IMPORTANT: See docs/WIRING_GOL_QUADRADO.md for wiring instructions!
+# =============================================================================
+
+# CAN Bus settings (for Speeduino ECU data ONLY - not reverse detection)
+can:
+  interface: can0
+  bitrate: 500000
+  protocol: haltech  # Change to match your Speeduino CAN config
+  timeout_ms: 500
+
+# ZeroMQ IPC settings
+zmq:
+  publish_rate_hz: 50  # Engine data publish rate
+
+# Reverse camera settings
+camera:
+  device: /dev/video0
+  width: 640
+  height: 480
+  fps: 30
+
+# OpenAuto settings
+openauto:
+  path: /usr/local/bin/openauto
+
+# =============================================================================
+# REVERSE GEAR DETECTION - GOL QUADRADO SPECIFIC
+# =============================================================================
+# Uses GPIO from Raspberry Pi connected to the reverse light circuit
+# via an optocoupler (PC817 or similar) for electrical isolation.
+#
+# WIRING SUMMARY:
+#   1. 12V from reverse light wire -> Optocoupler LED (with 1k resistor)
+#   2. Optocoupler transistor -> GPIO17 with 10k pull-up to 3.3V
+#   3. Common ground between car and Raspberry Pi
+#
+reverse:
+  # Use preset for automatic configuration
+  preset: gol_quadrado
+
+  # OR configure manually:
+  # detection_mode: gpio      # GPIO only (no CAN for reverse)
+  # can_enabled: false        # Disable CAN-based reverse detection
+  # gpio_enabled: true        # Enable GPIO detection
+  # gpio_chip: gpiochip0      # Raspberry Pi 4 GPIO chip
+  # gpio_line: 17             # GPIO17 (physical pin 11)
+  # gpio_active_low: true     # PC817 optocoupler inverts signal
+  # debounce_ms: 100          # Filter contact bounce (100ms for old switches)
+
+# No CAN commands allowed (classic car - ECU doesn't respond to OBD)
+allowed_commands: []
+
+# Display settings
+display:
+  width: 800
+  height: 480
+  fullscreen: true
+  hide_cursor: true
+
+# Logging
+logging:
+  level: info         # trace, debug, info, warn, error
+  to_journald: true

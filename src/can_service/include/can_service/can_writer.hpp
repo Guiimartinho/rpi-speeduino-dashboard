@@ -33,7 +33,8 @@ private:
 class CanWriter {
 public:
     CanWriter(CanInterface& interface);
-    ~CanWriter() = default;
+    // MISRA C++:2008 Rule 15-5-1: Destructors shall not throw exceptions
+    ~CanWriter() noexcept = default;
 
     // Load allowed commands from config
     void loadAllowedCommands(const std::vector<CanCommandDef>& commands);
