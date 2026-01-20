@@ -283,30 +283,34 @@ Item {
                     radius: parent.radius
                     color: currentNotification ? getSeverityColor(currentNotification.severity) : Styles.Theme.statusInfo
                     opacity: 0.7
-
-                    // Animate width based on timer
-                    width: parent.width * (1 - autoHideTimer.elapsed / autoHideTimer.interval)
+                    width: parent.width  // Initial width, updated by progressTimer
 
                     Behavior on width {
                         NumberAnimation { duration: 100 }
                     }
                 }
 
-                // Timer to update progress
+                // Timer to update progress bar width
                 Timer {
+                    id: progressTimer
                     running: autoHideTimer.running
                     interval: 50
                     repeat: true
                     property real elapsed: 0
                     onTriggered: {
-                        elapsed += interval
-                        if (elapsed > root.defaultTimeout) elapsed = root.defaultTimeout
-                        progressBar.width = progressBar.parent.width * (1 - elapsed / root.defaultTimeout)
+                        // Use qualified reference to avoid context ambiguity
+                        progressTimer.elapsed += interval
+                        if (progressTimer.elapsed > root.defaultTimeout) progressTimer.elapsed = root.defaultTimeout
+                        progressBar.width = progressBar.parent.width * (1 - progressTimer.elapsed / root.defaultTimeout)
                     }
                     onRunningChanged: {
-                        if (running) elapsed = 0
+                        if (running) {
+                            // MEDIUM FIX: Use qualified reference to property to avoid
+                            // "Cannot assign to non-existent property" error
+                            progressTimer.elapsed = 0
+                            progressBar.width = progressBar.parent.width
+                        }
                     }
-                    Component.onCompleted: autoHideTimer.elapsed = Qt.binding(function() { return elapsed })
                 }
             }
         }
