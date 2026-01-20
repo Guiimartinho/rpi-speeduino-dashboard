@@ -205,6 +205,12 @@ int DataProvider::oilTemp() const {
     return m_data.oil_temp;
 }
 
+double DataProvider::batteryVoltage() const {
+    QMutexLocker locker(&m_dataMutex);
+    // battery_voltage is in mV, convert to V
+    return m_data.battery_voltage / 1000.0;
+}
+
 bool DataProvider::celOn() const {
     QMutexLocker locker(&m_dataMutex);
     return m_data.isCelOn();

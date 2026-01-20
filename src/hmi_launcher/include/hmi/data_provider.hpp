@@ -61,6 +61,7 @@ class DataProvider : public QObject {
     Q_PROPERTY(int fuelPressure READ fuelPressure NOTIFY dataChanged)
     Q_PROPERTY(int oilPressure READ oilPressure NOTIFY dataChanged)
     Q_PROPERTY(int oilTemp READ oilTemp NOTIFY dataChanged)
+    Q_PROPERTY(double batteryVoltage READ batteryVoltage NOTIFY dataChanged)
 
     // Status properties
     Q_PROPERTY(bool celOn READ celOn NOTIFY dataChanged)
@@ -89,6 +90,7 @@ public:
     int fuelPressure() const;
     int oilPressure() const;
     int oilTemp() const;
+    double batteryVoltage() const;
 
     bool celOn() const;
     bool overheat() const;
