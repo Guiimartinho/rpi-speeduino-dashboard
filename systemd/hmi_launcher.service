@@ -1,9 +1,12 @@
 [Unit]
 Description=Speeduino HMI Launcher (Dashboard UI)
 Documentation=https://github.com/speeduino/speeduino-ui
+# Dependencies: Wait for display and data services before starting
+# can_service provides engine data - required for dashboard to function
+# reverse_service provides reverse camera trigger - optional but useful
 After=graphical.target can_service.service reverse_service.service
-Wants=can_service.service reverse_service.service
-Requires=graphical.target
+Requires=graphical.target can_service.service
+Wants=reverse_service.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -23,8 +26,11 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=QML_DISK_CACHE_PATH=/tmp/qml_cache
 
 # Performance optimizations for Qt
-Environment=QSG_RENDER_LOOP=threaded
-Environment=QT_QUICK_BACKEND=software
+# Use basic render loop to reduce CPU usage (especially important for software renderer)
+Environment=QSG_RENDER_LOOP=basic
+# Limit llvmpipe threads to 1 (software renderer fallback on RPi4 X11)
+Environment=LP_NUM_THREADS=1
+# Note: QT_QUICK_BACKEND removed - let Qt choose best backend (hardware if available)
 
 ExecStart=/usr/local/bin/hmi_launcher --fullscreen --config=/etc/speeduino-ui
 Restart=always
@@ -35,8 +41,8 @@ TimeoutStopSec=10
 # Watchdog support
 WatchdogSec=15
 
-# Allow access to display and input devices
-SupplementaryGroups=video input render audio
+# Allow access to display, input, USB devices
+SupplementaryGroups=video input render audio plugdev bluetooth
 
 # Security hardening - filesystem (relaxed for GUI)
 NoNewPrivileges=true
@@ -51,8 +57,8 @@ ProtectControlGroups=true
 ReadOnlyPaths=/
 ReadWritePaths=/tmp /run /var/tmp
 
-# Security hardening - network
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Security hardening - network (needs Bluetooth for Android Auto)
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_BLUETOOTH
 PrivateNetwork=false
 
 # Security hardening - capabilities
@@ -70,7 +76,7 @@ LockPersonality=true
 RemoveIPC=true
 UMask=0022
 
-# Device access for display and input
+# Device access for display, input, USB (for Android Auto)
 DevicePolicy=auto
 DeviceAllow=/dev/dri/* rw
 DeviceAllow=/dev/input/* rw
@@ -80,6 +86,9 @@ DeviceAllow=/dev/video* rw
 DeviceAllow=/dev/null rw
 DeviceAllow=/dev/urandom r
 DeviceAllow=/dev/snd/* rw
+DeviceAllow=/dev/bus/usb/* rw
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
 
 # IPC paths for ZeroMQ
 ReadWritePaths=/tmp/speeduino_data.ipc

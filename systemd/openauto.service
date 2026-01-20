@@ -1,6 +1,6 @@
 [Unit]
 Description=OpenAuto (Android Auto)
-Documentation=https://github.com/nicl38/openauto
+Documentation=https://github.com/openDsh/openauto
 After=graphical.target hmi_launcher.service
 BindsTo=hmi_launcher.service
 StartLimitIntervalSec=300
@@ -20,7 +20,10 @@ Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=QML_DISK_CACHE_PATH=/tmp/openauto_qml_cache
 
 # Performance optimizations
-Environment=QSG_RENDER_LOOP=threaded
+# Use basic render loop to reduce CPU (especially important for software renderer)
+Environment=QSG_RENDER_LOOP=basic
+# Limit llvmpipe threads to 1 (fallback software renderer)
+Environment=LP_NUM_THREADS=1
 
 ExecStart=/usr/local/bin/openauto --fullscreen
 Restart=on-failure
