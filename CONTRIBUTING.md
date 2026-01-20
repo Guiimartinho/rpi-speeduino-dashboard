@@ -131,7 +131,7 @@ Examples:
 ```
 feat(can_service): add VAG protocol support
 fix(hmi): resolve gauge flickering on RPM > 8000
-docs: update bring-up guide for Pi 5
+docs: update bring-up guide for Pi 4
 test(can_parser): add edge case tests for temperature
 ```
 

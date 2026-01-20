@@ -12,7 +12,7 @@ Clear description of the bug.
 
 ## Environment
 
-- **Hardware**: Raspberry Pi 5 (4GB/8GB/16GB)
+- **Hardware**: Raspberry Pi 4 (4GB)
 - **OS**: Raspberry Pi OS (version)
 - **Project version**: (commit hash or release)
 - **CAN Module**: MCP2515 / MCP2518FD

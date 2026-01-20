@@ -11,7 +11,7 @@ Este documento descreve o pipeline de CI/CD do projeto RPi Speeduino Dashboard.
 │                                                                             │
 │  ┌─────────────────────┐    ┌─────────────────────┐    ┌────────────────┐  │
 │  │   PR / Branches     │    │    Merge to Main    │    │   Tag (v*.*)   │  │
-│  │  (GitHub-hosted)    │    │  (Self-hosted Pi5)  │    │ (Self-hosted)  │  │
+│  │  (GitHub-hosted)    │    │  (Self-hosted Pi4)  │    │ (Self-hosted)  │  │
 │  ├─────────────────────┤    ├─────────────────────┤    ├────────────────┤  │
 │  │ • Lint & Format     │    │ • Full ARM64 Build  │    │ • Build        │  │
 │  │ • Static Analysis   │    │ • Unit Tests        │    │ • Package .deb │  │
@@ -21,7 +21,7 @@ Este documento descreve o pipeline de CI/CD do projeto RPi Speeduino Dashboard.
 │           │                          │                         │            │
 │           ▼                          ▼                         ▼            │
 │      ~2-3 min                    ~5-10 min                 ~10-15 min       │
-│    (sem hardware)              (Raspberry Pi 5)          (Raspberry Pi 5)   │
+│    (sem hardware)              (Raspberry Pi 4)          (Raspberry Pi 4)   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -48,9 +48,9 @@ Este documento descreve o pipeline de CI/CD do projeto RPi Speeduino Dashboard.
 
 **Trigger:** Push para branch `main` apenas
 
-**Runner:** Self-hosted (Raspberry Pi 5)
+**Runner:** Self-hosted (Raspberry Pi 4)
 
-**Labels necessárias:** `self-hosted`, `linux`, `arm64`, `rpi5`
+**Labels necessárias:** `self-hosted`, `linux`, `arm64`, `rpi4`
 
 **Jobs:**
 
@@ -65,7 +65,7 @@ Este documento descreve o pipeline de CI/CD do projeto RPi Speeduino Dashboard.
 
 **Trigger:** Push de tags `v*.*.*`
 
-**Runner:** Self-hosted (Raspberry Pi 5)
+**Runner:** Self-hosted (Raspberry Pi 4)
 
 **Artifacts gerados:**
 
@@ -78,7 +78,7 @@ Este documento descreve o pipeline de CI/CD do projeto RPi Speeduino Dashboard.
 
 ### Pré-requisitos
 
-- Raspberry Pi 5 com Raspberry Pi OS 64-bit
+- Raspberry Pi 4 com Raspberry Pi OS 64-bit
 - Conexão com internet
 - Acesso sudo
 

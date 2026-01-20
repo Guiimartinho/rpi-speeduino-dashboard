@@ -4,7 +4,15 @@
 [![CI Build](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-build.yml/badge.svg)](https://github.com/Guiimartinho/rpi-speeduino-dashboard/actions/workflows/ci-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 5. Inspired by FuelTech FT600 interface.
+![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg?logo=c%2B%2B)
+![Qt 6.6+](https://img.shields.io/badge/Qt-6.6%2B-41CD52.svg?logo=qt)
+![Raspberry Pi 4](https://img.shields.io/badge/Raspberry%20Pi-4-C51A4A.svg?logo=raspberrypi)
+![OpenAuto](https://img.shields.io/badge/OpenAuto-Android%20Auto-3DDC84.svg?logo=android)
+![ZeroMQ](https://img.shields.io/badge/ZeroMQ-IPC-DF0000.svg)
+![ISO 26262](https://img.shields.io/badge/ISO%2026262-ASIL--B-orange.svg)
+![MISRA C++](https://img.shields.io/badge/MISRA-C%2B%2B%3A2008-blue.svg)
+
+Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 4. Inspired by FuelTech FT600 interface.
 
 ## Features
 
@@ -19,7 +27,7 @@ Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 5. Inspire
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Raspberry Pi 5                           │
+│                        Raspberry Pi 4                           │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌────────────┐  ┌─────────────┐  ┌─────────────┐              │
 │  │can_service │  │reverse_svc  │  │hmi_launcher │  [OpenAuto]  │
@@ -44,7 +52,7 @@ Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 5. Inspire
 
 ## Hardware Requirements
 
-- Raspberry Pi 5 (4GB or 16GB)
+- Raspberry Pi 4 (4GB)
 - 5" or 7" touchscreen (HDMI or DSI)
 - MCP2515 or MCP2518FD CAN module (SPI)
 - USB cable for Android Auto
@@ -52,7 +60,7 @@ Dashboard/multimedia system for Speeduino ECU running on Raspberry Pi 5. Inspire
 
 ### MCP2515 Wiring
 
-| MCP2515 | RPi5 Pin | GPIO |
+| MCP2515 | RPi4 Pin | GPIO |
 |---------|----------|------|
 | VCC     | Pin 1    | 3.3V |
 | GND     | Pin 6    | GND  |
@@ -240,17 +248,20 @@ The project uses GitHub Actions for continuous integration:
 | Workflow | Trigger | Runner |
 |----------|---------|--------|
 | CI Lint | All branches, PRs | GitHub-hosted |
-| CI Build | Push to `main` | Self-hosted (Pi5) |
-| Release | Tags `v*.*.*` | Self-hosted (Pi5) |
+| CI Build | Push to `main` | Self-hosted (Pi4) |
+| Release | Tags `v*.*.*` | Self-hosted (Pi4) |
 
 See [docs/ci-cd.md](docs/ci-cd.md) for setup instructions.
 
 ## Documentation
 
-- [Bring-up Guide](docs/bring_up.md) - Hardware setup and installation
+- [Architecture](docs/ARCHITECTURE.md) - System architecture (macro and detailed views)
+- [QML Architecture](docs/QML_ARCHITECTURE.md) - Qt6/QML component design
+- [Bring-up Guide](docs/bring_up.md) - Hardware setup and installation (PT-BR)
 - [Safety Compliance](docs/SAFETY.md) - ISO 26262 and MISRA C++ documentation
+- [API ZMQ Messages](docs/API_ZMQ_MESSAGES.md) - ZeroMQ IPC protocol reference
 - [Wiring Guide (Gol Quadrado)](docs/WIRING_GOL_QUADRADO.md) - Classic car GPIO wiring
-- [CI/CD Pipeline](docs/ci-cd.md) - GitHub Actions and self-hosted runner
+- [CI/CD Pipeline](docs/ci-cd.md) - GitHub Actions and self-hosted runner (PT-BR)
 - [Contributing](CONTRIBUTING.md) - Development setup and code style
 - [Changelog](CHANGELOG.md) - Version history and release notes
 

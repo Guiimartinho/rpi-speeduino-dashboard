@@ -1,19 +1,19 @@
 # Bring-Up Guide - Speeduino UI
 
-Este documento descreve o processo passo a passo para configurar e executar o sistema de central multimídia/dash no Raspberry Pi 5.
+Este documento descreve o processo passo a passo para configurar e executar o sistema de central multimídia/dash no Raspberry Pi 4.
 
 ## 1. Requisitos de Hardware
 
 ### 1.1 Componentes Principais
-- Raspberry Pi 5 (4GB ou 16GB)
+- Raspberry Pi 4 (4GB ou 16GB)
 - Display touchscreen 5" ou 7" (HDMI ou DSI)
 - Módulo CAN MCP2515 ou MCP2518FD (SPI)
 - Cabo USB para Android Auto
 - Câmera USB UVC para ré (opcional)
 
-### 1.2 Conexões MCP2515 → Raspberry Pi 5
+### 1.2 Conexões MCP2515 → Raspberry Pi 4
 
-| MCP2515 | RPi5 Pin | GPIO |
+| MCP2515 | RPi4 Pin | GPIO |
 |---------|----------|------|
 | VCC     | Pin 1    | 3.3V |
 | GND     | Pin 6    | GND  |

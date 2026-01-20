@@ -24,7 +24,7 @@ Fixes #(issue number)
 
 - [ ] Unit tests pass locally
 - [ ] Integration tests pass (if applicable)
-- [ ] Tested on Raspberry Pi 5 (if hardware-related)
+- [ ] Tested on Raspberry Pi 4 (if hardware-related)
 
 ## Checklist
 
