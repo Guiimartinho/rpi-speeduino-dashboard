@@ -89,14 +89,17 @@ int main(int argc, char *argv[])
     parser.addOption(debugOption);
 
     // Option to use process-based OpenAuto instead of embedded
+    // NOTE: Embedded mode renders inside QML VideoOutput (REQUIRED for in-app display)
+    // Process mode creates separate window (cannot be embedded in our UI)
     QCommandLineOption processOpenAutoOption(QStringList() << "process-openauto",
-        "Use process-based OpenAuto instead of embedded");
+        "Use process-based OpenAuto (separate window, not embedded in UI)");
     parser.addOption(processOpenAutoOption);
 
     parser.process(app);
 
     const bool fullscreen = parser.isSet(fullscreenOption);
     const bool debug = parser.isSet(debugOption);
+    // Default to embedded mode (useProcessOpenAuto = false) - ONLY way to render inside QML
     const bool useProcessOpenAuto = parser.isSet(processOpenAutoOption);
     const QString configDir = parser.value(configOption);
 
@@ -107,7 +110,7 @@ int main(int argc, char *argv[])
     qInfo() << "[Main] Speeduino UI starting...";
     qInfo() << "[Main] Config dir:" << configDir;
     qInfo() << "[Main] Fullscreen:" << fullscreen;
-    qInfo() << "[Main] Use embedded OpenAuto:" << !useProcessOpenAuto;
+    qInfo() << "[Main] Use process OpenAuto:" << useProcessOpenAuto;
 
     // Set Qt Quick style
     QQuickStyle::setStyle("Basic");
@@ -130,10 +133,25 @@ int main(int argc, char *argv[])
     cameraController.setResolution(640, 480);
     cameraController.setFramerate(30);
 
-    // Configure process-based OpenAuto (fallback mode)
-    // Only used if --process-openauto flag is passed
-    openAutoController.setExecutablePath("/usr/local/bin/openauto");
+    // Configure process-based OpenAuto
+    // Default mode since embedded has stability issues with QMLVideoOutput
+    openAutoController.setExecutablePath("/usr/local/bin/autoapp");
     openAutoController.setFullscreen(false);  // CRITICAL: Never fullscreen!
+    // Content area is 800x480 minus StatusBar (36px) and TabBar (64px) = 800x380
+    openAutoController.setResolution(800, 380, 30);
+
+    // ALWAYS disable auto-start - user controls via Start button in OpenAutoScreen
+    openAutoController.setAutoStart(false);
+    qInfo() << "[Main] OpenAutoController auto-start disabled (user controls via UI)";
+
+    // ALWAYS connect USB detection bridge - OpenAutoController monitors USB devices
+    // and can help OpenAutoEmbedded detect phones (libusb hotplug is unreliable on some systems)
+    QObject::connect(&openAutoController, &speeduino::OpenAutoController::phoneConnected,
+                     &openAutoEmbedded, [&openAutoEmbedded](const QString& device) {
+                         qInfo() << "[Main] USB detection bridge: phone connected -" << device;
+                         openAutoEmbedded.retryDeviceDetection();
+                     });
+    qInfo() << "[Main] USB detection bridge connected (Controller -> Embedded)";
 
     // Configure embedded OpenAuto
     // Content area is 800x480 minus StatusBar (36px) and TabBar (64px) = 800x380

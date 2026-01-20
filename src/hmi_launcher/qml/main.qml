@@ -32,18 +32,19 @@ ApplicationWindow {
     color: Styles.Theme.backgroundPrimary
 
     // ═══════════════════════════════════════════════════════════════
-    // C++ CONTEXT PROPERTIES (injected by main.cpp, null in preview)
+    // C++ CONTEXT PROPERTIES (injected by main.cpp)
+    // NOTE: openAutoController and openAutoEmbedded come ONLY from C++ context
+    // (declaring local properties with same name would override them!)
     // ═══════════════════════════════════════════════════════════════
+    // These can have fallback values for QML preview mode:
     property var dataProvider: null
     property var systemMonitor: null
     property var cameraController: null
-    property var openAutoController: null
     property var canService: null
+    // DO NOT declare: openAutoController, openAutoEmbedded, isFullscreen, useProcessOpenAuto
+    // (they must come from C++ context properties)
 
-    // Fullscreen property
-    property bool isFullscreen: false
-
-    // Fullscreen mode (can be toggled)
+    // Fullscreen mode (controlled by C++ isFullscreen property)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
 
     // Update Theme with window dimensions for responsive scaling
@@ -74,6 +75,17 @@ ApplicationWindow {
         property bool canOk: dataProvider ? dataProvider.canConnected : false
         property bool celOn: dataProvider ? dataProvider.celOn : false
         property bool overheat: dataProvider ? dataProvider.overheat : false
+        // Additional properties for DashScreen
+        property real batteryVoltage: dataProvider ? dataProvider.batteryVoltage : 12.0
+        property real oilPressure: dataProvider ? dataProvider.oilPressure : 0
+        property real oilTemp: dataProvider ? dataProvider.oilTemp : 0
+        property real boostPsi: dataProvider ? dataProvider.boostPsi : 0
+        property real veValue: dataProvider ? dataProvider.veValue : 0
+        property real sparkDwell: dataProvider ? dataProvider.sparkDwell : 0
+        property int loopsPerSec: dataProvider ? dataProvider.loopsPerSec : 0
+        property int freeRam: dataProvider ? dataProvider.freeRam : 0
+        property real targetAfr: dataProvider ? dataProvider.targetAfr : 14.7
+        property real afrCorrection: dataProvider ? dataProvider.afrCorrection : 0
     }
 
     // System info object with reactive properties
@@ -166,6 +178,57 @@ ApplicationWindow {
         function onShowNotification(title, message) {
             console.log("Main: OpenAuto notification -", title, ":", message)
             notificationPopup.show(title, message)
+        }
+    }
+
+    // FIX #2: Sync with OpenAutoEmbedded (in addition to process-based OpenAutoController)
+    // ISO 26262: Maintain consistent state between embedded mode and AppState
+    Connections {
+        target: typeof openAutoEmbedded !== "undefined" ? openAutoEmbedded : null
+        enabled: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
+
+        function onRunningChanged() {
+            console.log("Main: OpenAutoEmbedded running changed to", openAutoEmbedded.running)
+            State.AppState.setOpenAutoRunning(openAutoEmbedded.running)
+        }
+
+        function onConnectedChanged() {
+            console.log("Main: OpenAutoEmbedded connected changed to", openAutoEmbedded.connected)
+            State.AppState.setOpenAutoConnected(openAutoEmbedded.connected)
+        }
+
+        function onPhoneNameChanged() {
+            console.log("Main: OpenAutoEmbedded phone name changed to", openAutoEmbedded.phoneName)
+            State.AppState.setOpenAutoPhoneName(openAutoEmbedded.phoneName)
+        }
+
+        function onPhoneConnected(deviceName) {
+            console.log("Main: OpenAutoEmbedded phone connected -", deviceName)
+            State.AppState.setOpenAutoPhoneName(deviceName)
+            State.AppState.setOpenAutoConnected(true)
+            notificationPopup.show("Android Auto", "Phone connected: " + (deviceName || "Unknown"))
+        }
+
+        function onPhoneDisconnected() {
+            console.log("Main: OpenAutoEmbedded phone disconnected")
+            State.AppState.setOpenAutoPhoneName("")
+            State.AppState.setOpenAutoConnected(false)
+            notificationPopup.show("Android Auto", "Phone disconnected")
+        }
+
+        function onErrorChanged() {
+            if (openAutoEmbedded.errorMessage !== "") {
+                console.log("Main: OpenAutoEmbedded error -", openAutoEmbedded.errorMessage)
+                notificationPopup.show("OpenAuto Error", openAutoEmbedded.errorMessage, Components.NotificationPopup.Critical)
+            }
+        }
+
+        function onProjectionStarted() {
+            console.log("Main: OpenAutoEmbedded projection started")
+        }
+
+        function onProjectionStopped() {
+            console.log("Main: OpenAutoEmbedded projection stopped")
         }
     }
 
@@ -333,12 +396,17 @@ ApplicationWindow {
         id: openAutoScreenComponent
         Screens.OpenAutoScreen {
             onRequestStart: {
-                console.log("Main: OpenAuto start requested")
+                console.log("Main: OpenAuto start requested, useProcessOpenAuto =", useProcessOpenAuto)
+                console.log("Main: openAutoController =", openAutoController, "openAutoEmbedded =", openAutoEmbedded)
                 // Use embedded OpenAuto by default, fall back to process-based
                 if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    console.log("Main: Starting embedded OpenAuto")
                     openAutoEmbedded.start()
                 } else if (openAutoController) {
+                    console.log("Main: Starting process-based OpenAuto")
                     openAutoController.start()
+                } else {
+                    console.log("Main: ERROR - no OpenAuto controller available!")
                 }
             }
 
@@ -349,6 +417,17 @@ ApplicationWindow {
                     openAutoEmbedded.stop()
                 } else if (openAutoController) {
                     openAutoController.stop()
+                }
+            }
+
+            onRequestRestart: {
+                console.log("Main: OpenAuto restart requested")
+                // Use restart() which handles stop + delayed start safely
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                    openAutoEmbedded.restart()
+                } else if (openAutoController) {
+                    openAutoController.stop()
+                    openAutoController.start()
                 }
             }
 

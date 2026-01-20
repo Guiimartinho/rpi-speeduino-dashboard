@@ -112,6 +112,15 @@ private:
     bool detectAndroidAutoDevice();
     QString getDeviceName(const QString& devicePath);
 
+    // FIX: Orphan process cleanup to prevent "Address already in use" errors
+    void killOrphanProcesses();
+    void resetBluetoothProfile();
+
+    // MISRA 15.6 FIX: Helper functions to reduce nesting depth
+    bool isAndroidAutoVendor(const QString& vendorId) const;
+    QString readDeviceInfo(const QString& devicePath) const;
+    void handleDeviceDetected(const QString& devicePath, const QString& deviceName);
+
     // Thread synchronization - protects state variables
     mutable QMutex m_stateMutex;
 
