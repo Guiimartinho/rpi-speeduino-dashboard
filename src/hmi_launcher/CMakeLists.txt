@@ -5,6 +5,13 @@ set(CMAKE_AUTORCC ON)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
 
+# Find GStreamer for video decoding
+pkg_check_modules(GST REQUIRED
+    gstreamer-1.0
+    gstreamer-app-1.0
+    gstreamer-video-1.0
+)
+
 # Find Boost (required by openauto/aasdk)
 find_package(Boost REQUIRED COMPONENTS system log)
 
@@ -14,11 +21,13 @@ qt_add_executable(hmi_launcher
     src/camera_controller.cpp
     src/openauto_controller.cpp
     src/openauto_embedded.cpp
+    src/qml_video_output.cpp
     # Headers with Q_OBJECT macro (required for AUTOMOC)
     include/hmi/data_provider.hpp
     include/hmi/camera_controller.hpp
     include/hmi/openauto_controller.hpp
     include/hmi/openauto_embedded.hpp
+    include/hmi/qml_video_output.hpp
 )
 
 qt_add_qml_module(hmi_launcher
@@ -46,10 +55,12 @@ qt_add_qml_module(hmi_launcher
         qml/components/Gauge.qml
         qml/components/WarningIndicator.qml
         qml/components/IconButton.qml
+        qml/components/NotificationPopup.qml
 
         # Core gauges
         qml/components/ArcGauge.qml
         qml/components/CompactGauge.qml
+        qml/components/GaugeCard.qml
 
         # Display components
         qml/components/ShiftLightBar.qml
@@ -96,6 +107,7 @@ target_include_directories(hmi_launcher PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ZMQ_INCLUDE_DIRS}
     ${LIBUSB_INCLUDE_DIRS}
+    ${GST_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
     /usr/local/include
 )
@@ -111,6 +123,7 @@ target_link_libraries(hmi_launcher PRIVATE
     common
     ${ZMQ_LIBRARIES}
     ${LIBUSB_LIBRARIES}
+    ${GST_LIBRARIES}
     ${Boost_LIBRARIES}
     openauto
     aasdk
