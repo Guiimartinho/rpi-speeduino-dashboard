@@ -195,7 +195,7 @@ sudo systemctl status hmi_launcher.service
 ### 10.1 Compilar aasdk
 ```bash
 cd ~
-git clone https://github.com/nicl38/aasdk.git
+git clone https://github.com/openDsh/aasdk.git
 cd aasdk
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
@@ -206,7 +206,7 @@ sudo make install
 ### 10.2 Compilar OpenAuto
 ```bash
 cd ~
-git clone https://github.com/nicl38/openauto.git
+git clone https://github.com/openDsh/openauto.git
 cd openauto
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..

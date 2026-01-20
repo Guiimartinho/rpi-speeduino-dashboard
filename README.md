@@ -261,5 +261,5 @@ MIT License
 ## Credits
 
 - [Speeduino](https://speeduino.com/) - Open source ECU
-- [OpenAuto](https://github.com/nicl38/openauto) - Android Auto head unit
-- [aasdk](https://github.com/nicl38/aasdk) - Android Auto SDK
+- [OpenAuto](https://github.com/openDsh/openauto) - Android Auto head unit
+- [aasdk](https://github.com/openDsh/aasdk) - Android Auto SDK
