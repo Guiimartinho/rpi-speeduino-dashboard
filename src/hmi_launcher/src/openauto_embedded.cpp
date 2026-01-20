@@ -779,6 +779,18 @@ bool OpenAutoEmbedded::initializeOpenauto()
             }
         };
 
+        // CRITICAL FIX: Connect QMLVideoOutput playback signals to projection callback
+        // ServiceFactory doesn't connect activeCallback for custom video outputs,
+        // so we must do it here manually
+        connect(m_qmlVideoOutput.get(), &QMLVideoOutput::playbackStarted, this, [activeCallback]() {
+            qInfo() << "[OpenAutoEmbedded] QMLVideoOutput playback started - triggering projection active";
+            activeCallback(true);
+        });
+        connect(m_qmlVideoOutput.get(), &QMLVideoOutput::playbackStopped, this, [activeCallback]() {
+            qInfo() << "[OpenAutoEmbedded] QMLVideoOutput playback stopped - triggering projection inactive";
+            activeCallback(false);
+        });
+
         // Create ServiceFactory with custom video output and input widget
         // Video goes to QMLVideoOutput, input events go to m_inputWidget
         // Input widget provides geometry for mapActiveAreaToGlobal() and receives touch events
