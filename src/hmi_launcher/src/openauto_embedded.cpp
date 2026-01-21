@@ -11,6 +11,9 @@
 // boost
 #include <boost/asio.hpp>
 
+// std
+#include <future>
+
 // Temporarily undefine Qt's emit macro to avoid conflict with std::syncstream
 #ifdef emit
 #undef emit
@@ -341,10 +344,16 @@ void OpenAutoEmbedded::stop()
 // MISRA 15.6 FIX: Helper function for restart attempt to reduce nesting depth
 void OpenAutoEmbedded::tryRestartAttempt(int attemptNumber, int delayMs)
 {
+    qInfo() << "[OpenAutoEmbedded] Scheduling restart attempt" << attemptNumber << "in" << delayMs << "ms";
     QPointer<OpenAutoEmbedded> weakThis(this);
     QTimer::singleShot(delayMs, this, [weakThis, attemptNumber]() {
-        if (!weakThis) return;
+        qInfo() << "[OpenAutoEmbedded] Restart timer fired, attempt" << attemptNumber;
+        if (!weakThis) {
+            qWarning() << "[OpenAutoEmbedded] Object destroyed before restart could complete";
+            return;
+        }
 
+        qInfo() << "[OpenAutoEmbedded] Calling start() for restart attempt" << attemptNumber;
         if (weakThis->start()) {
             // Success - clear restarting flag
             QMutexLocker locker(&weakThis->m_stateMutex);
@@ -382,11 +391,23 @@ void OpenAutoEmbedded::restart()
     }
 
     qInfo() << "[OpenAutoEmbedded] Restarting...";
+
+    // PHASE 2: Request graceful disconnect before stopping
+    // This sends disconnect to phone and waits for clean disconnection
+    // Prevents "AaSdk error code: 30" on restart by allowing phone to cleanly exit
+    constexpr int GRACEFUL_DISCONNECT_TIMEOUT_MS = 2000;
+    bool cleanDisconnect = requestGracefulDisconnect(GRACEFUL_DISCONNECT_TIMEOUT_MS);
+    if (!cleanDisconnect) {
+        qWarning() << "[OpenAutoEmbedded] Graceful disconnect timed out, proceeding with forced stop";
+    }
+
     stop();
 
-    // FIX: Use longer delay (5s) to allow TCP sockets and Bluetooth profiles to be released.
+    // PHASE 3: Use shorter delay since graceful disconnect already handled cleanup
+    // Reduced from 5s to 2s since phone has already been notified
+    constexpr int RESTART_DELAY_MS = 2000;
     // MISRA 15.6 FIX: Extracted to helper function to reduce nesting depth
-    tryRestartAttempt(1, 5000);
+    tryRestartAttempt(1, RESTART_DELAY_MS);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -433,8 +454,17 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
     }
 
     // Clamp coordinates to widget dimensions
-    const int safeX = qBound(0, x, widgetWidth > 0 ? widgetWidth : m_width);
-    const int safeY = qBound(0, y, widgetHeight > 0 ? widgetHeight : m_height);
+    const int maxX = widgetWidth > 0 ? widgetWidth : m_width;
+    const int maxY = widgetHeight > 0 ? widgetHeight : m_height;
+
+    // DEBUG: Log coordinate transformation
+    if (maxX == 0 || maxY == 0) {
+        qWarning() << "[OpenAutoEmbedded] Touch clamp bounds are zero! widgetWidth:" << widgetWidth
+                   << "widgetHeight:" << widgetHeight << "m_width:" << m_width << "m_height:" << m_height;
+    }
+
+    const int safeX = qBound(0, x, maxX > 0 ? maxX : 10000);
+    const int safeY = qBound(0, y, maxY > 0 ? maxY : 10000);
 
     QPointF localPos(safeX, safeY);
     QPointF globalPos = localPos;
@@ -482,7 +512,8 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
 
     QCoreApplication::postEvent(inputWidgetPtr, mouseEvent);
 
-    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action;
+    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action
+             << "(input:" << x << y << "bounds:" << maxX << maxY << ")";
 }
 
 void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
@@ -724,6 +755,102 @@ void OpenAutoEmbedded::cleanupLibusb()
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1: USB WORKER SYNCHRONIZATION
+// ═══════════════════════════════════════════════════════════════
+
+void OpenAutoEmbedded::stopUsbWorkersSync()
+{
+    qInfo() << "[OpenAutoEmbedded] Stopping USB worker threads with synchronization...";
+
+    // Signal all workers to stop
+    m_usbWorkersRunning.store(false, std::memory_order_release);
+
+    // CRITICAL: Interrupt any threads blocked in libusb_handle_events_*()
+    // Without this, workers will remain blocked until their 1-second timeout expires
+    if (m_usbContext) {
+        libusb_interrupt_event_handler(m_usbContext);
+    }
+
+    // Wait for all workers to exit using condition_variable with timeout
+    // This prevents race condition where libusb_exit() is called while workers
+    // are still inside libusb_handle_events_timeout_completed()
+    {
+        std::unique_lock<std::mutex> lock(m_usbWorkerMutex);
+        constexpr int USB_WORKER_TIMEOUT_MS = 3000;  // 3 second timeout
+
+        bool allExited = m_usbWorkerCV.wait_for(lock,
+            std::chrono::milliseconds(USB_WORKER_TIMEOUT_MS),
+            [this]() { return m_usbWorkersActive.load() == 0; });
+
+        if (!allExited) {
+            qWarning() << "[OpenAutoEmbedded] USB workers did not exit in time,"
+                       << m_usbWorkersActive.load() << "still active";
+        } else {
+            qInfo() << "[OpenAutoEmbedded] All USB workers signaled exit";
+        }
+    }
+
+    // Now join the threads (should return immediately since they've exited)
+    for (auto& thread : m_usbWorkerThreads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    m_usbWorkerThreads.clear();
+
+    qInfo() << "[OpenAutoEmbedded] USB worker threads stopped and joined";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2: GRACEFUL DISCONNECT
+// ═══════════════════════════════════════════════════════════════
+
+bool OpenAutoEmbedded::requestGracefulDisconnect(int timeoutMs)
+{
+    // Check if we're connected
+    bool wasConnected = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        wasConnected = m_connected;
+    }
+
+    if (!wasConnected) {
+        qInfo() << "[OpenAutoEmbedded] Not connected, no graceful disconnect needed";
+        return true;
+    }
+
+    qInfo() << "[OpenAutoEmbedded] Requesting graceful disconnect (timeout:" << timeoutMs << "ms)";
+
+    // Stop the app - this sends disconnect to the phone
+    if (m_app) {
+        m_app->stop();
+    }
+
+    // Wait for disconnect with polling (condition_variable not available for m_connected)
+    constexpr int POLL_INTERVAL_MS = 100;
+    int elapsedMs = 0;
+
+    while (elapsedMs < timeoutMs) {
+        {
+            QMutexLocker locker(&m_stateMutex);
+            if (!m_connected) {
+                qInfo() << "[OpenAutoEmbedded] Phone disconnected cleanly after" << elapsedMs << "ms";
+                return true;
+            }
+        }
+
+        QThread::msleep(POLL_INTERVAL_MS);
+        elapsedMs += POLL_INTERVAL_MS;
+
+        // Process Qt events to allow callbacks to fire
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    }
+
+    qWarning() << "[OpenAutoEmbedded] Graceful disconnect timeout - forcing cleanup";
+    return false;
+}
+
 bool OpenAutoEmbedded::initializeOpenauto()
 {
     try {
@@ -770,6 +897,9 @@ bool OpenAutoEmbedded::initializeOpenauto()
         // premature destruction when Qt's object tree is modified.
         m_qmlVideoOutput = std::make_shared<QMLVideoOutput>(m_configuration, nullptr);
 
+        // Notify QML that qmlVideoOutput is now available
+        emit qmlVideoOutputChanged();
+
         // Projection active callback
         QPointer<OpenAutoEmbedded> weakThis(this);
         auto activeCallback = [weakThis](bool active) {
@@ -786,10 +916,10 @@ bool OpenAutoEmbedded::initializeOpenauto()
             qInfo() << "[OpenAutoEmbedded] QMLVideoOutput playback started - triggering projection active";
             activeCallback(true);
         });
-        connect(m_qmlVideoOutput.get(), &QMLVideoOutput::playbackStopped, this, [activeCallback]() {
-            qInfo() << "[OpenAutoEmbedded] QMLVideoOutput playback stopped - triggering projection inactive";
-            activeCallback(false);
-        });
+        // NOTE: Do NOT connect playbackStopped to activeCallback(false) here!
+        // onProjectionActive(false) already calls m_qmlVideoOutput->stop(), which emits playbackStopped.
+        // Connecting playbackStopped → activeCallback(false) creates an infinite loop:
+        // playbackStopped → activeCallback(false) → onProjectionActive(false) → stop() → playbackStopped
 
         // Create ServiceFactory with custom video output and input widget
         // Video goes to QMLVideoOutput, input events go to m_inputWidget
@@ -857,13 +987,32 @@ bool OpenAutoEmbedded::initializeOpenauto()
         // Without these threads calling libusb_handle_events_timeout_completed(),
         // USB control transfers (AOA protocol negotiation) will never complete.
         // This was the root cause of phones not switching to AOA mode.
+        //
+        // PHASE 1 FIX: USB workers now signal when they exit using condition_variable
+        // This allows cleanupOpenauto() to wait for all workers to finish before libusb_exit()
         m_usbWorkersRunning.store(true);
+        m_usbWorkersActive.store(0);
         constexpr int NUM_USB_WORKERS = 4;
         for (int i = 0; i < NUM_USB_WORKERS; ++i) {
             m_usbWorkerThreads.emplace_back([this]() {
+                // Increment active count on entry
+                m_usbWorkersActive.fetch_add(1);
+
                 timeval libusbEventTimeout{1, 0};  // 1 second timeout
-                while (m_usbWorkersRunning.load() && m_ioService && !m_ioService->stopped()) {
-                    libusb_handle_events_timeout_completed(m_usbContext, &libusbEventTimeout, nullptr);
+                while (m_usbWorkersRunning.load(std::memory_order_acquire) &&
+                       m_ioService && !m_ioService->stopped()) {
+                    // Check context is still valid before using it
+                    if (m_usbContext) {
+                        libusb_handle_events_timeout_completed(m_usbContext, &libusbEventTimeout, nullptr);
+                    }
+                }
+
+                // Decrement active count and signal on exit
+                int remaining = m_usbWorkersActive.fetch_sub(1) - 1;
+                if (remaining == 0) {
+                    // Last worker exiting - notify waiting cleanup
+                    std::lock_guard<std::mutex> lock(m_usbWorkerMutex);
+                    m_usbWorkerCV.notify_all();
                 }
             });
         }
@@ -882,36 +1031,17 @@ void OpenAutoEmbedded::cleanupOpenauto()
 {
     qInfo() << "[OpenAutoEmbedded] cleanupOpenauto() starting...";
 
-    // Stop USB worker threads first (they need m_usbContext which is cleaned up later)
-    qInfo() << "[OpenAutoEmbedded] Stopping USB worker threads...";
-    m_usbWorkersRunning.store(false);
-    for (auto& thread : m_usbWorkerThreads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
-    m_usbWorkerThreads.clear();
-    qInfo() << "[OpenAutoEmbedded] USB worker threads stopped";
+    // PHASE 1: Stop USB worker threads with proper synchronization
+    // Uses condition_variable to wait for all workers to exit before continuing
+    // This prevents race condition where libusb_exit() is called while workers
+    // are still inside libusb_handle_events_timeout_completed()
+    stopUsbWorkersSync();
 
     // Stop IO worker (signals worker to exit its run loop)
+    // NOTE: Keep io_service running - serviceFactory components need it for shutdown callbacks
     if (m_ioWorker) {
         qInfo() << "[OpenAutoEmbedded] Stopping IO worker...";
         m_ioWorker->stop();
-    }
-
-    // Release work guard to allow io_service to stop
-    qInfo() << "[OpenAutoEmbedded] Releasing work guard...";
-    m_ioWork.reset();
-
-    // Stop IO thread and wait for it to finish
-    if (m_ioThread && m_ioThread->isRunning()) {
-        qInfo() << "[OpenAutoEmbedded] Stopping IO thread...";
-        m_ioThread->quit();
-        if (!m_ioThread->wait(3000)) {
-            qWarning() << "[OpenAutoEmbedded] IO thread did not stop in time, terminating";
-            m_ioThread->terminate();
-            m_ioThread->wait();
-        }
     }
 
     // Clear app and components in reverse order of creation
@@ -930,13 +1060,67 @@ void OpenAutoEmbedded::cleanupOpenauto()
 
     qInfo() << "[OpenAutoEmbedded] Resetting androidAutoEntityFactory...";
     m_androidAutoEntityFactory.reset();
-    qInfo() << "[OpenAutoEmbedded] Resetting serviceFactory...";
-    m_serviceFactory.reset();
-    qInfo() << "[OpenAutoEmbedded] serviceFactory reset complete";
 
-    // Reset QML video output (shared_ptr, may have QML references)
-    qInfo() << "[OpenAutoEmbedded] Resetting QML video output...";
-    m_qmlVideoOutput.reset();
+    // CRITICAL: Reset QML video output BEFORE serviceFactory
+    // ServiceFactory holds a shared_ptr to m_qmlVideoOutput. If we reset serviceFactory
+    // while video output still has active GStreamer pipelines, the destructor may crash.
+    // Reset video output first to ensure clean GStreamer shutdown.
+    if (m_qmlVideoOutput) {
+        qInfo() << "[OpenAutoEmbedded] Stopping QML video output...";
+        m_qmlVideoOutput->stop();
+        qInfo() << "[OpenAutoEmbedded] Disconnecting QML video output signals...";
+        disconnect(m_qmlVideoOutput.get(), nullptr, this, nullptr);
+        qInfo() << "[OpenAutoEmbedded] Resetting QML video output BEFORE serviceFactory...";
+        // Note: ServiceFactory also holds a shared_ptr, so this won't destroy it yet
+        // but it will release our reference.
+        // DO NOT emit qmlVideoOutputChanged() here - it triggers QML to try reconnecting
+        // during cleanup, which can cause race conditions and crashes. QML will get a
+        // new signal when start() creates a fresh video output.
+        m_qmlVideoOutput.reset();
+        qInfo() << "[OpenAutoEmbedded] QML video output reset";
+    }
+
+    // Stop io_service BEFORE serviceFactory reset
+    // This forces async operations to be cancelled, preventing deadlock in destructors
+    qInfo() << "[OpenAutoEmbedded] Releasing work guard...";
+    m_ioWork.reset();
+
+    if (m_ioService) {
+        qInfo() << "[OpenAutoEmbedded] Stopping IO service...";
+        m_ioService->stop();
+    }
+
+    // Stop IO thread and wait for it to finish
+    if (m_ioThread && m_ioThread->isRunning()) {
+        qInfo() << "[OpenAutoEmbedded] Stopping IO thread...";
+        m_ioThread->quit();
+        if (!m_ioThread->wait(3000)) {
+            qWarning() << "[OpenAutoEmbedded] IO thread did not stop in time, terminating";
+            m_ioThread->terminate();
+            m_ioThread->wait();
+        }
+    }
+    qInfo() << "[OpenAutoEmbedded] IO thread stopped";
+
+    qInfo() << "[OpenAutoEmbedded] Resetting serviceFactory...";
+    // ServiceFactory destructor can block if channels have pending async operations
+    // Use a future with timeout to prevent indefinite hang
+    {
+        auto serviceFactoryPtr = std::move(m_serviceFactory);
+        auto future = std::async(std::launch::async, [ptr = std::move(serviceFactoryPtr)]() mutable {
+            ptr.reset();
+        });
+
+        constexpr int SERVICE_FACTORY_TIMEOUT_MS = 5000;
+        auto status = future.wait_for(std::chrono::milliseconds(SERVICE_FACTORY_TIMEOUT_MS));
+        if (status == std::future_status::timeout) {
+            qWarning() << "[OpenAutoEmbedded] serviceFactory reset timed out after" << SERVICE_FACTORY_TIMEOUT_MS << "ms";
+            // Detach the future - destructor will complete eventually
+            // This is a controlled leak to prevent app hang
+        } else {
+            qInfo() << "[OpenAutoEmbedded] serviceFactory reset complete";
+        }
+    }
 
     // Reset hidden input widget
     qInfo() << "[OpenAutoEmbedded] Resetting input widget...";

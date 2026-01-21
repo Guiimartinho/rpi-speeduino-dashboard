@@ -15,6 +15,8 @@
 #include <cmath>
 #include <thread>
 #include <vector>
+#include <mutex>
+#include <condition_variable>
 
 #include "hmi/qml_video_output.hpp"
 
@@ -92,7 +94,7 @@ class OpenAutoEmbedded : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorChanged)
     Q_PROPERTY(QString phoneName READ phoneName NOTIFY phoneNameChanged)
     Q_PROPERTY(bool videoVisible READ isVideoVisible NOTIFY videoVisibleChanged)
-    Q_PROPERTY(QMLVideoOutput* qmlVideoOutput READ qmlVideoOutput CONSTANT)
+    Q_PROPERTY(QMLVideoOutput* qmlVideoOutput READ qmlVideoOutput NOTIFY qmlVideoOutputChanged)
 
 public:
     explicit OpenAutoEmbedded(QObject* parent = nullptr);
@@ -147,6 +149,7 @@ signals:
     void errorChanged();
     void phoneNameChanged();
     void videoVisibleChanged();
+    void qmlVideoOutputChanged();
 
     void started();
     void stopped();
@@ -168,6 +171,12 @@ private:
 
     // MISRA 15.6 FIX: Helper function for restart attempts (reduces nesting depth)
     void tryRestartAttempt(int attemptNumber, int delayMs);
+
+    // Phase 1: USB worker synchronization helpers
+    void stopUsbWorkersSync();  // Stops USB workers with proper synchronization
+
+    // Phase 2: Graceful disconnect helper
+    bool requestGracefulDisconnect(int timeoutMs);  // Request phone to disconnect cleanly
 
     // Thread synchronization - protects shared state accessed from multiple threads
     mutable QMutex m_stateMutex;
@@ -206,6 +215,11 @@ private:
     // Without these, USB control transfers (AOA protocol) never complete.
     std::vector<std::thread> m_usbWorkerThreads;
     std::atomic<bool> m_usbWorkersRunning{false};
+
+    // Phase 1: USB worker synchronization for clean shutdown
+    std::mutex m_usbWorkerMutex;
+    std::condition_variable m_usbWorkerCV;
+    std::atomic<int> m_usbWorkersActive{0};  // Count of active USB workers
 
     // openauto components
     std::unique_ptr<aasdk::usb::USBWrapper> m_usbWrapper;
