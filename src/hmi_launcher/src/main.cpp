@@ -1,6 +1,5 @@
 #include "hmi/data_provider.hpp"
 #include "hmi/camera_controller.hpp"
-#include "hmi/openauto_controller.hpp"
 #include "hmi/openauto_embedded.hpp"
 
 #include <QApplication>
@@ -37,11 +36,9 @@ class ApplicationCleanup {
 public:
     ApplicationCleanup(speeduino::DataProvider& dp,
                        speeduino::CameraController& cc,
-                       speeduino::OpenAutoController& oac,
                        speeduino::OpenAutoEmbedded& oae)
         : m_dataProvider(dp)
         , m_cameraController(cc)
-        , m_openAutoController(oac)
         , m_openAutoEmbedded(oae)
     {}
 
@@ -49,7 +46,6 @@ public:
         qInfo() << "[Main] Performing cleanup...";
         m_dataProvider.stop();
         m_cameraController.stop();
-        m_openAutoController.stop();
         m_openAutoEmbedded.stop();
         qInfo() << "[Main] Cleanup complete";
     }
@@ -57,7 +53,6 @@ public:
 private:
     speeduino::DataProvider& m_dataProvider;
     speeduino::CameraController& m_cameraController;
-    speeduino::OpenAutoController& m_openAutoController;
     speeduino::OpenAutoEmbedded& m_openAutoEmbedded;
 };
 
@@ -88,19 +83,10 @@ int main(int argc, char *argv[])
         "Enable debug output");
     parser.addOption(debugOption);
 
-    // Option to use process-based OpenAuto instead of embedded
-    // NOTE: Embedded mode renders inside QML VideoOutput (REQUIRED for in-app display)
-    // Process mode creates separate window (cannot be embedded in our UI)
-    QCommandLineOption processOpenAutoOption(QStringList() << "process-openauto",
-        "Use process-based OpenAuto (separate window, not embedded in UI)");
-    parser.addOption(processOpenAutoOption);
-
     parser.process(app);
 
     const bool fullscreen = parser.isSet(fullscreenOption);
     const bool debug = parser.isSet(debugOption);
-    // Default to embedded mode (useProcessOpenAuto = false) - ONLY way to render inside QML
-    const bool useProcessOpenAuto = parser.isSet(processOpenAutoOption);
     const QString configDir = parser.value(configOption);
 
     if (debug) {
@@ -110,7 +96,7 @@ int main(int argc, char *argv[])
     qInfo() << "[Main] Speeduino UI starting...";
     qInfo() << "[Main] Config dir:" << configDir;
     qInfo() << "[Main] Fullscreen:" << fullscreen;
-    qInfo() << "[Main] Use process OpenAuto:" << useProcessOpenAuto;
+    qInfo() << "[Main] OpenAuto mode: EMBEDDED (always)";
 
     // Set Qt Quick style
     QQuickStyle::setStyle("Basic");
@@ -121,41 +107,20 @@ int main(int argc, char *argv[])
     // Create controllers
     speeduino::DataProvider dataProvider;
     speeduino::CameraController cameraController;
-    speeduino::OpenAutoController openAutoController;
     speeduino::OpenAutoEmbedded openAutoEmbedded;
 
     // RAII cleanup - ensures resources are released even on early exit
-    ApplicationCleanup cleanup(dataProvider, cameraController,
-                               openAutoController, openAutoEmbedded);
+    ApplicationCleanup cleanup(dataProvider, cameraController, openAutoEmbedded);
 
     // Configure camera
     cameraController.setDevice("/dev/video0");
     cameraController.setResolution(640, 480);
     cameraController.setFramerate(30);
 
-    // Configure process-based OpenAuto
-    // Default mode since embedded has stability issues with QMLVideoOutput
-    openAutoController.setExecutablePath("/usr/local/bin/autoapp");
-    openAutoController.setFullscreen(false);  // CRITICAL: Never fullscreen!
-    // Content area is 800x480 minus StatusBar (36px) and TabBar (64px) = 800x380
-    openAutoController.setResolution(800, 380, 30);
-
-    // ALWAYS disable auto-start - user controls via Start button in OpenAutoScreen
-    openAutoController.setAutoStart(false);
-    qInfo() << "[Main] OpenAutoController auto-start disabled (user controls via UI)";
-
-    // ALWAYS connect USB detection bridge - OpenAutoController monitors USB devices
-    // and can help OpenAutoEmbedded detect phones (libusb hotplug is unreliable on some systems)
-    QObject::connect(&openAutoController, &speeduino::OpenAutoController::phoneConnected,
-                     &openAutoEmbedded, [&openAutoEmbedded](const QString& device) {
-                         qInfo() << "[Main] USB detection bridge: phone connected -" << device;
-                         openAutoEmbedded.retryDeviceDetection();
-                     });
-    qInfo() << "[Main] USB detection bridge connected (Controller -> Embedded)";
-
-    // Configure embedded OpenAuto
-    // Content area is 800x480 minus StatusBar (36px) and TabBar (64px) = 800x380
-    openAutoEmbedded.setResolution(800, 380);
+    // Configure embedded OpenAuto (ALWAYS embedded, never process-based)
+    // NOTE: Use VIDEO resolution (800x480), not container size (800x380).
+    // QML transforms touch from container space to video space - C++ must use video dimensions.
+    openAutoEmbedded.setResolution(800, 480);
 
     // Expose controllers to QML
     QQmlContext* rootContext = engine.rootContext();
@@ -166,10 +131,8 @@ int main(int argc, char *argv[])
 
     rootContext->setContextProperty("dataProvider", &dataProvider);
     rootContext->setContextProperty("cameraController", &cameraController);
-    rootContext->setContextProperty("openAutoController", &openAutoController);
     rootContext->setContextProperty("openAutoEmbedded", &openAutoEmbedded);
     rootContext->setContextProperty("isFullscreen", fullscreen);
-    rootContext->setContextProperty("useProcessOpenAuto", useProcessOpenAuto);
 
     // Load main QML
     // Using Qt::StringLiterals for modern Qt6 compatibility

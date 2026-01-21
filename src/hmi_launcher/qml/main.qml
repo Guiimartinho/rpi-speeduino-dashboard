@@ -33,7 +33,7 @@ ApplicationWindow {
 
     // ═══════════════════════════════════════════════════════════════
     // C++ CONTEXT PROPERTIES (injected by main.cpp)
-    // NOTE: openAutoController and openAutoEmbedded come ONLY from C++ context
+    // NOTE: openAutoEmbedded comes ONLY from C++ context
     // (declaring local properties with same name would override them!)
     // ═══════════════════════════════════════════════════════════════
     // These can have fallback values for QML preview mode:
@@ -41,8 +41,9 @@ ApplicationWindow {
     property var systemMonitor: null
     property var cameraController: null
     property var canService: null
-    // DO NOT declare: openAutoController, openAutoEmbedded, isFullscreen, useProcessOpenAuto
+    // DO NOT declare: openAutoEmbedded, isFullscreen
     // (they must come from C++ context properties)
+    // NOTE: openAutoController was removed - we ALWAYS use embedded mode now
 
     // Fullscreen mode (controlled by C++ isFullscreen property)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
@@ -142,46 +143,7 @@ ApplicationWindow {
         }
     }
 
-    // Sync with OpenAutoController
-    Connections {
-        target: openAutoController
-        enabled: openAutoController !== undefined
-
-        function onRunningChanged() {
-            State.AppState.setOpenAutoRunning(openAutoController.running)
-        }
-
-        function onConnectedChanged() {
-            State.AppState.setOpenAutoConnected(openAutoController.connected)
-        }
-
-        function onPhoneNameChanged() {
-            State.AppState.setOpenAutoPhoneName(openAutoController.phoneName)
-        }
-
-        function onConnectionTypeChanged() {
-            State.AppState.setOpenAutoConnectionType(openAutoController.connectionType)
-        }
-
-        function onPhoneConnected(deviceName) {
-            console.log("Main: Phone connected -", deviceName)
-            State.AppState.setOpenAutoPhoneName(deviceName)
-            State.AppState.setOpenAutoConnected(true)
-        }
-
-        function onPhoneDisconnected() {
-            console.log("Main: Phone disconnected")
-            State.AppState.setOpenAutoPhoneName("")
-            State.AppState.setOpenAutoConnected(false)
-        }
-
-        function onShowNotification(title, message) {
-            console.log("Main: OpenAuto notification -", title, ":", message)
-            notificationPopup.show(title, message)
-        }
-    }
-
-    // FIX #2: Sync with OpenAutoEmbedded (in addition to process-based OpenAutoController)
+    // Sync with OpenAutoEmbedded (ALWAYS used - process-based OpenAutoController was removed)
     // ISO 26262: Maintain consistent state between embedded mode and AppState
     Connections {
         target: typeof openAutoEmbedded !== "undefined" ? openAutoEmbedded : null
@@ -371,13 +333,14 @@ ApplicationWindow {
 
             onRestartOpenAuto: {
                 console.log("Main: Restart OpenAuto requested")
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
-                    openAutoEmbedded.restart()
-                } else if (openAutoController) {
-                    openAutoController.stop()
-                    openAutoController.start()
-                }
+                // CRITICAL: Use Qt.callLater() to defer restart
+                // This allows the QML signal handler to complete before
+                // cleanup destroys objects, avoiding "destroyed while signal in progress" error
+                Qt.callLater(function() {
+                    if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                        openAutoEmbedded.restart()
+                    }
+                })
             }
 
             onTestCamera: {
@@ -396,50 +359,36 @@ ApplicationWindow {
         id: openAutoScreenComponent
         Screens.OpenAutoScreen {
             onRequestStart: {
-                console.log("Main: OpenAuto start requested, useProcessOpenAuto =", useProcessOpenAuto)
-                console.log("Main: openAutoController =", openAutoController, "openAutoEmbedded =", openAutoEmbedded)
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                console.log("Main: OpenAuto start requested (embedded mode)")
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
                     console.log("Main: Starting embedded OpenAuto")
                     openAutoEmbedded.start()
-                } else if (openAutoController) {
-                    console.log("Main: Starting process-based OpenAuto")
-                    openAutoController.start()
                 } else {
-                    console.log("Main: ERROR - no OpenAuto controller available!")
+                    console.log("Main: ERROR - openAutoEmbedded not available!")
                 }
             }
 
             onRequestStop: {
                 console.log("Main: OpenAuto stop requested")
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
                     openAutoEmbedded.stop()
-                } else if (openAutoController) {
-                    openAutoController.stop()
                 }
             }
 
             onRequestRestart: {
                 console.log("Main: OpenAuto restart requested")
-                // Use restart() which handles stop + delayed start safely
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
-                    openAutoEmbedded.restart()
-                } else if (openAutoController) {
-                    openAutoController.stop()
-                    openAutoController.start()
-                }
+                // CRITICAL: Use Qt.callLater() to defer restart (same as ConfigScreen)
+                Qt.callLater(function() {
+                    if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                        openAutoEmbedded.restart()
+                    }
+                })
             }
 
             onTouchEvent: function(x, y, type) {
-                // Forward touch events to OpenAuto
-                // CRITICAL: Route to openAutoEmbedded when in embedded mode
-                // (Note: OpenAutoScreen.qml already calls sendTouch directly,
-                //  this is for backwards compatibility with process mode)
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                // Forward touch events to embedded OpenAuto
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
                     openAutoEmbedded.sendTouch(x, y, type)
-                } else if (openAutoController) {
-                    openAutoController.sendTouch(x, y, type)
                 }
             }
         }

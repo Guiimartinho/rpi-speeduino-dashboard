@@ -18,11 +18,11 @@ Item {
 
     // ═══════════════════════════════════════════════════════════════
     // C++ CONTEXT PROPERTIES (injected by parent)
+    // NOTE: openAutoEmbedded comes from C++ context, not declared here
     // ═══════════════════════════════════════════════════════════════
     property var dataProvider: null
     property var systemMonitor: null
     property var cameraController: null
-    property var openAutoController: null
     property var canService: null
 
     // Background
@@ -234,9 +234,8 @@ Item {
             }
 
             onRestartOpenAuto: {
-                if (openAutoController) {
-                    openAutoController.stop()
-                    openAutoController.start()
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                    openAutoEmbedded.restart()
                 }
             }
 
@@ -254,16 +253,20 @@ Item {
         id: openAutoScreenComponent
         Screens.OpenAutoScreen {
             onRequestStart: {
-                if (openAutoController) openAutoController.start()
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                    openAutoEmbedded.start()
+                }
             }
 
             onRequestStop: {
-                if (openAutoController) openAutoController.stop()
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                    openAutoEmbedded.stop()
+                }
             }
 
             onTouchEvent: function(x, y, type) {
-                if (openAutoController) {
-                    openAutoController.sendTouch(x, y, type)
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(x, y, type)
                 }
             }
         }
