@@ -64,6 +64,8 @@ class QMLVideoOutput : public QObject, public openauto::projection::VideoOutput
 
     Q_PROPERTY(QVideoSink* videoSink READ videoSink WRITE setVideoSink NOTIFY videoSinkChanged)
     Q_PROPERTY(bool playing READ isPlaying NOTIFY playingChanged)
+    Q_PROPERTY(int videoWidth READ videoWidth CONSTANT)
+    Q_PROPERTY(int videoHeight READ videoHeight CONSTANT)
 
 public:
     using Pointer = std::shared_ptr<QMLVideoOutput>;
@@ -131,6 +133,16 @@ public:
      * @brief Check if video is currently playing
      */
     bool isPlaying() const { return m_playing.load(); }
+
+    /**
+     * @brief Get the video width (from configuration)
+     */
+    int videoWidth() const { return m_width; }
+
+    /**
+     * @brief Get the video height (from configuration)
+     */
+    int videoHeight() const { return m_height; }
 
 signals:
     void videoSinkChanged();

@@ -32,9 +32,8 @@ Item {
     // Reference to embedded controller (set by parent)
     property var embeddedController: null
 
-    // Use embedded OpenAuto only if available AND process mode not forced
-    // NOTE: useProcessOpenAuto is set in main.qml - when true, we use external autoapp process
-    property bool useEmbedded: !useProcessOpenAuto && typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
+    // ALWAYS use embedded mode (process-based OpenAutoController was removed)
+    property bool useEmbedded: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
 
     // ═══════════════════════════════════════════════════════════════
     // LIFECYCLE - Connect video sink and start OpenAuto
@@ -135,6 +134,15 @@ Item {
                 console.log("OpenAutoScreen: Error -", openAutoEmbedded.errorMessage)
             }
         }
+
+        // FIX: qmlVideoOutput is created AFTER start() completes, so we must
+        // listen for the signal and reconnect video sink when it becomes available.
+        // The Q_PROPERTY was changed from CONSTANT to NOTIFY to enable this.
+        function onQmlVideoOutputChanged() {
+            console.log("OpenAutoScreen: qmlVideoOutput changed, reconnecting video sink")
+            _videoSinkRetryCount = 0  // Reset retry counter
+            connectVideoSink()
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -168,11 +176,81 @@ Item {
         }
 
         // Touch passthrough area - forwards touch to embedded OpenAuto
+        // Handles coordinate transformation for PreserveAspectFit video scaling
         MouseArea {
             id: touchArea
             anchors.fill: parent
             enabled: State.AppState.openAutoRunning && State.AppState.openAutoConnected
             z: 2  // Above video output
+
+            /**
+             * Transform touch coordinates from container space to video space
+             * When VideoOutput uses PreserveAspectFit, the actual video may be
+             * smaller than the container with letterboxing/pillarboxing
+             *
+             * @param touchX - X coordinate in container space (MouseArea)
+             * @param touchY - Y coordinate in container space (MouseArea)
+             * @returns {x, y} - Coordinates in video space, or null if outside video
+             */
+            function transformCoordinates(touchX, touchY) {
+                // Get video dimensions from C++ QMLVideoOutput
+                var videoWidth = 800   // Default fallback
+                var videoHeight = 480  // Default fallback
+
+                if (openAutoEmbedded && openAutoEmbedded.qmlVideoOutput) {
+                    videoWidth = openAutoEmbedded.qmlVideoOutput.videoWidth
+                    videoHeight = openAutoEmbedded.qmlVideoOutput.videoHeight
+                }
+
+                // Container dimensions
+                var containerWidth = touchArea.width
+                var containerHeight = touchArea.height
+
+                if (containerWidth <= 0 || containerHeight <= 0 ||
+                    videoWidth <= 0 || videoHeight <= 0) {
+                    return null
+                }
+
+                // Calculate aspect ratios
+                var containerAspect = containerWidth / containerHeight
+                var videoAspect = videoWidth / videoHeight
+
+                // Calculate rendered video dimensions (PreserveAspectFit logic)
+                var renderedWidth, renderedHeight, offsetX, offsetY
+
+                if (containerAspect > videoAspect) {
+                    // Container is wider than video - pillarboxing (black bars on sides)
+                    renderedHeight = containerHeight
+                    renderedWidth = containerHeight * videoAspect
+                    offsetX = (containerWidth - renderedWidth) / 2
+                    offsetY = 0
+                } else {
+                    // Container is taller than video - letterboxing (black bars on top/bottom)
+                    renderedWidth = containerWidth
+                    renderedHeight = containerWidth / videoAspect
+                    offsetX = 0
+                    offsetY = (containerHeight - renderedHeight) / 2
+                }
+
+                // Check if touch is within the rendered video bounds
+                if (touchX < offsetX || touchX > offsetX + renderedWidth ||
+                    touchY < offsetY || touchY > offsetY + renderedHeight) {
+                    // Touch is in the letterbox/pillarbox area - ignore or clamp
+                    // For now, clamp to video bounds
+                    touchX = Math.max(offsetX, Math.min(touchX, offsetX + renderedWidth))
+                    touchY = Math.max(offsetY, Math.min(touchY, offsetY + renderedHeight))
+                }
+
+                // Transform from container space to video space
+                var videoX = (touchX - offsetX) * videoWidth / renderedWidth
+                var videoY = (touchY - offsetY) * videoHeight / renderedHeight
+
+                // Clamp to video bounds
+                videoX = Math.max(0, Math.min(Math.round(videoX), videoWidth))
+                videoY = Math.max(0, Math.min(Math.round(videoY), videoHeight))
+
+                return { x: videoX, y: videoY }
+            }
 
             function validateAndSendTouch(mouseX, mouseY, action) {
                 if (!isFinite(mouseX) || !isFinite(mouseY)) {
@@ -180,13 +258,19 @@ Item {
                     return
                 }
 
-                var safeX = Math.max(0, Math.min(Math.round(mouseX), width))
-                var safeY = Math.max(0, Math.min(Math.round(mouseY), height))
-
-                if (useEmbedded && openAutoEmbedded) {
-                    openAutoEmbedded.sendTouch(safeX, safeY, action)
+                // Transform coordinates from container to video space
+                var coords = transformCoordinates(mouseX, mouseY)
+                if (!coords) {
+                    console.warn("OpenAutoScreen: Could not transform coordinates")
+                    return
                 }
-                openAutoScreen.touchEvent(safeX, safeY, action)
+
+                // Send touch directly to embedded OpenAuto
+                // NOTE: Do NOT emit touchEvent signal - it was causing duplicate events
+                // because main.qml and MainContent.qml both had handlers calling sendTouch again
+                if (useEmbedded && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(coords.x, coords.y, action)
+                }
             }
 
             onPressed: function(mouse) {
