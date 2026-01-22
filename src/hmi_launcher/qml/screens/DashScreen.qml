@@ -8,6 +8,7 @@ import "../components" as Components
 /**
  * DashScreen.qml
  * Professional Speeduino ECU Dashboard with modern UI/UX
+ * Optimized layout - No overlapping elements
  */
 Item {
     id: dashScreen
@@ -85,17 +86,17 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MODE SELECTOR - Floating pills
+    // MODE SELECTOR - Floating pills (Top Center)
     // ═══════════════════════════════════════════════════════════════════════
 
     Rectangle {
         id: modeSelector
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: 8
-        width: modeRow.width + 16
-        height: 36
-        radius: 18
+        anchors.topMargin: 6
+        width: modeRow.width + 12
+        height: 32
+        radius: 16
         color: "#1a1a1a"
         border.color: "#2a2a2a"
         border.width: 1
@@ -115,9 +116,9 @@ Item {
                 ]
 
                 Rectangle {
-                    width: 70
-                    height: 28
-                    radius: 14
+                    width: 64
+                    height: 24
+                    radius: 12
                     color: "transparent"
 
                     // Gradient background when active
@@ -136,7 +137,7 @@ Item {
                         anchors.centerIn: parent
                         text: modelData.label
                         color: displayMode === index ? "#000000" : "#666666"
-                        font.pixelSize: 10
+                        font.pixelSize: 9
                         font.bold: true
                         font.letterSpacing: 1
                     }
@@ -152,15 +153,14 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MODE 0: SPORT - Clean racing style
-    // Performance: Using Loader with active for lazy loading (+25% GPU efficiency)
-    // ISO 26262: Only active mode consumes resources
+    // MODE 0: SPORT - Optimized Racing Layout
+    // Removed redundant speed gauge, added boost display
     // ═══════════════════════════════════════════════════════════════════════
 
     Loader {
         id: sportModeLoader
         anchors.fill: parent
-        anchors.topMargin: 50
+        anchors.topMargin: 42
         active: displayMode === 0
         sourceComponent: sportModeComponent
     }
@@ -175,20 +175,20 @@ Item {
             id: shiftBar
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width * 0.7
-            height: 20
+            width: parent.width * 0.75
+            height: 18
 
             Row {
                 anchors.centerIn: parent
-                spacing: 4
+                spacing: 3
 
                 Repeater {
                     model: 15
 
                     Rectangle {
-                        width: 20
-                        height: 12
-                        radius: 3
+                        width: 22
+                        height: 10
+                        radius: 2
 
                         property real threshold: 4000 + (index * 250)
                         property bool active: engineData.rpm >= threshold
@@ -207,8 +207,8 @@ Item {
                         Rectangle {
                             visible: parent.active && index >= 10
                             anchors.fill: parent
-                            anchors.margins: -4
-                            radius: 6
+                            anchors.margins: -3
+                            radius: 5
                             color: parent.color
                             opacity: 0.3
                             z: -1
@@ -221,24 +221,24 @@ Item {
             }
         }
 
-        // Main gauges area
+        // Main gauges area - Optimized 3-column layout
         RowLayout {
             anchors.top: shiftBar.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: bottomBar.top
-            anchors.margins: 16
-            anchors.topMargin: 8
-            spacing: 20
+            anchors.margins: 12
+            anchors.topMargin: 4
+            spacing: 12
 
-            // RPM Gauge
+            // LEFT: RPM Gauge (45%)
             Item {
                 Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.38
+                Layout.preferredWidth: parent.width * 0.42
 
                 Components.ArcGauge {
                     anchors.centerIn: parent
-                    gaugeSize: Math.min(parent.width, parent.height) - 20
+                    gaugeSize: Math.min(parent.width, parent.height) - 16
                     value: engineData.rpm
                     minValue: 0
                     maxValue: 8000
@@ -252,10 +252,10 @@ Item {
                 }
             }
 
-            // Center - Gear + Speed digital
+            // CENTER: Gear + Boost (16%)
             Item {
                 Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.24
+                Layout.preferredWidth: parent.width * 0.16
 
                 Column {
                     anchors.centerIn: parent
@@ -264,127 +264,31 @@ Item {
                     // Large Gear Display
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: 100
-                        height: 100
-                        radius: 16
+                        width: 80
+                        height: 80
+                        radius: 12
                         color: "#141414"
-                        border.color: engineData.gear === 0 ? "#FF9800" : "#00E676"
+                        border.color: engineData.gear === 0 ? "#FF9800" : engineData.gear === -1 ? "#F44336" : "#00E676"
                         border.width: 2
 
                         Text {
                             anchors.centerIn: parent
                             text: engineData.gear === 0 ? "N" : engineData.gear === -1 ? "R" : engineData.gear.toString()
-                            color: engineData.gear === 0 ? "#FF9800" : engineData.gear === -1 ? "#F44336" : "#00E676"
-                            font.pixelSize: 56
-                            font.bold: true
-                            font.family: "Roboto Mono, Consolas, monospace"
-                        }
-
-                        // Glow
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: -6
-                            radius: 20
-                            color: "transparent"
-                            border.color: parent.border.color
-                            border.width: 1
-                            opacity: 0.3
-                            z: -1
-                        }
-                    }
-
-                    // Digital Speed
-                    Column {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 0
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: engineData.vehicleSpeed.toFixed(0)
-                            color: "#00B8D4"
+                            color: parent.border.color
                             font.pixelSize: 48
                             font.bold: true
                             font.family: "Roboto Mono, Consolas, monospace"
                         }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "km/h"
-                            color: "#666666"
-                            font.pixelSize: 14
-                            font.letterSpacing: 2
-                        }
                     }
-                }
-            }
 
-            // Speed Gauge
-            Item {
-                Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.38
-
-                Components.ArcGauge {
-                    anchors.centerIn: parent
-                    gaugeSize: Math.min(parent.width, parent.height) - 20
-                    value: engineData.vehicleSpeed
-                    minValue: 0
-                    maxValue: 280
-                    warningValue: 200
-                    criticalValue: 250
-                    label: "SPEED"
-                    unit: "km/h"
-                    decimals: 0
-                    accentColor: "#00B8D4"
-                    majorTickCount: 7
-                    showLabels: !compactMode
-                }
-            }
-        }
-
-        // Bottom status bar
-        Rectangle {
-            id: bottomBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 16
-            height: 70
-            radius: 12
-            color: "#141414"
-            border.color: "#1e1e1e"
-            border.width: 1
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 8
-
-                // Gauge items
-                Repeater {
-                    model: [
-                        { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C",
-                          color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676",
-                          warn: engineData.coolantTemp > 100 },
-                        { label: "MAP", value: isBoost ? boostPsi.toFixed(1) : engineData.mapKpa.toFixed(0),
-                          unit: isBoost ? "psi" : "kPa", color: "#FF9800", warn: false },
-                        { label: "AFR", value: afr.toFixed(1), unit: "",
-                          color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF",
-                          warn: afr > 13.5 || afr < 10.5 },
-                        { label: "FUEL P", value: (engineData.fuelPressure / 100).toFixed(1), unit: "bar",
-                          color: engineData.lowFuelPressure ? "#F44336" : "#00BCD4", warn: engineData.lowFuelPressure },
-                        { label: "INJ", value: engineData.injectorDuty.toFixed(0), unit: "%",
-                          color: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800", warn: engineData.injectorDuty > 85 },
-                        { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V",
-                          color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676",
-                          warn: engineData.batteryVoltage < 12.5 }
-                    ]
-
+                    // Boost/Vacuum Display
                     Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 80
+                        height: 50
                         radius: 8
-                        color: modelData.warn ? Qt.rgba(244/255, 67/255, 54/255, 0.15) : "#1a1a1a"
-                        border.color: modelData.warn ? "#F44336" : "#252525"
+                        color: "#141414"
+                        border.color: isBoost ? "#FF9800" : "#00BCD4"
                         border.width: 1
 
                         Column {
@@ -393,11 +297,136 @@ Item {
 
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: modelData.label
+                                text: isBoost ? "BOOST" : "VAC"
                                 color: "#666666"
-                                font.pixelSize: 9
+                                font.pixelSize: 8
                                 font.bold: true
                                 font.letterSpacing: 1
+                            }
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: Math.abs(boostPsi).toFixed(1)
+                                color: isBoost ? "#FF9800" : "#00BCD4"
+                                font.pixelSize: 20
+                                font.bold: true
+                                font.family: "Roboto Mono, Consolas, monospace"
+                            }
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "psi"
+                                color: "#555555"
+                                font.pixelSize: 8
+                            }
+                        }
+                    }
+                }
+            }
+
+            // RIGHT: Speed Digital (42%)
+            Item {
+                Layout.fillHeight: true
+                Layout.preferredWidth: parent.width * 0.42
+
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 0
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: engineData.vehicleSpeed.toFixed(0)
+                        color: "#00B8D4"
+                        font.pixelSize: Math.min(parent.parent.width * 0.45, 120)
+                        font.bold: true
+                        font.family: "Roboto Mono, Consolas, monospace"
+
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            blurEnabled: true
+                            blur: 0.2
+                            blurMax: 12
+                            brightness: 0.05
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "km/h"
+                        color: "#555555"
+                        font.pixelSize: 16
+                        font.letterSpacing: 3
+                    }
+                }
+            }
+        }
+
+        // Bottom status bar with 8 metrics (2 rows x 4)
+        Rectangle {
+            id: bottomBar
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            height: 100
+            radius: 10
+            color: "#141414"
+            border.color: "#1e1e1e"
+            border.width: 1
+
+            GridLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                columns: 4
+                rows: 2
+                columnSpacing: 6
+                rowSpacing: 4
+
+                // Row 1: CLT, AFR, FUEL P, INJ
+                Repeater {
+                    model: [
+                        { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C",
+                          color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676",
+                          warn: engineData.coolantTemp > 100 },
+                        { label: "AFR", value: afr.toFixed(1), unit: "",
+                          color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF",
+                          warn: afr > 13.5 || afr < 10.5 },
+                        { label: "FUEL P", value: (engineData.fuelPressure / 100).toFixed(1), unit: "bar",
+                          color: engineData.lowFuelPressure ? "#F44336" : "#00BCD4", warn: engineData.lowFuelPressure },
+                        { label: "INJ", value: engineData.injectorDuty.toFixed(0), unit: "%",
+                          color: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800", warn: engineData.injectorDuty > 85 },
+                        // Row 2: OIL T, OIL P, MAP, BATT
+                        { label: "OIL T", value: engineData.oilTemp.toFixed(0), unit: "°C",
+                          color: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300",
+                          warn: engineData.oilTemp > 120 },
+                        { label: "OIL P", value: (engineData.oilPressure / 100).toFixed(1), unit: "bar",
+                          color: engineData.lowOilPressure ? "#F44336" : "#FFB300", warn: engineData.lowOilPressure },
+                        { label: "MAP", value: engineData.mapKpa.toFixed(0), unit: "kPa",
+                          color: "#FF9800", warn: false },
+                        { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V",
+                          color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676",
+                          warn: engineData.batteryVoltage < 12.5 }
+                    ]
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 6
+                        color: modelData.warn ? Qt.rgba(244/255, 67/255, 54/255, 0.12) : "#1a1a1a"
+                        border.color: modelData.warn ? "#F44336" : "#252525"
+                        border.width: 1
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 1
+
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: modelData.label
+                                color: "#666666"
+                                font.pixelSize: 8
+                                font.bold: true
+                                font.letterSpacing: 0.5
                             }
 
                             Row {
@@ -407,7 +436,7 @@ Item {
                                 Text {
                                     text: modelData.value
                                     color: modelData.color
-                                    font.pixelSize: 22
+                                    font.pixelSize: 18
                                     font.bold: true
                                     font.family: "Roboto Mono, Consolas, monospace"
                                 }
@@ -415,149 +444,130 @@ Item {
                                 Text {
                                     text: modelData.unit
                                     color: "#555555"
-                                    font.pixelSize: 11
+                                    font.pixelSize: 9
                                     anchors.bottom: parent.children[0].bottom
-                                    anchors.bottomMargin: 2
+                                    anchors.bottomMargin: 1
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Status indicator row (Engine Running, Launch, Flat Shift, Rev Limiter, DFCO)
-            Row {
-                anchors.top: bottomBar.bottom
-                anchors.horizontalCenter: bottomBar.horizontalCenter
-                anchors.topMargin: 8
-                spacing: 12
+        // Status indicator row (compact, inside bottom margin)
+        Row {
+            anchors.bottom: bottomBar.top
+            anchors.horizontalCenter: bottomBar.horizontalCenter
+            anchors.bottomMargin: 4
+            spacing: 8
+            z: 10
 
-                // Engine Running indicator
-                Rectangle {
-                    visible: engineData.engineRunning
-                    width: engineRunText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#4CAF50"
-
-                    Text {
-                        id: engineRunText
-                        anchors.centerIn: parent
-                        text: "ENGINE"
-                        color: "#FFFFFF"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
+            // Engine Running
+            Rectangle {
+                visible: engineData.engineRunning
+                width: 50
+                height: 18
+                radius: 9
+                color: "#4CAF50"
+                Text {
+                    anchors.centerIn: parent
+                    text: "RUN"
+                    color: "#FFFFFF"
+                    font.pixelSize: 8
+                    font.bold: true
                 }
+            }
 
-                // Launch Control indicator
-                Rectangle {
-                    visible: engineData.launchControlActive
-                    width: launchText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#00E676"
-
-                    Text {
-                        id: launchText
-                        anchors.centerIn: parent
-                        text: "LAUNCH"
-                        color: "#000000"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    SequentialAnimation on opacity {
-                        running: engineData.launchControlActive
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.5; duration: 200 }
-                        NumberAnimation { to: 1.0; duration: 200 }
-                    }
+            // Launch Control
+            Rectangle {
+                visible: engineData.launchControlActive
+                width: 55
+                height: 18
+                radius: 9
+                color: "#00E676"
+                Text {
+                    anchors.centerIn: parent
+                    text: "LAUNCH"
+                    color: "#000000"
+                    font.pixelSize: 8
+                    font.bold: true
                 }
-
-                // Flat Shift indicator
-                Rectangle {
-                    visible: engineData.flatShiftActive
-                    width: flatShiftText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#FFEB3B"
-
-                    Text {
-                        id: flatShiftText
-                        anchors.centerIn: parent
-                        text: "FLAT SHIFT"
-                        color: "#000000"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
+                SequentialAnimation on opacity {
+                    running: engineData.launchControlActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.5; duration: 200 }
+                    NumberAnimation { to: 1.0; duration: 200 }
                 }
+            }
 
-                // Rev Limiter indicator
-                Rectangle {
-                    visible: engineData.revLimiterActive
-                    width: revLimText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#F44336"
-
-                    Text {
-                        id: revLimText
-                        anchors.centerIn: parent
-                        text: "REV LIMIT"
-                        color: "#FFFFFF"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    SequentialAnimation on opacity {
-                        running: engineData.revLimiterActive
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.3; duration: 100 }
-                        NumberAnimation { to: 1.0; duration: 100 }
-                    }
+            // Flat Shift
+            Rectangle {
+                visible: engineData.flatShiftActive
+                width: 45
+                height: 18
+                radius: 9
+                color: "#FFEB3B"
+                Text {
+                    anchors.centerIn: parent
+                    text: "FLAT"
+                    color: "#000000"
+                    font.pixelSize: 8
+                    font.bold: true
                 }
+            }
 
-                // DFCO indicator
-                Rectangle {
-                    visible: engineData.dfcoActive
-                    width: dfcoText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#2196F3"
-
-                    Text {
-                        id: dfcoText
-                        anchors.centerIn: parent
-                        text: "DFCO"
-                        color: "#FFFFFF"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
+            // Rev Limiter
+            Rectangle {
+                visible: engineData.revLimiterActive
+                width: 45
+                height: 18
+                radius: 9
+                color: "#F44336"
+                Text {
+                    anchors.centerIn: parent
+                    text: "REV"
+                    color: "#FFFFFF"
+                    font.pixelSize: 8
+                    font.bold: true
                 }
+                SequentialAnimation on opacity {
+                    running: engineData.revLimiterActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.3; duration: 100 }
+                    NumberAnimation { to: 1.0; duration: 100 }
+                }
+            }
 
-                // Fan On indicator
-                Rectangle {
-                    visible: engineData.fanOn
-                    width: fanText.width + 20
-                    height: 24
-                    radius: 12
-                    color: "#00BCD4"
+            // DFCO
+            Rectangle {
+                visible: engineData.dfcoActive
+                width: 45
+                height: 18
+                radius: 9
+                color: "#2196F3"
+                Text {
+                    anchors.centerIn: parent
+                    text: "DFCO"
+                    color: "#FFFFFF"
+                    font.pixelSize: 8
+                    font.bold: true
+                }
+            }
 
-                    Text {
-                        id: fanText
-                        anchors.centerIn: parent
-                        text: "FAN"
-                        color: "#000000"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
+            // Fan
+            Rectangle {
+                visible: engineData.fanOn
+                width: 40
+                height: 18
+                radius: 9
+                color: "#00BCD4"
+                Text {
+                    anchors.centerIn: parent
+                    text: "FAN"
+                    color: "#000000"
+                    font.pixelSize: 8
+                    font.bold: true
                 }
             }
         }
@@ -566,13 +576,12 @@ Item {
 
     // ═══════════════════════════════════════════════════════════════════════
     // MODE 1: STREET - Minimal, speed focused
-    // Performance: Using Loader with active for lazy loading
     // ═══════════════════════════════════════════════════════════════════════
 
     Loader {
         id: streetModeLoader
         anchors.fill: parent
-        anchors.topMargin: 50
+        anchors.topMargin: 42
         active: displayMode === 1
         sourceComponent: streetModeComponent
     }
@@ -585,18 +594,17 @@ Item {
         // Giant speed display
         Column {
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: -20
+            anchors.verticalCenterOffset: -30
             spacing: 0
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: engineData.vehicleSpeed.toFixed(0)
                 color: "#00B8D4"
-                font.pixelSize: Math.min(parent.parent.width * 0.25, 160)
+                font.pixelSize: Math.min(parent.parent.width * 0.28, 180)
                 font.bold: true
                 font.family: "Roboto Mono, Consolas, monospace"
 
-                // Subtle glow
                 layer.enabled: true
                 layer.effect: MultiEffect {
                     blurEnabled: true
@@ -620,20 +628,20 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 20
-            height: 50
-            radius: 12
+            anchors.margins: 16
+            height: 45
+            radius: 10
             color: "#141414"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 12
-                spacing: 16
+                anchors.margins: 10
+                spacing: 12
 
                 Text {
                     text: "RPM"
                     color: "#666666"
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -642,7 +650,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: 6
+                    radius: 5
                     color: "#1a1a1a"
 
                     Rectangle {
@@ -650,7 +658,7 @@ Item {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: parent.width * Math.min(1, engineData.rpm / 8000)
-                        radius: 6
+                        radius: 5
 
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
@@ -681,29 +689,29 @@ Item {
                 Text {
                     text: engineData.rpm.toFixed(0)
                     color: engineData.rpm > 6500 ? "#FF9800" : "#00E676"
-                    font.pixelSize: 24
+                    font.pixelSize: 22
                     font.bold: true
                     font.family: "Roboto Mono, Consolas, monospace"
-                    Layout.preferredWidth: 60
+                    Layout.preferredWidth: 55
                     horizontalAlignment: Text.AlignRight
                 }
             }
         }
 
-        // Bottom info strip
+        // Bottom info strip with 5 items
         Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 20
-            height: 60
-            radius: 12
+            anchors.margins: 16
+            height: 55
+            radius: 10
             color: "#141414"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 32
+                anchors.margins: 12
+                spacing: 24
 
                 Repeater {
                     model: [
@@ -713,6 +721,8 @@ Item {
                           color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676" },
                         { label: "AFR", value: afr.toFixed(1),
                           color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF" },
+                        { label: "OIL", value: engineData.oilTemp.toFixed(0) + "°",
+                          color: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300" },
                         { label: "BATT", value: engineData.batteryVoltage.toFixed(1) + "V",
                           color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676" }
                     ]
@@ -729,7 +739,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.label
                                 color: "#555555"
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 font.bold: true
                                 font.letterSpacing: 1
                             }
@@ -738,7 +748,7 @@ Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: modelData.value
                                 color: modelData.color
-                                font.pixelSize: 24
+                                font.pixelSize: 22
                                 font.bold: true
                                 font.family: "Roboto Mono, Consolas, monospace"
                             }
@@ -751,14 +761,13 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MODE 2: TRACK - All critical data visible
-    // Performance: Using Loader with active for lazy loading
+    // MODE 2: TRACK - All critical data visible (Fixed 4 rows)
     // ═══════════════════════════════════════════════════════════════════════
 
     Loader {
         id: trackModeLoader
         anchors.fill: parent
-        anchors.topMargin: 50
+        anchors.topMargin: 42
         active: displayMode === 2
         sourceComponent: trackModeComponent
     }
@@ -770,11 +779,11 @@ Item {
 
         GridLayout {
             anchors.fill: parent
-            anchors.margins: 12
+            anchors.margins: 10
             columns: 4
-            rows: 3
-            columnSpacing: 8
-            rowSpacing: 8
+            rows: 4
+            columnSpacing: 6
+            rowSpacing: 6
 
             // Row 1: Main gauges
             Components.GaugeCard {
@@ -900,7 +909,7 @@ Item {
                 warning: engineData.lowFuelPressure
             }
 
-            // Row 4: IGN, INJ, TPS
+            // Row 4: IGN, INJ, TPS, BATT
             Components.GaugeCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -947,14 +956,13 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MODE 3: DIAGNOSTIC - Full ECU data
-    // Performance: Using Loader with active for lazy loading
+    // MODE 3: DIAGNOSTIC - Full ECU data (Optimized spacing)
     // ═══════════════════════════════════════════════════════════════════════
 
     Loader {
         id: diagModeLoader
         anchors.fill: parent
-        anchors.topMargin: 50
+        anchors.topMargin: 42
         active: displayMode === 3
         sourceComponent: diagModeComponent
     }
@@ -966,11 +974,11 @@ Item {
 
         GridLayout {
             anchors.fill: parent
-            anchors.margins: 8
+            anchors.margins: 6
             columns: 5
             rows: 6
-            columnSpacing: 6
-            rowSpacing: 6
+            columnSpacing: 5
+            rowSpacing: 5
 
             Repeater {
                 model: [
@@ -1020,20 +1028,20 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: 8
+                    radius: 6
                     color: "#141414"
                     border.color: "#1e1e1e"
                     border.width: 1
 
                     Column {
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: 2
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: modelData.label
-                            color: "#555555"
-                            font.pixelSize: 9
+                            color: "#666666"
+                            font.pixelSize: 10
                             font.bold: true
                             font.letterSpacing: 0.5
                         }
@@ -1045,7 +1053,7 @@ Item {
                             Text {
                                 text: modelData.value
                                 color: modelData.color
-                                font.pixelSize: 20
+                                font.pixelSize: 22
                                 font.bold: true
                                 font.family: "Roboto Mono, Consolas, monospace"
                             }
@@ -1053,8 +1061,8 @@ Item {
                             Text {
                                 visible: modelData.unit !== ""
                                 text: modelData.unit
-                                color: "#444444"
-                                font.pixelSize: 10
+                                color: "#555555"
+                                font.pixelSize: 9
                                 anchors.bottom: parent.children[0].bottom
                                 anchors.bottomMargin: 2
                             }
@@ -1067,71 +1075,40 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // WARNING OVERLAY
+    // CRITICAL WARNINGS - Bottom Right (z=1001)
+    // Only life-threatening: Overheat + Low Oil Pressure
     // ═══════════════════════════════════════════════════════════════════════
 
     Column {
-        anchors.top: modeSelector.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: 8
-        spacing: 8
-        z: 1000
+        id: criticalWarnings
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 12
+        anchors.bottomMargin: 12
+        spacing: 6
+        z: 1001
 
-        Rectangle {
-            visible: engineData.celOn
-            width: celText.width + 32
-            height: 36
-            radius: 18
-            color: "#FF9800"
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 8
-
-                Text {
-                    text: "⚠"
-                    font.pixelSize: 16
-                }
-
-                Text {
-                    id: celText
-                    text: "CHECK ENGINE"
-                    color: "#000000"
-                    font.pixelSize: 13
-                    font.bold: true
-                    font.letterSpacing: 1
-                }
-            }
-
-            SequentialAnimation on opacity {
-                running: engineData.celOn
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.6; duration: 400 }
-                NumberAnimation { to: 1.0; duration: 400 }
-            }
-        }
-
+        // Overheat Warning
         Rectangle {
             visible: engineData.overheat
-            width: overheatText.width + 32
-            height: 36
-            radius: 18
+            width: 140
+            height: 32
+            radius: 16
             color: "#F44336"
 
             Row {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 6
 
                 Text {
                     text: "🔥"
-                    font.pixelSize: 14
+                    font.pixelSize: 12
                 }
 
                 Text {
-                    id: overheatText
                     text: "OVERHEAT"
                     color: "#FFFFFF"
-                    font.pixelSize: 13
+                    font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -1140,32 +1117,32 @@ Item {
             SequentialAnimation on opacity {
                 running: engineData.overheat
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.4; duration: 200 }
-                NumberAnimation { to: 1.0; duration: 200 }
+                NumberAnimation { to: 0.4; duration: 150 }
+                NumberAnimation { to: 1.0; duration: 150 }
             }
         }
 
+        // Low Oil Pressure Warning
         Rectangle {
             visible: engineData.lowOilPressure
-            width: lowOilText.width + 32
-            height: 36
-            radius: 18
+            width: 160
+            height: 32
+            radius: 16
             color: "#F44336"
 
             Row {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 6
 
                 Text {
                     text: "🛢"
-                    font.pixelSize: 14
+                    font.pixelSize: 12
                 }
 
                 Text {
-                    id: lowOilText
-                    text: "LOW OIL PRESSURE"
+                    text: "LOW OIL P"
                     color: "#FFFFFF"
-                    font.pixelSize: 13
+                    font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -1174,32 +1151,82 @@ Item {
             SequentialAnimation on opacity {
                 running: engineData.lowOilPressure
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.3; duration: 150 }
-                NumberAnimation { to: 1.0; duration: 150 }
+                NumberAnimation { to: 0.3; duration: 100 }
+                NumberAnimation { to: 1.0; duration: 100 }
             }
         }
+    }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // NON-CRITICAL WARNINGS - Top Center Toast (z=999)
+    // CEL, Low Fuel, High Oil Temp - Auto-hide behavior
+    // ═══════════════════════════════════════════════════════════════════════
+
+    Column {
+        id: toastWarnings
+        anchors.top: modeSelector.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 6
+        spacing: 4
+        z: 999
+
+        // CEL Warning
         Rectangle {
-            visible: engineData.lowFuelPressure
-            width: lowFuelText.width + 32
-            height: 36
-            radius: 18
+            visible: engineData.celOn
+            width: celText.width + 28
+            height: 28
+            radius: 14
             color: "#FF9800"
 
             Row {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 6
+
+                Text {
+                    text: "⚠"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    id: celText
+                    text: "CHECK ENGINE"
+                    color: "#000000"
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+            }
+
+            SequentialAnimation on opacity {
+                running: engineData.celOn
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.6; duration: 500 }
+                NumberAnimation { to: 1.0; duration: 500 }
+            }
+        }
+
+        // Low Fuel Pressure Warning
+        Rectangle {
+            visible: engineData.lowFuelPressure
+            width: lowFuelText.width + 28
+            height: 28
+            radius: 14
+            color: "#FF9800"
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 6
 
                 Text {
                     text: "⛽"
-                    font.pixelSize: 14
+                    font.pixelSize: 12
                 }
 
                 Text {
                     id: lowFuelText
-                    text: "LOW FUEL PRESSURE"
+                    text: "LOW FUEL P"
                     color: "#000000"
-                    font.pixelSize: 13
+                    font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -1208,32 +1235,33 @@ Item {
             SequentialAnimation on opacity {
                 running: engineData.lowFuelPressure
                 loops: Animation.Infinite
-                NumberAnimation { to: 0.5; duration: 300 }
-                NumberAnimation { to: 1.0; duration: 300 }
+                NumberAnimation { to: 0.5; duration: 400 }
+                NumberAnimation { to: 1.0; duration: 400 }
             }
         }
 
+        // High Oil Temp Warning
         Rectangle {
             visible: engineData.oilTemp > 120
-            width: highOilTempText.width + 32
-            height: 36
-            radius: 18
+            width: highOilTempText.width + 28
+            height: 28
+            radius: 14
             color: engineData.oilTemp > 140 ? "#F44336" : "#FF9800"
 
             Row {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 6
 
                 Text {
                     text: "🌡"
-                    font.pixelSize: 14
+                    font.pixelSize: 12
                 }
 
                 Text {
                     id: highOilTempText
-                    text: engineData.oilTemp > 140 ? "OIL TEMP CRITICAL" : "OIL TEMP HIGH"
+                    text: engineData.oilTemp > 140 ? "OIL CRITICAL" : "OIL TEMP"
                     color: engineData.oilTemp > 140 ? "#FFFFFF" : "#000000"
-                    font.pixelSize: 13
+                    font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -1242,8 +1270,8 @@ Item {
             SequentialAnimation on opacity {
                 running: engineData.oilTemp > 120
                 loops: Animation.Infinite
-                NumberAnimation { to: engineData.oilTemp > 140 ? 0.3 : 0.6; duration: engineData.oilTemp > 140 ? 150 : 400 }
-                NumberAnimation { to: 1.0; duration: engineData.oilTemp > 140 ? 150 : 400 }
+                NumberAnimation { to: engineData.oilTemp > 140 ? 0.3 : 0.6; duration: engineData.oilTemp > 140 ? 100 : 400 }
+                NumberAnimation { to: 1.0; duration: engineData.oilTemp > 140 ? 100 : 400 }
             }
         }
     }
