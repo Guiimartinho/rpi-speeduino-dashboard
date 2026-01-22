@@ -22,7 +22,21 @@ Item {
         gear: 0, canOk: false, celOn: false, overheat: false,
         batteryVoltage: 12.0, oilPressure: 0, oilTemp: 0, boostPsi: 0,
         veValue: 0, sparkDwell: 0, loopsPerSec: 0, freeRam: 0,
-        targetAfr: 14.7, afrCorrection: 0
+        targetAfr: 14.7, afrCorrection: 0,
+        // New fields from Speeduino Native CAN
+        fuelPressure: 0, boostTarget: 0, fuelConsumption: 0,
+        ve: 0, afrTarget: 14.7,
+        // Per-cylinder trims
+        fuelTrimCyl1: 0, fuelTrimCyl2: 0, fuelTrimCyl3: 0, fuelTrimCyl4: 0,
+        ignTrimCyl1: 0, ignTrimCyl2: 0, ignTrimCyl3: 0, ignTrimCyl4: 0,
+        // Idle control
+        idleTargetRpm: 0, idleValveDuty: 0,
+        // Diagnostic
+        errorCount: 0, synced: false,
+        // Status flags
+        engineRunning: false, revLimiterActive: false, launchControlActive: false, flatShiftActive: false,
+        clutchIn: false, brakeOn: false, cruiseOn: false,
+        lowOilPressure: false, lowFuelPressure: false, dfcoActive: false, fanOn: false
     })
 
     property int displayMode: 0  // 0=Sport, 1=Street, 2=Track, 3=Diagnostic
@@ -349,16 +363,20 @@ Item {
                 Repeater {
                     model: [
                         { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C",
-                          color: engineData.coolantTemp > 100 ? "#F44336" : engineData.coolantTemp > 95 ? "#FF9800" : "#00E676",
-                          warn: engineData.coolantTemp > 95 },
+                          color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676",
+                          warn: engineData.coolantTemp > 100 },
                         { label: "MAP", value: isBoost ? boostPsi.toFixed(1) : engineData.mapKpa.toFixed(0),
                           unit: isBoost ? "psi" : "kPa", color: "#FF9800", warn: false },
-                        { label: "AFR", value: afr.toFixed(1), unit: "", color: "#AA00FF", warn: afr > 16 || afr < 11 },
-                        { label: "IGN", value: engineData.ignitionAdvance.toFixed(1), unit: "°", color: "#E91E63", warn: false },
+                        { label: "AFR", value: afr.toFixed(1), unit: "",
+                          color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF",
+                          warn: afr > 13.5 || afr < 10.5 },
+                        { label: "FUEL P", value: (engineData.fuelPressure / 100).toFixed(1), unit: "bar",
+                          color: engineData.lowFuelPressure ? "#F44336" : "#00BCD4", warn: engineData.lowFuelPressure },
                         { label: "INJ", value: engineData.injectorDuty.toFixed(0), unit: "%",
                           color: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800", warn: engineData.injectorDuty > 85 },
                         { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V",
-                          color: engineData.batteryVoltage < 12 ? "#F44336" : "#00E676", warn: engineData.batteryVoltage < 12 }
+                          color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676",
+                          warn: engineData.batteryVoltage < 12.5 }
                     ]
 
                     Rectangle {
@@ -403,6 +421,142 @@ Item {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Status indicator row (Engine Running, Launch, Flat Shift, Rev Limiter, DFCO)
+            Row {
+                anchors.top: bottomBar.bottom
+                anchors.horizontalCenter: bottomBar.horizontalCenter
+                anchors.topMargin: 8
+                spacing: 12
+
+                // Engine Running indicator
+                Rectangle {
+                    visible: engineData.engineRunning
+                    width: engineRunText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#4CAF50"
+
+                    Text {
+                        id: engineRunText
+                        anchors.centerIn: parent
+                        text: "ENGINE"
+                        color: "#FFFFFF"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+                }
+
+                // Launch Control indicator
+                Rectangle {
+                    visible: engineData.launchControlActive
+                    width: launchText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#00E676"
+
+                    Text {
+                        id: launchText
+                        anchors.centerIn: parent
+                        text: "LAUNCH"
+                        color: "#000000"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+
+                    SequentialAnimation on opacity {
+                        running: engineData.launchControlActive
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.5; duration: 200 }
+                        NumberAnimation { to: 1.0; duration: 200 }
+                    }
+                }
+
+                // Flat Shift indicator
+                Rectangle {
+                    visible: engineData.flatShiftActive
+                    width: flatShiftText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#FFEB3B"
+
+                    Text {
+                        id: flatShiftText
+                        anchors.centerIn: parent
+                        text: "FLAT SHIFT"
+                        color: "#000000"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+                }
+
+                // Rev Limiter indicator
+                Rectangle {
+                    visible: engineData.revLimiterActive
+                    width: revLimText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#F44336"
+
+                    Text {
+                        id: revLimText
+                        anchors.centerIn: parent
+                        text: "REV LIMIT"
+                        color: "#FFFFFF"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+
+                    SequentialAnimation on opacity {
+                        running: engineData.revLimiterActive
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.3; duration: 100 }
+                        NumberAnimation { to: 1.0; duration: 100 }
+                    }
+                }
+
+                // DFCO indicator
+                Rectangle {
+                    visible: engineData.dfcoActive
+                    width: dfcoText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#2196F3"
+
+                    Text {
+                        id: dfcoText
+                        anchors.centerIn: parent
+                        text: "DFCO"
+                        color: "#FFFFFF"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
+                    }
+                }
+
+                // Fan On indicator
+                Rectangle {
+                    visible: engineData.fanOn
+                    width: fanText.width + 20
+                    height: 24
+                    radius: 12
+                    color: "#00BCD4"
+
+                    Text {
+                        id: fanText
+                        anchors.centerIn: parent
+                        text: "FAN"
+                        color: "#000000"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.letterSpacing: 1
                     }
                 }
             }
@@ -556,10 +710,11 @@ Item {
                         { label: "GEAR", value: engineData.gear === 0 ? "N" : engineData.gear.toString(),
                           color: engineData.gear === 0 ? "#FF9800" : "#00B8D4" },
                         { label: "CLT", value: engineData.coolantTemp.toFixed(0) + "°",
-                          color: engineData.coolantTemp > 100 ? "#F44336" : "#00E676" },
-                        { label: "AFR", value: afr.toFixed(1), color: "#AA00FF" },
+                          color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676" },
+                        { label: "AFR", value: afr.toFixed(1),
+                          color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF" },
                         { label: "BATT", value: engineData.batteryVoltage.toFixed(1) + "V",
-                          color: engineData.batteryVoltage < 12 ? "#F44336" : "#00E676" }
+                          color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676" }
                     ]
 
                     Item {
@@ -666,8 +821,8 @@ Item {
                 value: engineData.coolantTemp.toFixed(0)
                 unit: "°C"
                 progress: engineData.coolantTemp / 120
-                accentColor: engineData.coolantTemp > 100 ? "#F44336" : engineData.coolantTemp > 95 ? "#FF9800" : "#00E676"
-                warning: engineData.coolantTemp > 95
+                accentColor: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676"
+                warning: engineData.coolantTemp > 100
                 showBar: true
             }
 
@@ -702,28 +857,50 @@ Item {
                 accentColor: isBoost ? "#FF9800" : "#00B8D4"
             }
 
-            // Row 3: Fuel & ignition
+            // Row 3: Fuel & ignition & temps
             Components.GaugeCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 label: "AFR"
                 value: afr.toFixed(1)
                 unit: ""
-                accentColor: afr > 16 || afr < 11 ? "#F44336" : "#AA00FF"
-                warning: afr > 16 || afr < 11
+                accentColor: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF"
+                warning: afr > 13.5 || afr < 10.5
             }
 
             Components.GaugeCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                label: "TPS"
-                value: engineData.tps.toFixed(0)
-                unit: "%"
-                progress: engineData.tps / 100
-                accentColor: "#00E676"
+                label: "OIL T"
+                value: engineData.oilTemp.toFixed(0)
+                unit: "°C"
+                progress: engineData.oilTemp / 150
+                accentColor: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300"
+                warning: engineData.oilTemp > 120
                 showBar: true
             }
 
+            Components.GaugeCard {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                label: "OIL P"
+                value: (engineData.oilPressure / 100).toFixed(1)
+                unit: "bar"
+                accentColor: engineData.lowOilPressure ? "#F44336" : "#FFB300"
+                warning: engineData.lowOilPressure
+            }
+
+            Components.GaugeCard {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                label: "FUEL P"
+                value: (engineData.fuelPressure / 100).toFixed(1)
+                unit: "bar"
+                accentColor: engineData.lowFuelPressure ? "#F44336" : "#00BCD4"
+                warning: engineData.lowFuelPressure
+            }
+
+            // Row 4: IGN, INJ, TPS
             Components.GaugeCard {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -743,6 +920,27 @@ Item {
                 accentColor: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800"
                 warning: engineData.injectorDuty > 85
                 showBar: true
+            }
+
+            Components.GaugeCard {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                label: "TPS"
+                value: engineData.tps.toFixed(0)
+                unit: "%"
+                progress: engineData.tps / 100
+                accentColor: "#00E676"
+                showBar: true
+            }
+
+            Components.GaugeCard {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                label: "BATT"
+                value: engineData.batteryVoltage.toFixed(1)
+                unit: "V"
+                accentColor: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676"
+                warning: engineData.batteryVoltage < 12.5
             }
         }
         }
@@ -770,35 +968,53 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             columns: 5
-            rows: 4
+            rows: 6
             columnSpacing: 6
             rowSpacing: 6
 
             Repeater {
                 model: [
+                    // Row 1: Core data
                     { label: "RPM", value: engineData.rpm.toFixed(0), unit: "", color: "#00E676" },
                     { label: "SPEED", value: engineData.vehicleSpeed.toFixed(0), unit: "km/h", color: "#00B8D4" },
                     { label: "GEAR", value: engineData.gear === 0 ? "N" : engineData.gear.toString(), unit: "", color: "#00B8D4" },
-                    { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C", color: engineData.coolantTemp > 95 ? "#F44336" : "#00E676" },
+                    { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C", color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676" },
                     { label: "IAT", value: engineData.intakeTemp.toFixed(0), unit: "°C", color: "#00B8D4" },
 
+                    // Row 2: MAP/TPS/AFR
                     { label: "MAP", value: engineData.mapKpa.toFixed(0), unit: "kPa", color: "#FF9800" },
                     { label: "TPS", value: engineData.tps.toFixed(0), unit: "%", color: "#00E676" },
-                    { label: "AFR", value: afr.toFixed(1), unit: "", color: "#AA00FF" },
-                    { label: "LAMBDA", value: engineData.lambda.toFixed(2), unit: "", color: "#AA00FF" },
-                    { label: "AFR TGT", value: engineData.targetAfr.toFixed(1), unit: "", color: "#9C27B0" },
+                    { label: "AFR", value: afr.toFixed(1), unit: "", color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF" },
+                    { label: "AFR TGT", value: engineData.afrTarget.toFixed(1), unit: "", color: "#9C27B0" },
+                    { label: "VE", value: engineData.ve.toFixed(0), unit: "%", color: "#00BCD4" },
 
+                    // Row 3: Ignition/Injection/Pressures
                     { label: "IGN ADV", value: engineData.ignitionAdvance.toFixed(1), unit: "°", color: "#E91E63" },
-                    { label: "DWELL", value: engineData.sparkDwell.toFixed(1), unit: "ms", color: "#E91E63" },
                     { label: "INJ DC", value: engineData.injectorDuty.toFixed(0), unit: "%", color: "#FF9800" },
-                    { label: "VE", value: engineData.veValue.toFixed(0), unit: "%", color: "#00BCD4" },
-                    { label: "AFR COR", value: engineData.afrCorrection.toFixed(0), unit: "%", color: "#9C27B0" },
+                    { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V", color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676" },
+                    { label: "FUEL P", value: (engineData.fuelPressure / 100).toFixed(1), unit: "bar", color: engineData.lowFuelPressure ? "#F44336" : "#00BCD4" },
+                    { label: "OIL P", value: (engineData.oilPressure / 100).toFixed(1), unit: "bar", color: engineData.lowOilPressure ? "#F44336" : "#FFB300" },
 
-                    { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V", color: engineData.batteryVoltage < 12 ? "#F44336" : "#00E676" },
-                    { label: "OIL T", value: engineData.oilTemp.toFixed(0), unit: "°C", color: "#FFB300" },
-                    { label: "OIL P", value: engineData.oilPressure.toFixed(0), unit: "psi", color: "#FFB300" },
-                    { label: "LOOPS", value: engineData.loopsPerSec.toFixed(0), unit: "/s", color: "#4CAF50" },
-                    { label: "RAM", value: engineData.freeRam.toFixed(0), unit: "", color: "#4CAF50" }
+                    // Row 4: Per-cylinder fuel trims
+                    { label: "F TRM 1", value: engineData.fuelTrimCyl1.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl1) > 10 ? "#FF9800" : "#4CAF50" },
+                    { label: "F TRM 2", value: engineData.fuelTrimCyl2.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl2) > 10 ? "#FF9800" : "#4CAF50" },
+                    { label: "F TRM 3", value: engineData.fuelTrimCyl3.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl3) > 10 ? "#FF9800" : "#4CAF50" },
+                    { label: "F TRM 4", value: engineData.fuelTrimCyl4.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl4) > 10 ? "#FF9800" : "#4CAF50" },
+                    { label: "OIL T", value: engineData.oilTemp.toFixed(0), unit: "°C", color: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300" },
+
+                    // Row 5: Per-cylinder ignition trims
+                    { label: "I TRM 1", value: engineData.ignTrimCyl1.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl1) > 5 ? "#FF9800" : "#E91E63" },
+                    { label: "I TRM 2", value: engineData.ignTrimCyl2.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl2) > 5 ? "#FF9800" : "#E91E63" },
+                    { label: "I TRM 3", value: engineData.ignTrimCyl3.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl3) > 5 ? "#FF9800" : "#E91E63" },
+                    { label: "I TRM 4", value: engineData.ignTrimCyl4.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl4) > 5 ? "#FF9800" : "#E91E63" },
+                    { label: "ENGINE", value: engineData.engineRunning ? "RUN" : "OFF", unit: "", color: engineData.engineRunning ? "#4CAF50" : "#9E9E9E" },
+
+                    // Row 6: Idle/Diag/Status
+                    { label: "IDLE TGT", value: engineData.idleTargetRpm.toFixed(0), unit: "rpm", color: "#9E9E9E" },
+                    { label: "IAC", value: engineData.idleValveDuty.toFixed(0), unit: "%", color: "#9E9E9E" },
+                    { label: "ERRORS", value: engineData.errorCount.toFixed(0), unit: "", color: engineData.errorCount > 0 ? "#F44336" : "#4CAF50" },
+                    { label: "SYNC", value: engineData.synced ? "OK" : "LOST", unit: "", color: engineData.synced ? "#4CAF50" : "#F44336" },
+                    { label: "CONS", value: engineData.fuelConsumption.toFixed(1), unit: "L/h", color: "#9E9E9E" }
                 ]
 
                 Rectangle {
@@ -926,6 +1142,108 @@ Item {
                 loops: Animation.Infinite
                 NumberAnimation { to: 0.4; duration: 200 }
                 NumberAnimation { to: 1.0; duration: 200 }
+            }
+        }
+
+        Rectangle {
+            visible: engineData.lowOilPressure
+            width: lowOilText.width + 32
+            height: 36
+            radius: 18
+            color: "#F44336"
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 8
+
+                Text {
+                    text: "🛢"
+                    font.pixelSize: 14
+                }
+
+                Text {
+                    id: lowOilText
+                    text: "LOW OIL PRESSURE"
+                    color: "#FFFFFF"
+                    font.pixelSize: 13
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+            }
+
+            SequentialAnimation on opacity {
+                running: engineData.lowOilPressure
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.3; duration: 150 }
+                NumberAnimation { to: 1.0; duration: 150 }
+            }
+        }
+
+        Rectangle {
+            visible: engineData.lowFuelPressure
+            width: lowFuelText.width + 32
+            height: 36
+            radius: 18
+            color: "#FF9800"
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 8
+
+                Text {
+                    text: "⛽"
+                    font.pixelSize: 14
+                }
+
+                Text {
+                    id: lowFuelText
+                    text: "LOW FUEL PRESSURE"
+                    color: "#000000"
+                    font.pixelSize: 13
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+            }
+
+            SequentialAnimation on opacity {
+                running: engineData.lowFuelPressure
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.5; duration: 300 }
+                NumberAnimation { to: 1.0; duration: 300 }
+            }
+        }
+
+        Rectangle {
+            visible: engineData.oilTemp > 120
+            width: highOilTempText.width + 32
+            height: 36
+            radius: 18
+            color: engineData.oilTemp > 140 ? "#F44336" : "#FF9800"
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 8
+
+                Text {
+                    text: "🌡"
+                    font.pixelSize: 14
+                }
+
+                Text {
+                    id: highOilTempText
+                    text: engineData.oilTemp > 140 ? "OIL TEMP CRITICAL" : "OIL TEMP HIGH"
+                    color: engineData.oilTemp > 140 ? "#FFFFFF" : "#000000"
+                    font.pixelSize: 13
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+            }
+
+            SequentialAnimation on opacity {
+                running: engineData.oilTemp > 120
+                loops: Animation.Infinite
+                NumberAnimation { to: engineData.oilTemp > 140 ? 0.3 : 0.6; duration: engineData.oilTemp > 140 ? 150 : 400 }
+                NumberAnimation { to: 1.0; duration: engineData.oilTemp > 140 ? 150 : 400 }
             }
         }
     }
