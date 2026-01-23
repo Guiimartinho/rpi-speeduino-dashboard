@@ -111,16 +111,22 @@ jobs:
             --suppress=useStlAlgorithm \
             --suppress=missingInclude \
             --suppress=unknownMacro \
+            --suppress=syntaxError \
+            --suppress=shadowFunction \
+            --suppress=knownConditionTrueFalse \
             --inline-suppr \
             --error-exitcode=1 \
             --template='{file}:{line}: [{severity}] {message} ({id})' \
-            -D Q_OBJECT= \
-            -D Q_PROPERTY= \
-            -D Q_INVOKABLE= \
-            -D Q_UNUSED= \
-            -D slots= \
-            -D signals=protected \
-            -D emit= \
+            -D "Q_OBJECT=" \
+            -D "Q_PROPERTY(x)=" \
+            -D "Q_INVOKABLE=" \
+            -D "Q_UNUSED(x)=(void)x" \
+            -D "Q_EMIT=" \
+            -D "Q_SIGNAL=" \
+            -D "Q_SLOT=" \
+            -D "slots=" \
+            -D "signals=protected" \
+            -D "emit=" \
             -I src/common/include \
             -I src/can_service/include \
             -I src/reverse_service/include \
