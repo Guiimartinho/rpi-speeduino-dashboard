@@ -1,212 +1,365 @@
-#!/bin/bash
-#
-# Pre-commit hook for speeduino-ui-openauto
-# Runs code quality checks before allowing commits
-#
+#!/usr/bin/env python
+"""
+Pre-commit hook for speeduino-ui-openauto
+Runs code quality checks before allowing commits
 
-set -e
+Standalone - no external dependencies (Python stdlib only)
+Works on Windows and Linux
+"""
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-echo -e "${YELLOW}Running pre-commit checks...${NC}"
-
-# Get list of staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
-
-if [ -z "$STAGED_FILES" ]; then
-    echo -e "${GREEN}No files staged, skipping checks.${NC}"
-    exit 0
-fi
-
-ERRORS=0
+import os
+import sys
+import subprocess
+import re
+from pathlib import Path
 
 # =============================================================================
-# CHECK 1: C++ files formatting (clang-format)
+# COLORS (cross-platform)
 # =============================================================================
-CPP_FILES=$(echo "$STAGED_FILES" | grep -E '\.(cpp|hpp|h|c)$' || true)
+COLORS_ENABLED = False
 
-if [ -n "$CPP_FILES" ] && command -v clang-format &> /dev/null; then
-    echo -e "\n${YELLOW}Checking C++ formatting...${NC}"
+if sys.platform == "win32":
+    # Enable ANSI on Windows 10+
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+        COLORS_ENABLED = True
+    except Exception:
+        COLORS_ENABLED = False
+else:
+    COLORS_ENABLED = sys.stdout.isatty()
 
-    for file in $CPP_FILES; do
-        if [ -f "$file" ]; then
-            # Check if file would be modified by clang-format
-            if ! clang-format --dry-run --Werror "$file" 2>/dev/null; then
-                echo -e "${RED}  [FAIL] $file needs formatting${NC}"
-                echo -e "         Run: clang-format -i $file"
-                ERRORS=$((ERRORS + 1))
-            else
-                echo -e "${GREEN}  [OK] $file${NC}"
-            fi
-        fi
-    done
-elif [ -n "$CPP_FILES" ]; then
-    echo -e "${YELLOW}  [SKIP] clang-format not installed${NC}"
-fi
 
-# =============================================================================
-# CHECK 2: QML files basic validation
-# =============================================================================
-QML_FILES=$(echo "$STAGED_FILES" | grep -E '\.qml$' || true)
+def color(text: str, code: str) -> str:
+    if not COLORS_ENABLED:
+        return text
+    colors = {
+        "red": "\033[0;31m",
+        "green": "\033[0;32m",
+        "yellow": "\033[1;33m",
+        "blue": "\033[0;34m",
+        "reset": "\033[0m",
+    }
+    return f"{colors.get(code, '')}{text}{colors['reset']}"
 
-if [ -n "$QML_FILES" ]; then
-    echo -e "\n${YELLOW}Checking QML files...${NC}"
 
-    for file in $QML_FILES; do
-        if [ -f "$file" ]; then
-            # Basic syntax check - look for common errors
-            if grep -qE '^\s*import\s+[^"\n]+$' "$file" 2>/dev/null; then
-                # Check for balanced braces
-                OPEN=$(grep -o '{' "$file" | wc -l)
-                CLOSE=$(grep -o '}' "$file" | wc -l)
+def print_ok(msg: str):
+    print(color(f"  [OK] {msg}", "green"))
 
-                if [ "$OPEN" -ne "$CLOSE" ]; then
-                    echo -e "${RED}  [FAIL] $file has unbalanced braces (open: $OPEN, close: $CLOSE)${NC}"
-                    ERRORS=$((ERRORS + 1))
-                else
-                    echo -e "${GREEN}  [OK] $file${NC}"
-                fi
-            else
-                echo -e "${GREEN}  [OK] $file${NC}"
-            fi
-        fi
-    done
-fi
+
+def print_fail(msg: str):
+    print(color(f"  [FAIL] {msg}", "red"))
+
+
+def print_warn(msg: str):
+    print(color(f"  [WARN] {msg}", "yellow"))
+
+
+def print_skip(msg: str):
+    print(color(f"  [SKIP] {msg}", "yellow"))
+
+
+def print_header(msg: str):
+    print(color(f"\n{msg}", "yellow"))
+
 
 # =============================================================================
-# CHECK 3: YAML files validation
+# UTILITIES
 # =============================================================================
-YAML_FILES=$(echo "$STAGED_FILES" | grep -E '\.(yaml|yml)$' || true)
+def run_command(cmd: list, capture: bool = True) -> tuple:
+    """Run a command and return (success, output)"""
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=capture,
+            text=True,
+            timeout=60
+        )
+        return result.returncode == 0, result.stdout + result.stderr
+    except FileNotFoundError:
+        return None, "Command not found"
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out"
+    except Exception as e:
+        return False, str(e)
 
-if [ -n "$YAML_FILES" ] && command -v python3 &> /dev/null; then
-    echo -e "\n${YELLOW}Checking YAML files...${NC}"
 
-    for file in $YAML_FILES; do
-        if [ -f "$file" ]; then
-            if python3 -c "import yaml; yaml.safe_load(open('$file'))" 2>/dev/null; then
-                echo -e "${GREEN}  [OK] $file${NC}"
-            else
-                echo -e "${RED}  [FAIL] $file has invalid YAML syntax${NC}"
-                ERRORS=$((ERRORS + 1))
-            fi
-        fi
-    done
-fi
+def command_exists(cmd: str) -> bool:
+    """Check if a command exists in PATH"""
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["where", cmd],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+        else:
+            result = subprocess.run(["which", cmd], capture_output=True)
+        return result.returncode == 0
+    except Exception:
+        return False
 
-# =============================================================================
-# CHECK 4: Shell scripts (shellcheck)
-# =============================================================================
-SH_FILES=$(echo "$STAGED_FILES" | grep -E '\.sh$' || true)
 
-if [ -n "$SH_FILES" ] && command -v shellcheck &> /dev/null; then
-    echo -e "\n${YELLOW}Checking shell scripts...${NC}"
+def get_staged_files() -> list:
+    """Get list of staged files"""
+    success, output = run_command(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"])
+    if success:
+        return [f.strip() for f in output.strip().split("\n") if f.strip()]
+    return []
 
-    for file in $SH_FILES; do
-        if [ -f "$file" ]; then
-            if shellcheck -S warning "$file" 2>/dev/null; then
-                echo -e "${GREEN}  [OK] $file${NC}"
-            else
-                echo -e "${RED}  [FAIL] $file has shellcheck warnings${NC}"
-                ERRORS=$((ERRORS + 1))
-            fi
-        fi
-    done
-elif [ -n "$SH_FILES" ]; then
-    echo -e "${YELLOW}  [SKIP] shellcheck not installed${NC}"
-fi
-
-# =============================================================================
-# CHECK 5: Prevent committing sensitive files
-# =============================================================================
-echo -e "\n${YELLOW}Checking for sensitive files...${NC}"
-
-SENSITIVE_PATTERNS=(
-    '\.env$'
-    '\.env\.'
-    'credentials'
-    'secrets'
-    '\.pem$'
-    '\.key$'
-    'id_rsa'
-    'id_ed25519'
-    '\.p12$'
-    '\.pfx$'
-)
-
-for pattern in "${SENSITIVE_PATTERNS[@]}"; do
-    MATCHES=$(echo "$STAGED_FILES" | grep -iE "$pattern" || true)
-    if [ -n "$MATCHES" ]; then
-        echo -e "${RED}  [FAIL] Potentially sensitive file detected:${NC}"
-        echo "$MATCHES" | while read -r f; do
-            echo -e "${RED}         - $f${NC}"
-        done
-        ERRORS=$((ERRORS + 1))
-    fi
-done
-
-if [ $ERRORS -eq 0 ]; then
-    echo -e "${GREEN}  [OK] No sensitive files detected${NC}"
-fi
 
 # =============================================================================
-# CHECK 6: Large files check (>1MB)
+# CHECKS
 # =============================================================================
-echo -e "\n${YELLOW}Checking for large files...${NC}"
+def check_cpp_formatting(files: list) -> int:
+    """Check C++ files with clang-format"""
+    cpp_files = [f for f in files if Path(f).suffix.lower() in ('.cpp', '.hpp', '.h', '.c')]
 
-for file in $STAGED_FILES; do
-    if [ -f "$file" ]; then
-        SIZE=$(wc -c < "$file" 2>/dev/null || echo 0)
-        if [ "$SIZE" -gt 1048576 ]; then
-            SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc 2>/dev/null || echo "1+")
-            echo -e "${RED}  [FAIL] $file is too large (${SIZE_MB}MB > 1MB)${NC}"
-            echo -e "         Consider using Git LFS for large files"
-            ERRORS=$((ERRORS + 1))
-        fi
-    fi
-done
+    if not cpp_files:
+        return 0
 
-if [ $ERRORS -eq 0 ]; then
-    echo -e "${GREEN}  [OK] No oversized files${NC}"
-fi
+    if not command_exists("clang-format"):
+        print_skip("clang-format not installed")
+        return 0
+
+    print_header("Checking C++ formatting...")
+    errors = 0
+
+    for file in cpp_files:
+        if not os.path.exists(file):
+            continue
+        success, output = run_command(["clang-format", "--dry-run", "--Werror", file])
+        if success is None:
+            print_skip(f"clang-format not available for {file}")
+        elif success:
+            print_ok(file)
+        else:
+            print_fail(f"{file} needs formatting")
+            print(f"         Run: clang-format -i {file}")
+            errors += 1
+
+    return errors
+
+
+def check_qml_files(files: list) -> int:
+    """Basic QML validation"""
+    qml_files = [f for f in files if Path(f).suffix.lower() == '.qml']
+
+    if not qml_files:
+        return 0
+
+    print_header("Checking QML files...")
+    errors = 0
+
+    for file in qml_files:
+        if not os.path.exists(file):
+            continue
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            open_braces = content.count('{')
+            close_braces = content.count('}')
+
+            if open_braces != close_braces:
+                print_fail(f"{file} has unbalanced braces (open: {open_braces}, close: {close_braces})")
+                errors += 1
+            else:
+                print_ok(file)
+        except Exception as e:
+            print_fail(f"{file}: {e}")
+            errors += 1
+
+    return errors
+
+
+def check_yaml_files(files: list) -> int:
+    """Basic YAML validation"""
+    yaml_files = [f for f in files if Path(f).suffix.lower() in ('.yaml', '.yml')]
+
+    if not yaml_files:
+        return 0
+
+    print_header("Checking YAML files...")
+    errors = 0
+
+    for file in yaml_files:
+        if not os.path.exists(file):
+            continue
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Basic YAML validation (tabs are not allowed in YAML)
+            lines = content.split('\n')
+            for i, line in enumerate(lines, 1):
+                if '\t' in line and not line.strip().startswith('#'):
+                    print_fail(f"{file}:{i} contains tabs (YAML requires spaces)")
+                    errors += 1
+                    break
+            else:
+                print_ok(file)
+        except Exception as e:
+            print_fail(f"{file}: {e}")
+            errors += 1
+
+    return errors
+
+
+def check_shell_scripts(files: list) -> int:
+    """Check shell scripts with shellcheck"""
+    sh_files = [f for f in files if Path(f).suffix.lower() == '.sh']
+
+    if not sh_files:
+        return 0
+
+    if not command_exists("shellcheck"):
+        print_skip("shellcheck not installed")
+        return 0
+
+    print_header("Checking shell scripts...")
+    errors = 0
+
+    for file in sh_files:
+        if not os.path.exists(file):
+            continue
+        success, output = run_command(["shellcheck", "-S", "warning", file])
+        if success is None:
+            print_skip(f"shellcheck not available for {file}")
+        elif success:
+            print_ok(file)
+        else:
+            print_fail(f"{file} has shellcheck warnings")
+            errors += 1
+
+    return errors
+
+
+def check_sensitive_files(files: list) -> int:
+    """Check for potentially sensitive files"""
+    print_header("Checking for sensitive files...")
+
+    sensitive_patterns = [
+        r'\.env$',
+        r'\.env\.',
+        r'credentials',
+        r'secrets',
+        r'\.pem$',
+        r'\.key$',
+        r'id_rsa',
+        r'id_ed25519',
+        r'\.p12$',
+        r'\.pfx$',
+        r'password',
+    ]
+
+    errors = 0
+    for file in files:
+        for pattern in sensitive_patterns:
+            if re.search(pattern, file, re.IGNORECASE):
+                print_fail(f"Potentially sensitive file: {file}")
+                errors += 1
+                break
+
+    if errors == 0:
+        print_ok("No sensitive files detected")
+
+    return errors
+
+
+def check_large_files(files: list) -> int:
+    """Check for files larger than 1MB"""
+    print_header("Checking for large files...")
+
+    errors = 0
+    max_size = 1024 * 1024  # 1MB
+
+    for file in files:
+        if not os.path.exists(file):
+            continue
+        try:
+            size = os.path.getsize(file)
+            if size > max_size:
+                size_mb = size / (1024 * 1024)
+                print_fail(f"{file} is too large ({size_mb:.2f}MB > 1MB)")
+                print("         Consider using Git LFS for large files")
+                errors += 1
+        except Exception:
+            pass
+
+    if errors == 0:
+        print_ok("No oversized files")
+
+    return errors
+
+
+def check_cmake_files(files: list) -> int:
+    """Basic CMakeLists.txt validation"""
+    cmake_files = [f for f in files if Path(f).name == 'CMakeLists.txt']
+
+    if not cmake_files:
+        return 0
+
+    print_header("Checking CMake files...")
+
+    for file in cmake_files:
+        if not os.path.exists(file):
+            continue
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            has_cmake_req = 'cmake_minimum_required' in content
+            has_target = any(x in content for x in ['add_executable', 'add_library', 'qt_add'])
+
+            if has_cmake_req or has_target:
+                print_ok(file)
+            else:
+                print_warn(f"{file} may be incomplete")
+        except Exception as e:
+            print_fail(f"{file}: {e}")
+
+    return 0
+
 
 # =============================================================================
-# CHECK 7: CMakeLists.txt validation
+# MAIN
 # =============================================================================
-CMAKE_FILES=$(echo "$STAGED_FILES" | grep -E 'CMakeLists\.txt$' || true)
+def main() -> int:
+    print(color("Running pre-commit checks...", "yellow"))
 
-if [ -n "$CMAKE_FILES" ]; then
-    echo -e "\n${YELLOW}Checking CMake files...${NC}"
+    staged_files = get_staged_files()
 
-    for file in $CMAKE_FILES; do
-        if [ -f "$file" ]; then
-            # Check for common CMake issues
-            if grep -qE 'cmake_minimum_required' "$file" 2>/dev/null || \
-               grep -qE '(add_executable|add_library|qt_add)' "$file" 2>/dev/null; then
-                echo -e "${GREEN}  [OK] $file${NC}"
-            else
-                echo -e "${YELLOW}  [WARN] $file may be incomplete${NC}"
-            fi
-        fi
-    done
-fi
+    if not staged_files:
+        print_ok("No files staged, skipping checks.")
+        return 0
 
-# =============================================================================
-# FINAL RESULT
-# =============================================================================
-echo ""
-if [ $ERRORS -gt 0 ]; then
-    echo -e "${RED}========================================${NC}"
-    echo -e "${RED}Pre-commit checks FAILED ($ERRORS errors)${NC}"
-    echo -e "${RED}========================================${NC}"
-    echo -e "${YELLOW}Fix the issues above or use 'git commit --no-verify' to skip${NC}"
-    exit 1
-else
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}All pre-commit checks passed!${NC}"
-    echo -e "${GREEN}========================================${NC}"
-    exit 0
-fi
+    total_errors = 0
+
+    # Run all checks
+    total_errors += check_cpp_formatting(staged_files)
+    total_errors += check_qml_files(staged_files)
+    total_errors += check_yaml_files(staged_files)
+    total_errors += check_shell_scripts(staged_files)
+    total_errors += check_sensitive_files(staged_files)
+    total_errors += check_large_files(staged_files)
+    total_errors += check_cmake_files(staged_files)
+
+    # Final result
+    print()
+    if total_errors > 0:
+        print(color("========================================", "red"))
+        print(color(f"Pre-commit checks FAILED ({total_errors} errors)", "red"))
+        print(color("========================================", "red"))
+        print(color("Fix the issues above or use 'git commit --no-verify' to skip", "yellow"))
+        return 1
+    else:
+        print(color("========================================", "green"))
+        print(color("All pre-commit checks passed!", "green"))
+        print(color("========================================", "green"))
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
