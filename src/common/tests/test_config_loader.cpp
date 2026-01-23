@@ -6,13 +6,15 @@
  * Tests YAML parsing, default values, and preset configurations
  */
 
-#include <gtest/gtest.h>
 #include "common/config_loader.hpp"
-#include <fstream>
+
+#include <gtest/gtest.h>
+
+#include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 #include <vector>
-#include <atomic>
 
 using namespace speeduino;
 
@@ -28,9 +30,7 @@ protected:
         std::filesystem::create_directories(testDir);
     }
 
-    void TearDown() override {
-        std::filesystem::remove_all(testDir);
-    }
+    void TearDown() override { std::filesystem::remove_all(testDir); }
 
     void writeSystemConfig(const std::string& content) {
         std::ofstream file(testDir / "system.yaml");
@@ -45,7 +45,7 @@ protected:
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BASIC LOADING TESTS
@@ -281,7 +281,7 @@ zmq:
 
     std::atomic<int> successCount{0};
     std::atomic<int> errorCount{0};
-    constexpr int NUM_THREADS = 10;
+    constexpr int NUM_THREADS      = 10;
     constexpr int READS_PER_THREAD = 100;
 
     std::vector<std::thread> threads;
@@ -292,11 +292,11 @@ zmq:
             for (int j = 0; j < READS_PER_THREAD; ++j) {
                 try {
                     // Multiple concurrent reads
-                    const auto& sys = ConfigLoader::getSystemConfig();
-                    const auto& rev = ConfigLoader::getReverseConfig();
+                    const auto& sys     = ConfigLoader::getSystemConfig();
+                    const auto& rev     = ConfigLoader::getReverseConfig();
                     const auto& signals = ConfigLoader::getSignals();
-                    auto sig = ConfigLoader::findSignal("rpm");
-                    bool allowed = ConfigLoader::isCommandAllowed(0x7E0);
+                    auto sig            = ConfigLoader::findSignal("rpm");
+                    bool allowed        = ConfigLoader::isCommandAllowed(0x7E0);
 
                     // Verify values are consistent
                     if (sys.can_interface == "can0" && sys.can_bitrate == 500000) {

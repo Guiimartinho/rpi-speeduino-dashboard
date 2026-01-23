@@ -10,8 +10,8 @@
 #ifndef COMMON_RAII_SOCKET_HPP
 #define COMMON_RAII_SOCKET_HPP
 
-#include <utility>
 #include <unistd.h>
+#include <utility>
 
 namespace speeduino {
 
@@ -39,13 +39,10 @@ public:
     /**
      * @brief Destructor - closes the file descriptor if valid
      */
-    ~RaiiSocket() noexcept {
-        close();
-    }
+    ~RaiiSocket() noexcept { close(); }
 
     // Move constructor
-    RaiiSocket(RaiiSocket&& other) noexcept
-        : fd_(std::exchange(other.fd_, -1)) {}
+    RaiiSocket(RaiiSocket&& other) noexcept : fd_(std::exchange(other.fd_, -1)) {}
 
     // Move assignment
     RaiiSocket& operator=(RaiiSocket&& other) noexcept {
@@ -57,32 +54,26 @@ public:
     }
 
     // Non-copyable
-    RaiiSocket(const RaiiSocket&) = delete;
+    RaiiSocket(const RaiiSocket&)            = delete;
     RaiiSocket& operator=(const RaiiSocket&) = delete;
 
     /**
      * @brief Get the raw file descriptor
      * @return The file descriptor, or -1 if invalid
      */
-    [[nodiscard]] int get() const noexcept {
-        return fd_;
-    }
+    [[nodiscard]] int get() const noexcept { return fd_; }
 
     /**
      * @brief Check if the file descriptor is valid
      * @return true if fd >= 0
      */
-    [[nodiscard]] bool valid() const noexcept {
-        return fd_ >= 0;
-    }
+    [[nodiscard]] bool valid() const noexcept { return fd_ >= 0; }
 
     /**
      * @brief Boolean conversion operator
      * @return true if valid
      */
-    explicit operator bool() const noexcept {
-        return valid();
-    }
+    explicit operator bool() const noexcept { return valid(); }
 
     /**
      * @brief Release ownership of the file descriptor
@@ -91,9 +82,7 @@ public:
      * After calling release(), this object no longer owns the fd
      * and will not close it on destruction.
      */
-    [[nodiscard]] int release() noexcept {
-        return std::exchange(fd_, -1);
-    }
+    [[nodiscard]] int release() noexcept { return std::exchange(fd_, -1); }
 
     /**
      * @brief Close the file descriptor immediately
@@ -124,9 +113,7 @@ public:
      * @brief Swap with another RaiiSocket
      * @param other The other RaiiSocket to swap with
      */
-    void swap(RaiiSocket& other) noexcept {
-        std::swap(fd_, other.fd_);
-    }
+    void swap(RaiiSocket& other) noexcept { std::swap(fd_, other.fd_); }
 
 private:
     int fd_ = -1;
@@ -139,6 +126,6 @@ inline void swap(RaiiSocket& a, RaiiSocket& b) noexcept {
     a.swap(b);
 }
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_RAII_SOCKET_HPP
+#endif  // COMMON_RAII_SOCKET_HPP

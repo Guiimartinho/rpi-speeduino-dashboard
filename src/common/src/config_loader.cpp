@@ -1,9 +1,12 @@
 #include "common/config_loader.hpp"
+
 #include "common/logger.hpp"
+
 #include <yaml-cpp/yaml.h>
+
+#include <climits>
 #include <filesystem>
 #include <fstream>
-#include <climits>
 #include <stdexcept>
 
 namespace speeduino {
@@ -125,7 +128,7 @@ void loadBMWSignals(std::vector<CanSignalDef>& signals) {
     signals.push_back({"oil_temp", 0x545, 4, 0, 8, true, false, 0.75, -48, "C"});
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 bool ConfigLoader::loadFromDirectory(std::string_view config_dir) {
     // ISO 26262: Exclusive lock for writing - prevents data races
@@ -165,28 +168,38 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
 
         if (config["can"]) {
             auto can = config["can"];
-            if (can["interface"]) s_systemConfig.can_interface = can["interface"].as<std::string>();
-            if (can["bitrate"]) s_systemConfig.can_bitrate = can["bitrate"].as<uint32_t>();
-            if (can["protocol"]) s_systemConfig.can_protocol = can["protocol"].as<std::string>();
-            if (can["timeout_ms"]) s_systemConfig.can_timeout_ms = can["timeout_ms"].as<uint32_t>();
+            if (can["interface"])
+                s_systemConfig.can_interface = can["interface"].as<std::string>();
+            if (can["bitrate"])
+                s_systemConfig.can_bitrate = can["bitrate"].as<uint32_t>();
+            if (can["protocol"])
+                s_systemConfig.can_protocol = can["protocol"].as<std::string>();
+            if (can["timeout_ms"])
+                s_systemConfig.can_timeout_ms = can["timeout_ms"].as<uint32_t>();
         }
 
         if (config["zmq"]) {
             auto zmq = config["zmq"];
-            if (zmq["publish_rate_hz"]) s_systemConfig.zmq_publish_rate_hz = zmq["publish_rate_hz"].as<uint32_t>();
+            if (zmq["publish_rate_hz"])
+                s_systemConfig.zmq_publish_rate_hz = zmq["publish_rate_hz"].as<uint32_t>();
         }
 
         if (config["camera"]) {
             auto cam = config["camera"];
-            if (cam["device"]) s_systemConfig.camera_device = cam["device"].as<std::string>();
-            if (cam["width"]) s_systemConfig.camera_width = cam["width"].as<uint32_t>();
-            if (cam["height"]) s_systemConfig.camera_height = cam["height"].as<uint32_t>();
-            if (cam["fps"]) s_systemConfig.camera_fps = cam["fps"].as<uint32_t>();
+            if (cam["device"])
+                s_systemConfig.camera_device = cam["device"].as<std::string>();
+            if (cam["width"])
+                s_systemConfig.camera_width = cam["width"].as<uint32_t>();
+            if (cam["height"])
+                s_systemConfig.camera_height = cam["height"].as<uint32_t>();
+            if (cam["fps"])
+                s_systemConfig.camera_fps = cam["fps"].as<uint32_t>();
         }
 
         if (config["openauto"]) {
             auto oa = config["openauto"];
-            if (oa["path"]) s_systemConfig.openauto_path = oa["path"].as<std::string>();
+            if (oa["path"])
+                s_systemConfig.openauto_path = oa["path"].as<std::string>();
         }
 
         if (config["reverse"]) {
@@ -205,20 +218,30 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
             }
 
             // CAN settings (can override preset)
-            if (rev["can_enabled"]) s_reverseConfig.can_enabled = rev["can_enabled"].as<bool>();
-            if (rev["can_id"]) s_reverseConfig.can_id = parseHexOrDec(rev["can_id"]);
-            if (rev["byte_index"]) s_reverseConfig.byte_index = rev["byte_index"].as<uint8_t>();
-            if (rev["bit_mask"]) s_reverseConfig.bit_mask = parseHexOrDec(rev["bit_mask"]);
-            if (rev["expected_value"]) s_reverseConfig.expected_value = parseHexOrDec(rev["expected_value"]);
+            if (rev["can_enabled"])
+                s_reverseConfig.can_enabled = rev["can_enabled"].as<bool>();
+            if (rev["can_id"])
+                s_reverseConfig.can_id = parseHexOrDec(rev["can_id"]);
+            if (rev["byte_index"])
+                s_reverseConfig.byte_index = rev["byte_index"].as<uint8_t>();
+            if (rev["bit_mask"])
+                s_reverseConfig.bit_mask = parseHexOrDec(rev["bit_mask"]);
+            if (rev["expected_value"])
+                s_reverseConfig.expected_value = parseHexOrDec(rev["expected_value"]);
 
             // GPIO settings (can override preset)
-            if (rev["gpio_enabled"]) s_reverseConfig.gpio_enabled = rev["gpio_enabled"].as<bool>();
-            if (rev["gpio_chip"]) s_reverseConfig.gpio_chip = rev["gpio_chip"].as<std::string>();
-            if (rev["gpio_line"]) s_reverseConfig.gpio_line = rev["gpio_line"].as<uint32_t>();
-            if (rev["gpio_active_low"]) s_reverseConfig.gpio_active_low = rev["gpio_active_low"].as<bool>();
+            if (rev["gpio_enabled"])
+                s_reverseConfig.gpio_enabled = rev["gpio_enabled"].as<bool>();
+            if (rev["gpio_chip"])
+                s_reverseConfig.gpio_chip = rev["gpio_chip"].as<std::string>();
+            if (rev["gpio_line"])
+                s_reverseConfig.gpio_line = rev["gpio_line"].as<uint32_t>();
+            if (rev["gpio_active_low"])
+                s_reverseConfig.gpio_active_low = rev["gpio_active_low"].as<bool>();
 
             // Debounce setting
-            if (rev["debounce_ms"]) s_reverseConfig.debounce_ms = rev["debounce_ms"].as<uint32_t>();
+            if (rev["debounce_ms"])
+                s_reverseConfig.debounce_ms = rev["debounce_ms"].as<uint32_t>();
 
             LOG_INFO("Reverse detection mode: " + s_reverseConfig.detection_mode);
         }
@@ -227,8 +250,10 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
             for (const auto& cmd : config["allowed_commands"]) {
                 CanCommandDef def;
                 def.can_id = parseHexOrDec(cmd["id"]);
-                if (cmd["rate_limit"]) def.rate_limit_hz = cmd["rate_limit"].as<uint32_t>();
-                if (cmd["description"]) def.description = cmd["description"].as<std::string>();
+                if (cmd["rate_limit"])
+                    def.rate_limit_hz = cmd["rate_limit"].as<uint32_t>();
+                if (cmd["description"])
+                    def.description = cmd["description"].as<std::string>();
                 s_allowedCommands.push_back(def);
             }
         }
@@ -259,16 +284,22 @@ bool ConfigLoader::loadSignalsConfig(std::string_view path) {
         if (config["signals"]) {
             for (const auto& sig : config["signals"]) {
                 CanSignalDef def;
-                def.name = sig["name"].as<std::string>();
-                def.can_id = parseHexOrDec(sig["can_id"]);
+                def.name       = sig["name"].as<std::string>();
+                def.can_id     = parseHexOrDec(sig["can_id"]);
                 def.start_byte = sig["start_byte"].as<uint8_t>();
-                if (sig["start_bit"]) def.start_bit = sig["start_bit"].as<uint8_t>();
+                if (sig["start_bit"])
+                    def.start_bit = sig["start_bit"].as<uint8_t>();
                 def.length_bits = sig["length_bits"].as<uint8_t>();
-                if (sig["big_endian"]) def.is_big_endian = sig["big_endian"].as<bool>();
-                if (sig["signed"]) def.is_signed = sig["signed"].as<bool>();
-                if (sig["scale"]) def.scale = sig["scale"].as<double>();
-                if (sig["offset"]) def.offset = sig["offset"].as<double>();
-                if (sig["unit"]) def.unit = sig["unit"].as<std::string>();
+                if (sig["big_endian"])
+                    def.is_big_endian = sig["big_endian"].as<bool>();
+                if (sig["signed"])
+                    def.is_signed = sig["signed"].as<bool>();
+                if (sig["scale"])
+                    def.scale = sig["scale"].as<double>();
+                if (sig["offset"])
+                    def.offset = sig["offset"].as<double>();
+                if (sig["unit"])
+                    def.unit = sig["unit"].as<std::string>();
                 s_signals.push_back(def);
             }
         }
@@ -288,11 +319,11 @@ bool ConfigLoader::loadSteeringConfig(std::string_view path) {
         if (config["buttons"]) {
             for (const auto& btn : config["buttons"]) {
                 SteeringButtonDef def;
-                def.button_id = btn["id"].as<uint8_t>();
-                def.can_id = parseHexOrDec(btn["can_id"]);
+                def.button_id  = btn["id"].as<uint8_t>();
+                def.can_id     = parseHexOrDec(btn["can_id"]);
                 def.byte_index = btn["byte_index"].as<uint8_t>();
-                def.bit_mask = parseHexOrDec(btn["bit_mask"]);
-                def.action = btn["action"].as<std::string>();
+                def.bit_mask   = parseHexOrDec(btn["bit_mask"]);
+                def.action     = btn["action"].as<std::string>();
                 s_steeringButtons.push_back(def);
             }
         }
@@ -337,7 +368,8 @@ const ReverseConfig& ConfigLoader::getReverseConfig() {
 std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
     std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& sig : s_signals) {
-        if (sig.name == name) return sig;
+        if (sig.name == name)
+            return sig;
     }
     return std::nullopt;
 }
@@ -345,7 +377,8 @@ std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {
 bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
     std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
-        if (cmd.can_id == can_id) return true;
+        if (cmd.can_id == can_id)
+            return true;
     }
     return false;
 }
@@ -353,9 +386,10 @@ bool ConfigLoader::isCommandAllowed(uint32_t can_id) {
 uint32_t ConfigLoader::getCommandRateLimit(uint32_t can_id) {
     std::shared_lock<std::shared_mutex> lock(s_mutex);
     for (const auto& cmd : s_allowedCommands) {
-        if (cmd.can_id == can_id) return cmd.rate_limit_hz;
+        if (cmd.can_id == can_id)
+            return cmd.rate_limit_hz;
     }
     return 0;
 }
 
-} // namespace speeduino
+}  // namespace speeduino

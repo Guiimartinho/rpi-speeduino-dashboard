@@ -3,8 +3,10 @@
  * @brief Unit tests for scope guard utilities
  */
 
-#include <gtest/gtest.h>
 #include "common/scope_guard.hpp"
+
+#include <gtest/gtest.h>
+
 #include <string>
 
 using namespace speeduino;
@@ -123,7 +125,9 @@ TEST(ScopeExitMacroTest, BasicUsage) {
     int counter = 0;
 
     {
-        SCOPE_EXIT { counter++; };
+        SCOPE_EXIT {
+            counter++;
+        };
         EXPECT_EQ(counter, 0);
     }
 
@@ -134,9 +138,15 @@ TEST(ScopeExitMacroTest, MultipleGuards) {
     std::string order;
 
     {
-        SCOPE_EXIT { order += "1"; };
-        SCOPE_EXIT { order += "2"; };
-        SCOPE_EXIT { order += "3"; };
+        SCOPE_EXIT {
+            order += "1";
+        };
+        SCOPE_EXIT {
+            order += "2";
+        };
+        SCOPE_EXIT {
+            order += "3";
+        };
     }
 
     // Should execute in reverse order (LIFO)
@@ -147,7 +157,9 @@ TEST(ScopeFailMacroTest, BasicUsage) {
     bool executed = false;
 
     try {
-        SCOPE_FAIL { executed = true; };
+        SCOPE_FAIL {
+            executed = true;
+        };
         throw std::runtime_error("test");
     } catch (...) {
         // Expected
@@ -160,7 +172,9 @@ TEST(ScopeSuccessMacroTest, BasicUsage) {
     bool executed = false;
 
     {
-        SCOPE_SUCCESS { executed = true; };
+        SCOPE_SUCCESS {
+            executed = true;
+        };
     }
 
     EXPECT_TRUE(executed);
@@ -176,7 +190,10 @@ TEST(ScopeGuardTest, ResourceCleanupPattern) {
 
     {
         Resource* res = new Resource(released);
-        SCOPE_EXIT { delete res; res->released = true; };
+        SCOPE_EXIT {
+            delete res;
+            res->released = true;
+        };
         // Use resource...
         EXPECT_FALSE(released);
     }
@@ -185,13 +202,13 @@ TEST(ScopeGuardTest, ResourceCleanupPattern) {
 }
 
 TEST(ScopeGuardTest, TransactionPattern) {
-    int value = 0;
+    int value      = 0;
     bool committed = false;
 
     // Simulates a transaction that can be committed or rolled back
     auto transaction = [&value, &committed]() {
         int oldValue = value;
-        value = 42;  // Tentative change
+        value        = 42;  // Tentative change
 
         ScopeGuard rollback([&]() {
             if (!committed) {

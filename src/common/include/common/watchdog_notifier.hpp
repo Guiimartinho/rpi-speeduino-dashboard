@@ -13,8 +13,8 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
-#include <thread>
 #include <string>
+#include <thread>
 
 namespace speeduino {
 
@@ -71,10 +71,10 @@ public:
     ~WatchdogNotifier();
 
     // Non-copyable, non-movable
-    WatchdogNotifier(const WatchdogNotifier&) = delete;
+    WatchdogNotifier(const WatchdogNotifier&)            = delete;
     WatchdogNotifier& operator=(const WatchdogNotifier&) = delete;
-    WatchdogNotifier(WatchdogNotifier&&) = delete;
-    WatchdogNotifier& operator=(WatchdogNotifier&&) = delete;
+    WatchdogNotifier(WatchdogNotifier&&)                 = delete;
+    WatchdogNotifier& operator=(WatchdogNotifier&&)      = delete;
 
     /**
      * @brief Check if systemd watchdog is enabled
@@ -203,8 +203,7 @@ private:
 class ScopedWatchdogPause {
 public:
     explicit ScopedWatchdogPause(WatchdogNotifier& notifier)
-        : notifier_(notifier)
-        , wasRunning_(notifier.isRunning()) {
+        : notifier_(notifier), wasRunning_(notifier.isRunning()) {
         if (wasRunning_) {
             notifier_.stop();
         }
@@ -216,7 +215,7 @@ public:
         }
     }
 
-    ScopedWatchdogPause(const ScopedWatchdogPause&) = delete;
+    ScopedWatchdogPause(const ScopedWatchdogPause&)            = delete;
     ScopedWatchdogPause& operator=(const ScopedWatchdogPause&) = delete;
 
 private:
@@ -224,6 +223,6 @@ private:
     bool wasRunning_;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_WATCHDOG_NOTIFIER_HPP
+#endif  // COMMON_WATCHDOG_NOTIFIER_HPP

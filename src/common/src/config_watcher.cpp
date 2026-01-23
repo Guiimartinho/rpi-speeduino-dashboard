@@ -4,15 +4,16 @@
  */
 
 #include "common/config_watcher.hpp"
+
 #include "common/logger.hpp"
 
 #ifdef __linux__
-#include <sys/inotify.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <poll.h>
-#include <cstring>
-#include <cerrno>
+    #include <cerrno>
+    #include <cstring>
+    #include <poll.h>
+    #include <sys/inotify.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
 #endif
 
 #include <algorithm>
@@ -25,18 +26,17 @@ namespace speeduino {
 // ISO 26262: Named constants for file system monitoring
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// Poll timeout for inotify in milliseconds
-    constexpr int CONFIG_WATCHER_POLL_TIMEOUT_MS = 100;
-    /// Buffer size for inotify events
-    constexpr size_t INOTIFY_BUFFER_SIZE = 4096;
-} // anonymous namespace
+/// Poll timeout for inotify in milliseconds
+constexpr int CONFIG_WATCHER_POLL_TIMEOUT_MS = 100;
+/// Buffer size for inotify events
+constexpr size_t INOTIFY_BUFFER_SIZE = 4096;
+}  // anonymous namespace
 
 ConfigWatcher::ConfigWatcher() {
 #ifdef __linux__
     inotifyFd_ = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (inotifyFd_ < 0) {
-        Logger::error("Failed to initialize inotify: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to initialize inotify: " + std::string(strerror(errno)));
     }
 #endif
 }
@@ -78,16 +78,15 @@ bool ConfigWatcher::addPath(const std::string& path) {
     // Determine if path is file or directory
     struct stat st;
     if (stat(path.c_str(), &st) != 0) {
-        Logger::error("Cannot stat path: " + path + " - " +
-                     std::string(strerror(errno)));
+        Logger::error("Cannot stat path: " + path + " - " + std::string(strerror(errno)));
         return false;
     }
 
     bool isDir = S_ISDIR(st.st_mode);
 
     // Set up inotify mask
-    uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_TO |
-                    IN_MOVED_FROM | IN_CLOSE_WRITE;
+    uint32_t mask =
+        IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM | IN_CLOSE_WRITE;
 
     // For directories, watch for changes to files within
     if (isDir) {
@@ -96,21 +95,19 @@ bool ConfigWatcher::addPath(const std::string& path) {
 
     int wd = inotify_add_watch(inotifyFd_, path.c_str(), mask);
     if (wd < 0) {
-        Logger::error("Failed to add watch for " + path + ": " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to add watch for " + path + ": " + std::string(strerror(errno)));
         return false;
     }
 
     WatchEntry entry;
-    entry.path = path;
+    entry.path            = path;
     entry.watchDescriptor = wd;
-    entry.isDirectory = isDir;
+    entry.isDirectory     = isDir;
 
     wdToIndex_[wd] = watches_.size();
     watches_.push_back(entry);
 
-    Logger::info("Watching for changes: " + path +
-                (isDir ? " (directory)" : " (file)"));
+    Logger::info("Watching for changes: " + path + (isDir ? " (directory)" : " (file)"));
     return true;
 #else
     (void)path;
@@ -123,9 +120,7 @@ bool ConfigWatcher::removePath(const std::string& path) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = std::find_if(watches_.begin(), watches_.end(),
-        [&path](const WatchEntry& entry) {
-            return entry.path == path;
-        });
+                           [&path](const WatchEntry& entry) { return entry.path == path; });
 
     if (it == watches_.end()) {
         return false;
@@ -254,13 +249,14 @@ void ConfigWatcher::watchLoop() {
     while (running_.load(std::memory_order_acquire)) {
         // Poll with timeout to allow clean shutdown
         struct pollfd pfd;
-        pfd.fd = inotifyFd_;
+        pfd.fd     = inotifyFd_;
         pfd.events = POLLIN;
 
         int ret = poll(&pfd, 1, CONFIG_WATCHER_POLL_TIMEOUT_MS);
 
         if (ret < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
             Logger::error("poll() error: " + std::string(strerror(errno)));
             break;
         }
@@ -354,8 +350,8 @@ void ConfigWatcher::processEvent(uint32_t mask, const std::string& filename,
 
     changeCount_.fetch_add(1, std::memory_order_relaxed);
 
-    Logger::debug("Config change detected: " + fullPath +
-                 " (" + configChangeTypeToString(changeType) + ")");
+    Logger::debug("Config change detected: " + fullPath + " (" +
+                  configChangeTypeToString(changeType) + ")");
 
     // Invoke callback
     ConfigChangeCallback callback;
@@ -366,15 +362,14 @@ void ConfigWatcher::processEvent(uint32_t mask, const std::string& filename,
 
     if (callback) {
         ConfigChangeEvent event;
-        event.path = fullPath;
-        event.type = changeType;
+        event.path      = fullPath;
+        event.type      = changeType;
         event.timestamp = now;
 
         try {
             callback(event);
         } catch (const std::exception& e) {
-            Logger::error("Config change callback threw: " +
-                         std::string(e.what()));
+            Logger::error("Config change callback threw: " + std::string(e.what()));
         }
     }
 #else
@@ -386,8 +381,7 @@ void ConfigWatcher::processEvent(uint32_t mask, const std::string& filename,
 
 // SingleFileWatcher implementation
 
-SingleFileWatcher::SingleFileWatcher(const std::string& path,
-                                     ConfigChangeCallback callback)
+SingleFileWatcher::SingleFileWatcher(const std::string& path, ConfigChangeCallback callback)
     : path_(path) {
     watcher_.setCallback(std::move(callback));
     watcher_.addPath(path);
@@ -407,16 +401,11 @@ bool SingleFileWatcher::isRunning() const noexcept {
 
 // AutoReloadConfig implementation
 
-AutoReloadConfig::AutoReloadConfig(const std::string& path,
-                                   ReloadFunction reloadFunc)
-    : path_(path)
-    , reloadFunc_(std::move(reloadFunc)) {
-
+AutoReloadConfig::AutoReloadConfig(const std::string& path, ReloadFunction reloadFunc)
+    : path_(path), reloadFunc_(std::move(reloadFunc)) {
     watcher_.addPath(path);
     watcher_.setCallback([this](const ConfigChangeEvent& event) {
-        if (event.type == ConfigChangeType::Modified ||
-            event.type == ConfigChangeType::Created) {
-
+        if (event.type == ConfigChangeType::Modified || event.type == ConfigChangeType::Created) {
             Logger::info("Reloading config: " + event.path);
 
             if (reloadFunc_) {
@@ -430,8 +419,7 @@ AutoReloadConfig::AutoReloadConfig(const std::string& path,
                     }
                 } catch (const std::exception& e) {
                     errorCount_.fetch_add(1, std::memory_order_relaxed);
-                    Logger::error("Config reload threw: " +
-                                 std::string(e.what()));
+                    Logger::error("Config reload threw: " + std::string(e.what()));
                 }
             }
         }
@@ -454,4 +442,4 @@ uint64_t AutoReloadConfig::getErrorCount() const noexcept {
     return errorCount_.load(std::memory_order_relaxed);
 }
 
-} // namespace speeduino
+}  // namespace speeduino

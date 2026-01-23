@@ -9,11 +9,13 @@
  * These tests focus on the internal logic without requiring systemd
  */
 
-#include <gtest/gtest.h>
 #include "common/watchdog_notifier.hpp"
+
+#include <gtest/gtest.h>
+
+#include <atomic>
 #include <chrono>
 #include <thread>
-#include <atomic>
 
 using namespace speeduino;
 
@@ -99,9 +101,7 @@ TEST(WatchdogNotifierTest, HealthCheckFailureIncrementsSkipCount) {
     WatchdogNotifier notifier;
     std::atomic<bool> healthy{false};
 
-    notifier.setHealthCheck([&]() {
-        return healthy.load();
-    });
+    notifier.setHealthCheck([&]() { return healthy.load(); });
 
     notifier.start();
 
