@@ -101,6 +101,14 @@ def command_exists(cmd: str) -> bool:
         return False
 
 
+def find_clang_format() -> str:
+    """Find clang-format or clang-format-17 executable"""
+    for cmd in ["clang-format-17", "clang-format"]:
+        if command_exists(cmd):
+            return cmd
+    return ""
+
+
 def get_staged_files() -> list:
     """Get list of staged files"""
     success, output = run_command(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"])
@@ -161,7 +169,8 @@ def check_cpp_formatting(files: list) -> int:
     if not cpp_files:
         return 0
 
-    if not command_exists("clang-format"):
+    clang_format = find_clang_format()
+    if not clang_format:
         print_skip("clang-format not installed")
         return 0
 
@@ -171,14 +180,14 @@ def check_cpp_formatting(files: list) -> int:
     for file in cpp_files:
         if not os.path.exists(file):
             continue
-        success, output = run_command(["clang-format", "--dry-run", "--Werror", file])
+        success, output = run_command([clang_format, "--dry-run", "--Werror", file])
         if success is None:
-            print_skip(f"clang-format not available for {file}")
+            print_skip(f"{clang_format} not available for {file}")
         elif success:
             print_ok(file)
         else:
             print_fail(f"{file} needs formatting")
-            print(f"         Run: clang-format -i {file}")
+            print(f"         Run: {clang_format} -i {file}")
             errors += 1
 
     return errors

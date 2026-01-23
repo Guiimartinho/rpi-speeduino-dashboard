@@ -1,47 +1,11 @@
 #include "can_service/bmw_cluster_sim.hpp"
 
+#include "mock_can_interface.hpp"
+
 #include <gtest/gtest.h>
 
 using namespace speeduino;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Mock CAN Interface for BMW Cluster Sim Testing
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class MockCanInterface : public CanInterface {
-public:
-    MockCanInterface() : CanInterface() {}
-
-    bool open(const std::string& interface_name) override {
-        (void)interface_name;
-        return true;
-    }
-    void close() override {}
-    bool isConnected() const override { return true; }
-    std::optional<CanFrame> receive(int timeout_ms) override {
-        (void)timeout_ms;
-        return std::nullopt;
-    }
-    bool send(const CanFrame& frame) override {
-        m_sentFrames.push_back(frame);
-        return true;
-    }
-
-    const std::vector<CanFrame>& getSentFrames() const { return m_sentFrames; }
-    void clearSentFrames() { m_sentFrames.clear(); }
-    std::vector<CanFrame> getFramesById(uint32_t id) const {
-        std::vector<CanFrame> result;
-        for (const auto& frame : m_sentFrames) {
-            if (frame.id == id) {
-                result.push_back(frame);
-            }
-        }
-        return result;
-    }
-
-private:
-    std::vector<CanFrame> m_sentFrames;
-};
+using speeduino::testing::MockCanInterface;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BMW Cluster Simulator Tests

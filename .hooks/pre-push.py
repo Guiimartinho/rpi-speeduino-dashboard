@@ -51,6 +51,30 @@ def run_cmd(cmd: list, capture: bool = True) -> tuple[int, str]:
         return 1, str(e)
 
 
+def command_exists(cmd: str) -> bool:
+    """Check if a command exists in PATH."""
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["where", cmd],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+        else:
+            result = subprocess.run(["which", cmd], capture_output=True)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def find_clang_format() -> str:
+    """Find clang-format or clang-format-17 executable."""
+    for cmd in ["clang-format-17", "clang-format"]:
+        if command_exists(cmd):
+            return cmd
+    return ""
+
+
 def get_current_branch() -> str:
     """Get the current git branch name."""
     code, output = run_cmd(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
@@ -227,6 +251,47 @@ def check_gitignore() -> bool:
     return True  # Warning only
 
 
+def check_cpp_formatting() -> tuple[bool, int]:
+    """Check 8: Verify ALL C++ files are formatted before push."""
+    print(f"\n{YELLOW}Checking C++ formatting (all files)...{NC}")
+
+    clang_format = find_clang_format()
+    if not clang_format:
+        print(f"{YELLOW}  [SKIP] clang-format not installed{NC}")
+        return True, 0
+
+    # Get all C++ files in the repository
+    code, output = run_cmd(['git', 'ls-files', '*.cpp', '*.hpp', '*.h', '*.c'])
+    if code != 0 or not output.strip():
+        print(f"{YELLOW}  [SKIP] No C++ files found{NC}")
+        return True, 0
+
+    cpp_files = output.strip().split('\n')
+    errors = 0
+    unformatted_files = []
+
+    for filepath in cpp_files:
+        if not Path(filepath).exists():
+            continue
+        code, _ = run_cmd([clang_format, '--dry-run', '--Werror', filepath])
+        if code != 0:
+            unformatted_files.append(filepath)
+            errors += 1
+
+    if errors > 0:
+        print(f"{RED}  [FAIL] {errors} file(s) need formatting:{NC}")
+        for f in unformatted_files[:10]:  # Show max 10
+            print(f"{RED}         - {f}{NC}")
+        if len(unformatted_files) > 10:
+            print(f"{RED}         ... and {len(unformatted_files) - 10} more{NC}")
+        print(f"\n{YELLOW}         Run: {clang_format} -i <file> to fix{NC}")
+        print(f"{YELLOW}         Or:  {clang_format} -i $(git ls-files '*.cpp' '*.hpp' '*.h' '*.c'){NC}")
+        return False, errors
+    else:
+        print(f"{GREEN}  [OK] All {len(cpp_files)} C++ files are properly formatted{NC}")
+        return True, 0
+
+
 def main() -> int:
     """Main entry point."""
     branch = get_current_branch()
@@ -239,6 +304,12 @@ def main() -> int:
     # Run all checks
     check_protected_branch(branch)
     check_build_exists()
+
+    # Check C++ formatting (blocking check)
+    passed, format_errors = check_cpp_formatting()
+    if not passed:
+        errors += format_errors
+
     check_debug_markers(changed_files)
     check_commit_format(commits)
 
