@@ -1,5 +1,6 @@
-#include <gtest/gtest.h>
 #include "can_service/wideband_forwarder.hpp"
+
+#include <gtest/gtest.h>
 
 using namespace speeduino;
 

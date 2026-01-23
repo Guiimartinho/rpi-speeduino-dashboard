@@ -1,4 +1,5 @@
 #include "can_service/wideband_forwarder.hpp"
+
 #include "common/logger.hpp"
 
 #include <algorithm>
@@ -10,10 +11,7 @@ namespace speeduino {
 // WidebandForwarder Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-WidebandForwarder::WidebandForwarder(CanInterface& interface)
-    : m_interface(interface)
-{
-}
+WidebandForwarder::WidebandForwarder(CanInterface& interface) : m_interface(interface) {}
 
 WidebandForwarder::~WidebandForwarder() {
     stop();
@@ -39,8 +37,8 @@ void WidebandForwarder::setFormat(WidebandFormat format) {
             break;
     }
 
-    LOG_INFO("Wideband: Format set to " + std::to_string(static_cast<int>(format)) +
-             ", CAN ID 0x" + std::to_string(m_canId));
+    LOG_INFO("Wideband: Format set to " + std::to_string(static_cast<int>(format)) + ", CAN ID 0x" +
+             std::to_string(m_canId));
 }
 
 void WidebandForwarder::setRate(uint32_t rateHz) {
@@ -70,7 +68,7 @@ void WidebandForwarder::start() {
         return;
     }
 
-    m_running = true;
+    m_running  = true;
     m_txThread = std::thread(&WidebandForwarder::transmitLoop, this);
     LOG_INFO("Wideband: Forwarder started at " + std::to_string(m_rateHz) + " Hz");
 }
@@ -89,7 +87,7 @@ bool WidebandForwarder::sendNow() {
     }
 
     CanFrame frame = buildFrame();
-    bool success = m_interface.send(frame);
+    bool success   = m_interface.send(frame);
 
     if (success) {
         m_framesSent++;
@@ -111,7 +109,7 @@ void WidebandForwarder::transmitLoop() {
             sendNow();
         }
 
-        auto elapsed = std::chrono::steady_clock::now() - start;
+        auto elapsed   = std::chrono::steady_clock::now() - start;
         auto sleepTime = intervalUs - elapsed;
 
         if (sleepTime > std::chrono::microseconds(0)) {
@@ -150,14 +148,14 @@ CanFrame WidebandForwarder::buildFrame() const {
 
 CanFrame WidebandForwarder::buildAEMFrame() const {
     CanFrame frame;
-    frame.id = m_canId;
+    frame.id  = m_canId;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
     // Lambda × 10000 (Big Endian)
     uint16_t lambdaScaled = static_cast<uint16_t>(m_lambda.load() * 10000.0f);
-    frame.data[0] = (lambdaScaled >> 8) & 0xFF;
-    frame.data[1] = lambdaScaled & 0xFF;
+    frame.data[0]         = (lambdaScaled >> 8) & 0xFF;
+    frame.data[1]         = lambdaScaled & 0xFF;
 
     // O2 millivolts (Big Endian)
     uint16_t o2mv = m_o2Millivolts.load();
@@ -184,22 +182,22 @@ CanFrame WidebandForwarder::buildAEMFrame() const {
 
 CanFrame WidebandForwarder::buildInnovateFrame() const {
     CanFrame frame;
-    frame.id = m_canId;
+    frame.id  = m_canId;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
     float lambda = m_lambda.load();
-    float afr = lambda * wideband::STOICH_AFR;
+    float afr    = lambda * wideband::STOICH_AFR;
 
     // AFR × 10 (Big Endian)
     uint16_t afrScaled = static_cast<uint16_t>(afr * 10.0f);
-    frame.data[0] = (afrScaled >> 8) & 0xFF;
-    frame.data[1] = afrScaled & 0xFF;
+    frame.data[0]      = (afrScaled >> 8) & 0xFF;
+    frame.data[1]      = afrScaled & 0xFF;
 
     // Lambda × 1000 (Big Endian)
     uint16_t lambdaScaled = static_cast<uint16_t>(lambda * 1000.0f);
-    frame.data[2] = (lambdaScaled >> 8) & 0xFF;
-    frame.data[3] = lambdaScaled & 0xFF;
+    frame.data[2]         = (lambdaScaled >> 8) & 0xFF;
+    frame.data[3]         = lambdaScaled & 0xFF;
 
     // Warmup status (inverse of heater status for Innovate)
     frame.data[4] = 100 - m_heaterStatus.load();
@@ -220,7 +218,7 @@ CanFrame WidebandForwarder::buildInnovateFrame() const {
 
 CanFrame WidebandForwarder::buildPLXFrame() const {
     CanFrame frame;
-    frame.id = m_canId;
+    frame.id  = m_canId;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
@@ -228,8 +226,8 @@ CanFrame WidebandForwarder::buildPLXFrame() const {
 
     // AFR × 100 (Little Endian for PLX)
     uint16_t afrScaled = static_cast<uint16_t>(afr * 100.0f);
-    frame.data[0] = afrScaled & 0xFF;
-    frame.data[1] = (afrScaled >> 8) & 0xFF;
+    frame.data[0]      = afrScaled & 0xFF;
+    frame.data[1]      = (afrScaled >> 8) & 0xFF;
 
     // Status
     frame.data[2] = m_sensorStatus.load();
@@ -250,14 +248,14 @@ CanFrame WidebandForwarder::buildPLXFrame() const {
 
 CanFrame WidebandForwarder::buildSpartanFrame() const {
     CanFrame frame;
-    frame.id = m_canId;
+    frame.id  = m_canId;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
     // Lambda × 1000 (Big Endian)
     uint16_t lambdaScaled = static_cast<uint16_t>(m_lambda.load() * 1000.0f);
-    frame.data[0] = (lambdaScaled >> 8) & 0xFF;
-    frame.data[1] = lambdaScaled & 0xFF;
+    frame.data[0]         = (lambdaScaled >> 8) & 0xFF;
+    frame.data[1]         = lambdaScaled & 0xFF;
 
     // O2 millivolts (Big Endian)
     uint16_t o2mv = m_o2Millivolts.load();
@@ -276,4 +274,4 @@ CanFrame WidebandForwarder::buildSpartanFrame() const {
     return frame;
 }
 
-} // namespace speeduino
+}  // namespace speeduino

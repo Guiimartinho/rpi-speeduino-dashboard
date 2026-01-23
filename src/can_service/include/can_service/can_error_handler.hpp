@@ -20,11 +20,11 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
-#include <string>
 #include <optional>
+#include <string>
 
 #ifdef __linux__
-#include <linux/can/error.h>
+    #include <linux/can/error.h>
 #endif
 
 namespace speeduino {
@@ -45,11 +45,16 @@ enum class CanBusState : uint8_t {
  */
 inline const char* canBusStateToString(CanBusState state) {
     switch (state) {
-        case CanBusState::ErrorActive:  return "ErrorActive";
-        case CanBusState::ErrorWarning: return "ErrorWarning";
-        case CanBusState::ErrorPassive: return "ErrorPassive";
-        case CanBusState::BusOff:       return "BusOff";
-        default:                        return "Unknown";
+        case CanBusState::ErrorActive:
+            return "ErrorActive";
+        case CanBusState::ErrorWarning:
+            return "ErrorWarning";
+        case CanBusState::ErrorPassive:
+            return "ErrorPassive";
+        case CanBusState::BusOff:
+            return "BusOff";
+        default:
+            return "Unknown";
     }
 }
 
@@ -75,17 +80,28 @@ enum class CanErrorType : uint8_t {
  */
 inline const char* canErrorTypeToString(CanErrorType type) {
     switch (type) {
-        case CanErrorType::None:                return "None";
-        case CanErrorType::TxTimeout:           return "TxTimeout";
-        case CanErrorType::ArbitrationLost:     return "ArbitrationLost";
-        case CanErrorType::ControllerError:     return "ControllerError";
-        case CanErrorType::ProtocolViolation:   return "ProtocolViolation";
-        case CanErrorType::TransceiverError:    return "TransceiverError";
-        case CanErrorType::NoAck:               return "NoAck";
-        case CanErrorType::BusOff:              return "BusOff";
-        case CanErrorType::BusError:            return "BusError";
-        case CanErrorType::ControllerRestarted: return "ControllerRestarted";
-        default:                                return "Unknown";
+        case CanErrorType::None:
+            return "None";
+        case CanErrorType::TxTimeout:
+            return "TxTimeout";
+        case CanErrorType::ArbitrationLost:
+            return "ArbitrationLost";
+        case CanErrorType::ControllerError:
+            return "ControllerError";
+        case CanErrorType::ProtocolViolation:
+            return "ProtocolViolation";
+        case CanErrorType::TransceiverError:
+            return "TransceiverError";
+        case CanErrorType::NoAck:
+            return "NoAck";
+        case CanErrorType::BusOff:
+            return "BusOff";
+        case CanErrorType::BusError:
+            return "BusError";
+        case CanErrorType::ControllerRestarted:
+            return "ControllerRestarted";
+        default:
+            return "Unknown";
     }
 }
 
@@ -94,8 +110,8 @@ inline const char* canErrorTypeToString(CanErrorType type) {
  * @brief CAN controller error counters
  */
 struct CanErrorCounters {
-    uint8_t txErrorCount = 0;   ///< Transmit error counter (TEC)
-    uint8_t rxErrorCount = 0;   ///< Receive error counter (REC)
+    uint8_t txErrorCount = 0;  ///< Transmit error counter (TEC)
+    uint8_t rxErrorCount = 0;  ///< Receive error counter (REC)
 };
 
 /**
@@ -103,12 +119,12 @@ struct CanErrorCounters {
  * @brief Error statistics since service start
  */
 struct CanErrorStats {
-    uint64_t totalErrors = 0;
-    uint64_t txTimeouts = 0;
-    uint64_t arbitrationLost = 0;
-    uint64_t protocolErrors = 0;
-    uint64_t noAckErrors = 0;
-    uint64_t busOffEvents = 0;
+    uint64_t totalErrors        = 0;
+    uint64_t txTimeouts         = 0;
+    uint64_t arbitrationLost    = 0;
+    uint64_t protocolErrors     = 0;
+    uint64_t noAckErrors        = 0;
+    uint64_t busOffEvents       = 0;
     uint64_t controllerRestarts = 0;
     std::chrono::steady_clock::time_point lastError;
     std::chrono::steady_clock::time_point lastBusOff;
@@ -124,8 +140,8 @@ struct CanErrorEvent {
     CanBusState state = CanBusState::ErrorActive;
     CanErrorCounters counters;
     std::chrono::steady_clock::time_point timestamp;
-    uint32_t arbitrationLostBit = 0;  ///< Bit position where arb was lost
-    uint8_t protocolErrorLocation = 0; ///< Where protocol error occurred
+    uint32_t arbitrationLostBit   = 0;  ///< Bit position where arb was lost
+    uint8_t protocolErrorLocation = 0;  ///< Where protocol error occurred
     std::string description;
 };
 
@@ -175,7 +191,7 @@ public:
     ~CanErrorHandler() = default;
 
     // Non-copyable
-    CanErrorHandler(const CanErrorHandler&) = delete;
+    CanErrorHandler(const CanErrorHandler&)            = delete;
     CanErrorHandler& operator=(const CanErrorHandler&) = delete;
 
     /**
@@ -291,12 +307,12 @@ private:
 class CanBusMonitor {
 public:
     struct HealthMetrics {
-        CanBusState state = CanBusState::ErrorActive;
-        float errorRate = 0.0f;     ///< Errors per second
-        float frameRate = 0.0f;      ///< Frames per second
+        CanBusState state    = CanBusState::ErrorActive;
+        float errorRate      = 0.0f;  ///< Errors per second
+        float frameRate      = 0.0f;  ///< Frames per second
         uint64_t totalFrames = 0;
         uint64_t totalErrors = 0;
-        bool isHealthy = true;
+        bool isHealthy       = true;
     };
 
     /**
@@ -320,11 +336,10 @@ public:
 private:
     std::atomic<uint64_t> frameCount_{0};
     std::atomic<uint64_t> errorCount_{0};
-    std::chrono::steady_clock::time_point startTime_ =
-        std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point startTime_ = std::chrono::steady_clock::now();
     mutable std::mutex mutex_;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_CAN_ERROR_HANDLER_HPP
+#endif  // CAN_SERVICE_CAN_ERROR_HANDLER_HPP

@@ -2,11 +2,13 @@
 #define CAN_SERVICE_CAN_WRITER_HPP
 
 #include "can_interface.hpp"
+
 #include "common/config_loader.hpp"
-#include <cstdint>
-#include <unordered_map>
+
 #include <chrono>
+#include <cstdint>
 #include <mutex>
+#include <unordered_map>
 
 namespace speeduino {
 
@@ -41,11 +43,11 @@ public:
 
     // Send a command (returns error code)
     enum class SendResult {
-        OK = 0,
-        BLOCKED = 1,      // Not in whitelist
-        RATE_LIMITED = 2, // Rate limit exceeded
-        CAN_ERROR = 3,    // CAN write failed
-        INVALID = 4       // Invalid parameters
+        OK           = 0,
+        BLOCKED      = 1,  // Not in whitelist
+        RATE_LIMITED = 2,  // Rate limit exceeded
+        CAN_ERROR    = 3,  // CAN write failed
+        INVALID      = 4   // Invalid parameters
     };
 
     SendResult send(uint32_t can_id, const uint8_t* data, uint8_t dlc);
@@ -76,6 +78,6 @@ private:
     std::atomic<uint32_t> m_rateLimitedCount{0};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_CAN_WRITER_HPP
+#endif  // CAN_SERVICE_CAN_WRITER_HPP

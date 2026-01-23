@@ -6,15 +6,17 @@
  * Tests initialization, publishing, and shutdown lifecycle
  */
 
-#include <gtest/gtest.h>
 #include "can_service/zmq_publisher.hpp"
 #include "common/zmq_messages.hpp"
-#include <zmq.hpp>
-#include <thread>
-#include <chrono>
-#include <atomic>
+
+#include <gtest/gtest.h>
 #include <msgpack.hpp>
+#include <zmq.hpp>
+
+#include <atomic>
+#include <chrono>
 #include <sstream>
+#include <thread>
 
 using namespace speeduino;
 
@@ -72,9 +74,9 @@ TEST_F(ZmqPublisherTest, PublishEngineDataIncrementsCount) {
     ASSERT_TRUE(publisher.init(endpoint));
 
     EngineData data{};
-    data.rpm = 3500;
+    data.rpm          = 3500;
     data.coolant_temp = 85;
-    data.tps = 50;
+    data.tps          = 50;
 
     EXPECT_EQ(publisher.getPublishCount(), 0u);
 
@@ -95,8 +97,8 @@ TEST_F(ZmqPublisherTest, PublishSteeringEvent) {
     ASSERT_TRUE(publisher.init(endpoint));
 
     SteeringEvent event{};
-    event.button_id = 5;
-    event.pressed = true;
+    event.button_id    = 5;
+    event.pressed      = true;
     event.timestamp_ms = 12345;
 
     EXPECT_TRUE(publisher.publishSteeringEvent(event));
@@ -112,8 +114,8 @@ TEST_F(ZmqPublisherTest, PublishSystemStatus) {
     ASSERT_TRUE(publisher.init(endpoint));
 
     SystemStatus status{};
-    status.cpu_temp = 45.0f;
-    status.can_connected = true;
+    status.cpu_temp       = 45.0f;
+    status.can_connected  = true;
     status.uptime_seconds = 3600;
 
     EXPECT_TRUE(publisher.publishSystemStatus(status));
@@ -245,16 +247,18 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
 
     // Publish data
     EngineData sentData{};
-    sentData.rpm = 4200;
+    sentData.rpm          = 4200;
     sentData.coolant_temp = 90;
-    sentData.tps = 75;
-    sentData.map_kpa = 101;
-    sentData.lambda = 1000;  // 1.0 * 1000
+    sentData.tps          = 75;
+    sentData.map_kpa      = 101;
+    sentData.lambda       = 1000;  // 1.0 * 1000
 
     EXPECT_TRUE(publisher.publishEngineData(sentData));
 
     // Receive with timeout
-    zmq::pollitem_t items[] = {{subscriber, 0, ZMQ_POLLIN, 0}};
+    zmq::pollitem_t items[] = {
+        {subscriber, 0, ZMQ_POLLIN, 0}
+    };
     int rc = zmq::poll(items, 1, std::chrono::milliseconds(500));
 
     if (rc > 0) {
@@ -262,8 +266,7 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
         zmq::message_t topic;
         auto topicResult = subscriber.recv(topic, zmq::recv_flags::none);
         ASSERT_TRUE(topicResult.has_value());
-        EXPECT_EQ(std::string(static_cast<char*>(topic.data()), topic.size()),
-                  topics::ENGINE);
+        EXPECT_EQ(std::string(static_cast<char*>(topic.data()), topic.size()), topics::ENGINE);
 
         // Receive data
         zmq::message_t data;
@@ -271,8 +274,8 @@ TEST(ZmqIntegrationTest, PublisherSubscriberCommunication) {
         ASSERT_TRUE(dataResult.has_value());
 
         // Deserialize with msgpack
-        msgpack::object_handle oh = msgpack::unpack(
-            static_cast<const char*>(data.data()), data.size());
+        msgpack::object_handle oh =
+            msgpack::unpack(static_cast<const char*>(data.data()), data.size());
         EngineData receivedData;
         oh.get().convert(receivedData);
 
@@ -299,7 +302,7 @@ TEST(ZmqPublisherThreadTest, ConcurrentPublish) {
 
     std::atomic<int> successCount{0};
     std::atomic<int> failCount{0};
-    constexpr int NUM_THREADS = 4;
+    constexpr int NUM_THREADS          = 4;
     constexpr int PUBLISHES_PER_THREAD = 50;
 
     std::vector<std::thread> threads;

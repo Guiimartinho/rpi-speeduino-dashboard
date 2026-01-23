@@ -3,13 +3,15 @@
  * @brief Unit tests for CAN error handling
  */
 
-#include <gtest/gtest.h>
 #include "can_service/can_error_handler.hpp"
-#include <thread>
-#include <chrono>
+
+#include <gtest/gtest.h>
+
 #include <atomic>
-#include <vector>
+#include <chrono>
 #include <mutex>
+#include <thread>
+#include <vector>
 
 using namespace speeduino;
 
@@ -82,9 +84,8 @@ TEST(CanErrorHandlerTest, SetBusStateCallback) {
     CanErrorHandler handler;
     bool callbackCalled = false;
 
-    handler.setBusStateCallback([&callbackCalled](CanBusState, CanBusState) {
-        callbackCalled = true;
-    });
+    handler.setBusStateCallback(
+        [&callbackCalled](CanBusState, CanBusState) { callbackCalled = true; });
 
     // Callback would be called when state changes via processErrorFrame
     EXPECT_FALSE(callbackCalled);  // Not called yet
@@ -94,9 +95,8 @@ TEST(CanErrorHandlerTest, SetErrorEventCallback) {
     CanErrorHandler handler;
     bool callbackCalled = false;
 
-    handler.setErrorEventCallback([&callbackCalled](const CanErrorEvent&) {
-        callbackCalled = true;
-    });
+    handler.setErrorEventCallback(
+        [&callbackCalled](const CanErrorEvent&) { callbackCalled = true; });
 
     // Callback would be called on error events
     EXPECT_FALSE(callbackCalled);  // Not called yet
@@ -122,7 +122,7 @@ TEST(CanErrorHandlerCallbackTest, ErrorEventCallbackInvoked) {
 
     // Simulate TX timeout error frame
     // CAN_ERR_TX_TIMEOUT = 0x00000001
-    uint32_t canId = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
+    uint32_t canId  = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
     uint8_t data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     handler.processErrorFrame(canId, data);
@@ -146,7 +146,7 @@ TEST(CanErrorHandlerCallbackTest, BusStateCallbackInvoked) {
 
     // Simulate bus-off error frame
     // CAN_ERR_BUSOFF = 0x00000040
-    uint32_t canId = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
+    uint32_t canId  = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
     uint8_t data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     handler.processErrorFrame(canId, data);
@@ -159,9 +159,7 @@ TEST(CanErrorHandlerCallbackTest, ControllerErrorWarningState) {
     CanErrorHandler handler;
     std::atomic<int> stateCallbackCount{0};
 
-    handler.setBusStateCallback([&](CanBusState, CanBusState) {
-        stateCallbackCount++;
-    });
+    handler.setBusStateCallback([&](CanBusState, CanBusState) { stateCallbackCount++; });
 
     // Simulate controller RX warning error
     // CAN_ERR_CRTL = 0x00000004
@@ -193,7 +191,7 @@ TEST(CanErrorHandlerCallbackTest, ControllerRestartedRecovery) {
     CanErrorHandler handler;
 
     // First, set to bus-off
-    uint32_t busOffId = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
+    uint32_t busOffId     = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
     uint8_t busOffData[8] = {0};
     handler.processErrorFrame(busOffId, busOffData);
 
@@ -201,7 +199,7 @@ TEST(CanErrorHandlerCallbackTest, ControllerRestartedRecovery) {
 
     // Now simulate controller restarted
     // CAN_ERR_RESTARTED = 0x00000100
-    uint32_t restartId = 0x20000100;  // CAN_ERR_FLAG | CAN_ERR_RESTARTED
+    uint32_t restartId     = 0x20000100;  // CAN_ERR_FLAG | CAN_ERR_RESTARTED
     uint8_t restartData[8] = {0};
 
     handler.processErrorFrame(restartId, restartData);
@@ -266,7 +264,7 @@ TEST(CanErrorHandlerCallbackTest, NoAckErrorCallback) {
     });
 
     // CAN_ERR_ACK = 0x00000020
-    uint32_t canId = 0x20000020;  // CAN_ERR_FLAG | CAN_ERR_ACK
+    uint32_t canId  = 0x20000020;  // CAN_ERR_FLAG | CAN_ERR_ACK
     uint8_t data[8] = {0};
 
     handler.processErrorFrame(canId, data);
@@ -279,7 +277,7 @@ TEST(CanErrorHandlerCallbackTest, ErrorCountersUpdated) {
     CanErrorHandler handler;
 
     // Simulate error frame with counters in data[6] and data[7]
-    uint32_t canId = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
+    uint32_t canId  = 0x20000001;                  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
     uint8_t data[8] = {0, 0, 0, 0, 0, 0, 50, 30};  // TEC=50, REC=30
 
     handler.processErrorFrame(canId, data);
@@ -294,7 +292,7 @@ TEST(CanErrorHandlerCallbackTest, StatsIncrementedOnError) {
 
     auto statsBefore = handler.getStats();
 
-    uint32_t canId = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
+    uint32_t canId  = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
     uint8_t data[8] = {0};
 
     handler.processErrorFrame(canId, data);
@@ -313,7 +311,7 @@ TEST(CanErrorHandlerCallbackTest, TimeSinceLastErrorUpdated) {
     // Initially, no errors
     EXPECT_EQ(handler.timeSinceLastError(), std::chrono::milliseconds::max());
 
-    uint32_t canId = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
+    uint32_t canId  = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
     uint8_t data[8] = {0};
 
     handler.processErrorFrame(canId, data);
@@ -337,7 +335,7 @@ TEST(CanErrorHandlerCallbackTest, ConcurrentCallbackExecution) {
     std::vector<std::thread> threads;
     for (int t = 0; t < 4; ++t) {
         threads.emplace_back([&]() {
-            uint32_t canId = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
+            uint32_t canId  = 0x20000001;  // CAN_ERR_FLAG | CAN_ERR_TX_TIMEOUT
             uint8_t data[8] = {0};
             for (int i = 0; i < 10; ++i) {
                 handler.processErrorFrame(canId, data);
@@ -362,7 +360,7 @@ TEST(CanErrorHandlerCallbackTest, CallbackExceptionHandled) {
     });
 
     // Should not crash even if callback throws
-    uint32_t canId = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
+    uint32_t canId  = 0x20000040;  // CAN_ERR_FLAG | CAN_ERR_BUSOFF
     uint8_t data[8] = {0};
 
     // This should handle the exception gracefully
@@ -370,7 +368,7 @@ TEST(CanErrorHandlerCallbackTest, CallbackExceptionHandled) {
     EXPECT_GE(callbackCount.load(), 1);
 }
 
-#endif // __linux__
+#endif  // __linux__
 
 TEST(CanBusMonitorTest, InitialMetrics) {
     CanBusMonitor monitor;
@@ -390,7 +388,7 @@ TEST(CanBusMonitorTest, RecordFrame) {
 
     monitor.recordFrame(false);  // Normal frame
     monitor.recordFrame(false);
-    monitor.recordFrame(true);   // Error frame
+    monitor.recordFrame(true);  // Error frame
 
     auto metrics = monitor.getMetrics(handler);
 

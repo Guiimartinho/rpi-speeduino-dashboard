@@ -4,24 +4,25 @@
  */
 
 #include "can_service/can_error_handler.hpp"
+
 #include "common/logger.hpp"
 
 #ifdef __linux__
-#include <linux/can.h>
-#include <linux/can/error.h>
-#include <linux/can/raw.h>
-#include <linux/can/netlink.h>
-#include <sys/socket.h>
-#include <net/if.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <cstring>
-#include <cctype>
-#include <algorithm>
+    #include <algorithm>
+    #include <cctype>
+    #include <cstring>
+    #include <linux/can.h>
+    #include <linux/can/error.h>
+    #include <linux/can/netlink.h>
+    #include <linux/can/raw.h>
+    #include <net/if.h>
+    #include <sys/ioctl.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
 #endif
 
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
 namespace speeduino {
 
@@ -30,13 +31,13 @@ namespace speeduino {
 // ISO 26262: Named constants for hardware recovery timing
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// Delay in microseconds for CAN interface recovery (100ms)
-    constexpr unsigned int CAN_RECOVERY_DELAY_US = 100000;
-} // anonymous namespace
+/// Delay in microseconds for CAN interface recovery (100ms)
+constexpr unsigned int CAN_RECOVERY_DELAY_US = 100000;
+}  // anonymous namespace
 
 CanErrorHandler::CanErrorHandler() {
-    stats_.lastError = std::chrono::steady_clock::time_point::min();
-    stats_.lastBusOff = std::chrono::steady_clock::time_point::min();
+    stats_.lastError    = std::chrono::steady_clock::time_point::min();
+    stats_.lastBusOff   = std::chrono::steady_clock::time_point::min();
     stats_.lastRecovery = std::chrono::steady_clock::time_point::min();
 }
 
@@ -45,11 +46,9 @@ bool CanErrorHandler::enableErrorFrames(int socketFd) {
     // Enable all error classes
     can_err_mask_t errMask = CAN_ERR_MASK;
 
-    int ret = setsockopt(socketFd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER,
-                        &errMask, sizeof(errMask));
+    int ret = setsockopt(socketFd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &errMask, sizeof(errMask));
     if (ret < 0) {
-        Logger::error("Failed to enable CAN error frames: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to enable CAN error frames: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -65,7 +64,7 @@ void CanErrorHandler::processErrorFrame(uint32_t canId, const uint8_t* data) {
 #ifdef __linux__
     std::lock_guard<std::mutex> lock(mutex_);
 
-    auto now = std::chrono::steady_clock::now();
+    auto now         = std::chrono::steady_clock::now();
     stats_.lastError = now;
     stats_.totalErrors++;
 
@@ -80,11 +79,10 @@ void CanErrorHandler::processErrorFrame(uint32_t canId, const uint8_t* data) {
     }
 
     if (canId & CAN_ERR_LOSTARB) {
-        event.type = CanErrorType::ArbitrationLost;
+        event.type               = CanErrorType::ArbitrationLost;
         event.arbitrationLostBit = data[0];
         stats_.arbitrationLost++;
-        Logger::debug("CAN arbitration lost at bit " +
-                     std::to_string(data[0]));
+        Logger::debug("CAN arbitration lost at bit " + std::to_string(data[0]));
     }
 
     if (canId & CAN_ERR_CRTL) {
@@ -109,9 +107,9 @@ void CanErrorHandler::processErrorFrame(uint32_t canId, const uint8_t* data) {
     }
 
     if (canId & CAN_ERR_PROT) {
-        event.type = CanErrorType::ProtocolViolation;
+        event.type                  = CanErrorType::ProtocolViolation;
         event.protocolErrorLocation = data[3];
-        event.description = parseProtocolError(data[2], data[3]);
+        event.description           = parseProtocolError(data[2], data[3]);
         stats_.protocolErrors++;
         Logger::warn("CAN protocol error: " + event.description);
     }
@@ -152,7 +150,7 @@ void CanErrorHandler::processErrorFrame(uint32_t canId, const uint8_t* data) {
     counters_.txErrorCount = data[6];
     counters_.rxErrorCount = data[7];
 
-    event.state = currentState_.load(std::memory_order_acquire);
+    event.state    = currentState_.load(std::memory_order_acquire);
     event.counters = counters_;
 
     // Invoke error callback
@@ -216,7 +214,7 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
 
     // Strict validation: only alphanumeric characters allowed
     bool hasLetters = false;
-    bool hasDigits = false;
+    bool hasDigits  = false;
     for (char c : interfaceName) {
         if (std::isalpha(static_cast<unsigned char>(c))) {
             hasLetters = true;
@@ -238,8 +236,7 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
     // This is the safe, non-injectable approach
     int sockfd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (sockfd < 0) {
-        Logger::error("Failed to create socket for CAN recovery: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to create socket for CAN recovery: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -251,23 +248,21 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
 
     if (ioctl(sockfd, SIOCGIFINDEX, &ifr) < 0) {
         Logger::error("Failed to get interface index for recovery: " +
-                     std::string(strerror(errno)));
+                      std::string(strerror(errno)));
         ::close(sockfd);
         return false;
     }
 
     // Bring interface down
     if (ioctl(sockfd, SIOCGIFFLAGS, &ifr) < 0) {
-        Logger::error("Failed to get interface flags: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to get interface flags: " + std::string(strerror(errno)));
         ::close(sockfd);
         return false;
     }
 
     ifr.ifr_flags &= ~IFF_UP;
     if (ioctl(sockfd, SIOCSIFFLAGS, &ifr) < 0) {
-        Logger::error("Failed to bring interface down: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to bring interface down: " + std::string(strerror(errno)));
         ::close(sockfd);
         return false;
     }
@@ -278,8 +273,7 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
     // Bring interface back up
     ifr.ifr_flags |= IFF_UP;
     if (ioctl(sockfd, SIOCSIFFLAGS, &ifr) < 0) {
-        Logger::error("Failed to bring interface up: " +
-                     std::string(strerror(errno)));
+        Logger::error("Failed to bring interface up: " + std::string(strerror(errno)));
         ::close(sockfd);
         return false;
     }
@@ -295,7 +289,7 @@ bool CanErrorHandler::triggerRecovery(const std::string& interfaceName) {
 
 void CanErrorHandler::resetStats() {
     std::lock_guard<std::mutex> lock(mutex_);
-    stats_ = CanErrorStats{};
+    stats_    = CanErrorStats{};
     counters_ = CanErrorCounters{};
     currentState_.store(CanBusState::ErrorActive, std::memory_order_release);
 }
@@ -308,8 +302,7 @@ std::chrono::milliseconds CanErrorHandler::timeSinceLastError() const {
     }
 
     auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - stats_.lastError);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - stats_.lastError);
 }
 
 std::string CanErrorHandler::getStatusString() const {
@@ -319,8 +312,7 @@ std::string CanErrorHandler::getStatusString() const {
     ss << "CAN Bus Status: " << canBusStateToString(currentState_.load())
        << ", TEC=" << static_cast<int>(counters_.txErrorCount)
        << ", REC=" << static_cast<int>(counters_.rxErrorCount)
-       << ", Total Errors=" << stats_.totalErrors
-       << ", Bus-Off Events=" << stats_.busOffEvents;
+       << ", Total Errors=" << stats_.totalErrors << ", Bus-Off Events=" << stats_.busOffEvents;
 
     return ss.str();
 }
@@ -335,9 +327,8 @@ void CanErrorHandler::updateState(CanBusState newState) {
     auto oldState = currentState_.exchange(newState, std::memory_order_acq_rel);
 
     if (oldState != newState) {
-        Logger::info(std::string("CAN bus state: ") +
-                    canBusStateToString(oldState) + " -> " +
-                    canBusStateToString(newState));
+        Logger::info(std::string("CAN bus state: ") + canBusStateToString(oldState) + " -> " +
+                     canBusStateToString(newState));
 
         // Copy callback while holding lock
         BusStateCallback callbackCopy;
@@ -367,52 +358,106 @@ void CanErrorHandler::recordError(CanErrorType type) {
     stats_.lastError = std::chrono::steady_clock::now();
 }
 
-std::string CanErrorHandler::parseProtocolError(uint8_t location,
-                                                uint8_t type) const {
+std::string CanErrorHandler::parseProtocolError(uint8_t location, uint8_t type) const {
     std::stringstream ss;
 
 #ifdef __linux__
     // Error type
     switch (type) {
-        case CAN_ERR_PROT_BIT:      ss << "single bit error"; break;
-        case CAN_ERR_PROT_FORM:     ss << "frame format error"; break;
-        case CAN_ERR_PROT_STUFF:    ss << "bit stuffing error"; break;
-        case CAN_ERR_PROT_BIT0:     ss << "unable to send dominant bit"; break;
-        case CAN_ERR_PROT_BIT1:     ss << "unable to send recessive bit"; break;
-        case CAN_ERR_PROT_OVERLOAD: ss << "bus overload"; break;
-        case CAN_ERR_PROT_ACTIVE:   ss << "active error announcement"; break;
-        case CAN_ERR_PROT_TX:       ss << "error on transmission"; break;
-        default:                    ss << "unknown (0x" << std::hex << (int)type << ")";
+        case CAN_ERR_PROT_BIT:
+            ss << "single bit error";
+            break;
+        case CAN_ERR_PROT_FORM:
+            ss << "frame format error";
+            break;
+        case CAN_ERR_PROT_STUFF:
+            ss << "bit stuffing error";
+            break;
+        case CAN_ERR_PROT_BIT0:
+            ss << "unable to send dominant bit";
+            break;
+        case CAN_ERR_PROT_BIT1:
+            ss << "unable to send recessive bit";
+            break;
+        case CAN_ERR_PROT_OVERLOAD:
+            ss << "bus overload";
+            break;
+        case CAN_ERR_PROT_ACTIVE:
+            ss << "active error announcement";
+            break;
+        case CAN_ERR_PROT_TX:
+            ss << "error on transmission";
+            break;
+        default:
+            ss << "unknown (0x" << std::hex << (int)type << ")";
     }
 
     ss << " at ";
 
     // Error location
     switch (location) {
-        case CAN_ERR_PROT_LOC_SOF:       ss << "start of frame"; break;
-        case CAN_ERR_PROT_LOC_ID28_21:   ss << "ID bits 28-21"; break;
-        case CAN_ERR_PROT_LOC_ID20_18:   ss << "ID bits 20-18"; break;
-        case CAN_ERR_PROT_LOC_SRTR:      ss << "SRTR bit"; break;
-        case CAN_ERR_PROT_LOC_IDE:       ss << "IDE bit"; break;
-        case CAN_ERR_PROT_LOC_ID17_13:   ss << "ID bits 17-13"; break;
-        case CAN_ERR_PROT_LOC_ID12_05:   ss << "ID bits 12-5"; break;
-        case CAN_ERR_PROT_LOC_ID04_00:   ss << "ID bits 4-0"; break;
-        case CAN_ERR_PROT_LOC_RTR:       ss << "RTR bit"; break;
-        case CAN_ERR_PROT_LOC_RES1:      ss << "reserved bit 1"; break;
-        case CAN_ERR_PROT_LOC_RES0:      ss << "reserved bit 0"; break;
-        case CAN_ERR_PROT_LOC_DLC:       ss << "data length code"; break;
-        case CAN_ERR_PROT_LOC_DATA:      ss << "data section"; break;
-        case CAN_ERR_PROT_LOC_CRC_SEQ:   ss << "CRC sequence"; break;
-        case CAN_ERR_PROT_LOC_CRC_DEL:   ss << "CRC delimiter"; break;
-        case CAN_ERR_PROT_LOC_ACK:       ss << "ACK slot"; break;
-        case CAN_ERR_PROT_LOC_ACK_DEL:   ss << "ACK delimiter"; break;
-        case CAN_ERR_PROT_LOC_EOF:       ss << "end of frame"; break;
-        case CAN_ERR_PROT_LOC_INTERM:    ss << "intermission"; break;
-        default:                         ss << "unknown (0x" << std::hex << (int)location << ")";
+        case CAN_ERR_PROT_LOC_SOF:
+            ss << "start of frame";
+            break;
+        case CAN_ERR_PROT_LOC_ID28_21:
+            ss << "ID bits 28-21";
+            break;
+        case CAN_ERR_PROT_LOC_ID20_18:
+            ss << "ID bits 20-18";
+            break;
+        case CAN_ERR_PROT_LOC_SRTR:
+            ss << "SRTR bit";
+            break;
+        case CAN_ERR_PROT_LOC_IDE:
+            ss << "IDE bit";
+            break;
+        case CAN_ERR_PROT_LOC_ID17_13:
+            ss << "ID bits 17-13";
+            break;
+        case CAN_ERR_PROT_LOC_ID12_05:
+            ss << "ID bits 12-5";
+            break;
+        case CAN_ERR_PROT_LOC_ID04_00:
+            ss << "ID bits 4-0";
+            break;
+        case CAN_ERR_PROT_LOC_RTR:
+            ss << "RTR bit";
+            break;
+        case CAN_ERR_PROT_LOC_RES1:
+            ss << "reserved bit 1";
+            break;
+        case CAN_ERR_PROT_LOC_RES0:
+            ss << "reserved bit 0";
+            break;
+        case CAN_ERR_PROT_LOC_DLC:
+            ss << "data length code";
+            break;
+        case CAN_ERR_PROT_LOC_DATA:
+            ss << "data section";
+            break;
+        case CAN_ERR_PROT_LOC_CRC_SEQ:
+            ss << "CRC sequence";
+            break;
+        case CAN_ERR_PROT_LOC_CRC_DEL:
+            ss << "CRC delimiter";
+            break;
+        case CAN_ERR_PROT_LOC_ACK:
+            ss << "ACK slot";
+            break;
+        case CAN_ERR_PROT_LOC_ACK_DEL:
+            ss << "ACK delimiter";
+            break;
+        case CAN_ERR_PROT_LOC_EOF:
+            ss << "end of frame";
+            break;
+        case CAN_ERR_PROT_LOC_INTERM:
+            ss << "intermission";
+            break;
+        default:
+            ss << "unknown (0x" << std::hex << (int)location << ")";
     }
 #else
-    ss << "type=0x" << std::hex << (int)type
-       << " loc=0x" << (int)location;
+    ss << "type=0x" << std::hex << (int)type << " loc=0x" << (int)location;
 #endif
 
     return ss.str();
@@ -427,17 +472,14 @@ void CanBusMonitor::recordFrame(bool isError) {
     }
 }
 
-CanBusMonitor::HealthMetrics CanBusMonitor::getMetrics(
-    const CanErrorHandler& errorHandler) const {
-
+CanBusMonitor::HealthMetrics CanBusMonitor::getMetrics(const CanErrorHandler& errorHandler) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-        now - startTime_).count();
+    auto now     = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime_).count();
 
     HealthMetrics metrics;
-    metrics.state = errorHandler.currentState();
+    metrics.state       = errorHandler.currentState();
     metrics.totalFrames = frameCount_.load(std::memory_order_relaxed);
     metrics.totalErrors = errorCount_.load(std::memory_order_relaxed);
 
@@ -447,8 +489,8 @@ CanBusMonitor::HealthMetrics CanBusMonitor::getMetrics(
     }
 
     // Consider healthy if error rate < 1% and not in bus-off
-    metrics.isHealthy = (metrics.state != CanBusState::BusOff) &&
-                       (metrics.errorRate < 0.01f * metrics.frameRate);
+    metrics.isHealthy =
+        (metrics.state != CanBusState::BusOff) && (metrics.errorRate < 0.01f * metrics.frameRate);
 
     return metrics;
 }
@@ -461,4 +503,4 @@ void CanBusMonitor::reset() {
     startTime_ = std::chrono::steady_clock::now();
 }
 
-} // namespace speeduino
+}  // namespace speeduino

@@ -1,6 +1,8 @@
-#include <gtest/gtest.h>
-#include <algorithm>
 #include "can_service/obd_handler.hpp"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
 
 using namespace speeduino;
 
@@ -32,9 +34,7 @@ public:
         return true;
     }
 
-    void queueResponse(const CanFrame& frame) {
-        m_responseQueue.push_back(frame);
-    }
+    void queueResponse(const CanFrame& frame) { m_responseQueue.push_back(frame); }
 
     const std::vector<CanFrame>& getSentFrames() const { return m_sentFrames; }
     void clearSentFrames() { m_sentFrames.clear(); }
@@ -52,7 +52,7 @@ class OBDHandlerTest : public ::testing::Test {
 protected:
     void SetUp() override {
         interface = std::make_unique<MockCanInterface>();
-        handler = std::make_unique<OBDHandler>(*interface);
+        handler   = std::make_unique<OBDHandler>(*interface);
     }
 
     std::unique_ptr<MockCanInterface> interface;
@@ -62,7 +62,7 @@ protected:
 TEST_F(OBDHandlerTest, RequestRPM) {
     // Queue a valid RPM response
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // Mode 01, PID 0C, RPM = 3000 = 12000 / 4 = 0x2EE0
     response.data = {0x04, 0x41, 0x0C, 0x2E, 0xE0, 0x00, 0x00, 0x00};
@@ -79,7 +79,7 @@ TEST_F(OBDHandlerTest, RequestRPM) {
 TEST_F(OBDHandlerTest, RequestCoolantTemp) {
     // Queue a valid coolant temp response
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // Mode 01, PID 05, CLT = 90°C = 130 (raw + offset)
     response.data = {0x03, 0x41, 0x05, 0x82, 0x00, 0x00, 0x00, 0x00};
@@ -95,7 +95,7 @@ TEST_F(OBDHandlerTest, RequestCoolantTemp) {
 
 TEST_F(OBDHandlerTest, RequestVehicleSpeed) {
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // Mode 01, PID 0D, Speed = 100 km/h
     response.data = {0x03, 0x41, 0x0D, 0x64, 0x00, 0x00, 0x00, 0x00};
@@ -110,7 +110,7 @@ TEST_F(OBDHandlerTest, RequestVehicleSpeed) {
 
 TEST_F(OBDHandlerTest, RequestTPS) {
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // Mode 01, PID 11, TPS = 50% = 128 raw
     response.data = {0x03, 0x41, 0x11, 0x80, 0x00, 0x00, 0x00, 0x00};
@@ -125,7 +125,7 @@ TEST_F(OBDHandlerTest, RequestTPS) {
 
 TEST_F(OBDHandlerTest, RequestMAP) {
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // Mode 01, PID 0B, MAP = 101 kPa
     response.data = {0x03, 0x41, 0x0B, 0x65, 0x00, 0x00, 0x00, 0x00};
@@ -185,7 +185,7 @@ TEST_F(OBDHandlerTest, RequestFrameFormat) {
 TEST_F(OBDHandlerTest, VINRequest) {
     // Queue VIN response (Mode 09, PID 02)
     CanFrame response;
-    response.id = 0x7E8;
+    response.id  = 0x7E8;
     response.dlc = 8;
     // First frame of multi-frame VIN response
     response.data = {0x10, 0x14, 0x49, 0x02, 0x01, 0x57, 0x56, 0x57};  // "WVW..."
@@ -212,8 +212,8 @@ TEST_F(OBDHandlerTest, TimeoutHandling) {
 TEST_F(OBDHandlerTest, InvalidResponseIgnored) {
     // Queue invalid response (wrong response ID)
     CanFrame response;
-    response.id = 0x7E9;  // Wrong ID
-    response.dlc = 8;
+    response.id   = 0x7E9;  // Wrong ID
+    response.dlc  = 8;
     response.data = {0x04, 0x41, 0x0C, 0x2E, 0xE0, 0x00, 0x00, 0x00};
     interface->queueResponse(response);
 
@@ -230,8 +230,8 @@ TEST_F(OBDHandlerTest, GetSupportedPIDs_SingleRange) {
     // Byte 2: 0xA8 = 10101000 -> PIDs 11, 13, 15 supported
     // Byte 3: 0x10 = 00010000 -> PID 1C supported, PID 0x20 NOT set (no next range)
     CanFrame response;
-    response.id = 0x7E8;
-    response.dlc = 8;
+    response.id   = 0x7E8;
+    response.dlc  = 8;
     response.data = {0x06, 0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x10, 0x00};
     interface->queueResponse(response);
 
@@ -252,15 +252,15 @@ TEST_F(OBDHandlerTest, GetSupportedPIDs_SingleRange) {
 TEST_F(OBDHandlerTest, GetSupportedPIDs_MultipleRanges) {
     // First range: 0x00 (PIDs 01-20), with 0x20 bit set
     CanFrame response1;
-    response1.id = 0x7E8;
-    response1.dlc = 8;
+    response1.id   = 0x7E8;
+    response1.dlc  = 8;
     response1.data = {0x06, 0x41, 0x00, 0x80, 0x00, 0x00, 0x01, 0x00};  // Only PID 01 + next range
     interface->queueResponse(response1);
 
     // Second range: 0x20 (PIDs 21-40), no next range
     CanFrame response2;
-    response2.id = 0x7E8;
-    response2.dlc = 8;
+    response2.id   = 0x7E8;
+    response2.dlc  = 8;
     response2.data = {0x06, 0x41, 0x20, 0x80, 0x00, 0x00, 0x00, 0x00};  // Only PID 21
     interface->queueResponse(response2);
 
@@ -276,22 +276,22 @@ TEST_F(OBDHandlerTest, VIN_MultiFrame_Complete) {
     // First Frame: VIN starts with "WVWZZZ3CZ"
     // Format: [10 14] [49 02 01] [W V W] = length 0x14 (20 bytes)
     CanFrame ff;
-    ff.id = 0x7E8;
-    ff.dlc = 8;
+    ff.id   = 0x7E8;
+    ff.dlc  = 8;
     ff.data = {0x10, 0x14, 0x49, 0x02, 0x01, 'W', 'V', 'W'};
     interface->queueResponse(ff);
 
     // Consecutive Frame 1: "ZZZ3CZW"
     CanFrame cf1;
-    cf1.id = 0x7E8;
-    cf1.dlc = 8;
+    cf1.id   = 0x7E8;
+    cf1.dlc  = 8;
     cf1.data = {0x21, 'Z', 'Z', 'Z', '3', 'C', 'Z', 'W'};
     interface->queueResponse(cf1);
 
     // Consecutive Frame 2: "E123456" + padding
     CanFrame cf2;
-    cf2.id = 0x7E8;
-    cf2.dlc = 8;
+    cf2.id   = 0x7E8;
+    cf2.dlc  = 8;
     cf2.data = {0x22, 'E', '1', '2', '3', '4', '5', '6'};
     interface->queueResponse(cf2);
 
@@ -302,7 +302,7 @@ TEST_F(OBDHandlerTest, VIN_MultiFrame_Complete) {
     EXPECT_EQ(*result, "WVWZZZ3CZWE123456");
 
     // Verify flow control was sent
-    auto& sent = interface->getSentFrames();
+    auto& sent   = interface->getSentFrames();
     bool foundFC = false;
     for (const auto& frame : sent) {
         if ((frame.data[0] & 0xF0) == 0x30) {  // Flow Control
@@ -319,8 +319,8 @@ TEST_F(OBDHandlerTest, VIN_MultiFrame_Complete) {
 TEST_F(OBDHandlerTest, VIN_SingleFrame) {
     // Some ECUs might respond with a short VIN in single frame (unusual but possible)
     CanFrame sf;
-    sf.id = 0x7E8;
-    sf.dlc = 8;
+    sf.id   = 0x7E8;
+    sf.dlc  = 8;
     sf.data = {0x07, 0x49, 0x02, 0x01, 'T', 'E', 'S', 'T'};
     interface->queueResponse(sf);
 

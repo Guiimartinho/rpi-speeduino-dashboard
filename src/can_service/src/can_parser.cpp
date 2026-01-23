@@ -1,5 +1,7 @@
 #include "can_service/can_parser.hpp"
+
 #include "common/logger.hpp"
+
 #include <chrono>
 #include <cstring>
 
@@ -10,17 +12,16 @@ namespace speeduino {
 // ISO 26262 ASIL-B: Named constants for safety-critical thresholds
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// Coolant temperature threshold for overheat warning (Celsius)
-    constexpr int8_t COOLANT_OVERHEAT_THRESHOLD_C = 105;
-} // anonymous namespace
+/// Coolant temperature threshold for overheat warning (Celsius)
+constexpr int8_t COOLANT_OVERHEAT_THRESHOLD_C = 105;
+}  // anonymous namespace
 
 namespace {
 
 uint32_t getMonotonicMs() {
     auto now = std::chrono::steady_clock::now();
     return static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()).count());
+        std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
 }
 
 // Swap bytes for big-endian values
@@ -29,13 +30,11 @@ uint16_t swapBytes16(uint16_t val) {
 }
 
 uint32_t swapBytes32(uint32_t val) {
-    return ((val >> 24) & 0x000000FF) |
-           ((val >> 8)  & 0x0000FF00) |
-           ((val << 8)  & 0x00FF0000) |
+    return ((val >> 24) & 0x000000FF) | ((val >> 8) & 0x0000FF00) | ((val << 8) & 0x00FF0000) |
            ((val << 24) & 0xFF000000);
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 CanParser::CanParser() = default;
 
@@ -59,8 +58,8 @@ void CanParser::parseFrame(const CanFrame& frame) {
     // Validate DLC before any array access to prevent buffer overread
     constexpr uint8_t CAN_MAX_DLC = 64;  // CAN FD max
     if (frame.dlc > CAN_MAX_DLC) {
-        LOG_WARN("Invalid CAN DLC " + std::to_string(frame.dlc) +
-                 " for frame 0x" + std::to_string(frame.id) + ", ignoring");
+        LOG_WARN("Invalid CAN DLC " + std::to_string(frame.dlc) + " for frame 0x" +
+                 std::to_string(frame.id) + ", ignoring");
         return;
     }
 
@@ -79,12 +78,7 @@ void CanParser::parseFrame(const CanFrame& frame) {
         double scaledValue = applyScaling(rawValue, signal);
 
         // Store parsed value
-        m_values[signal.name] = ParsedSignal{
-            signal.name,
-            scaledValue,
-            frame.timestamp_us,
-            true
-        };
+        m_values[signal.name] = ParsedSignal{signal.name, scaledValue, frame.timestamp_us, true};
     }
 
     // Update timestamp
@@ -112,7 +106,7 @@ uint64_t CanParser::extractRawValue(const CanFrame& frame, const CanSignalDef& s
         return 0;
     }
 
-    uint64_t result = 0;
+    uint64_t result     = 0;
     uint8_t bytesNeeded = (signal.length_bits + 7) / 8;
 
     // Prevent overflow in index calculation
@@ -134,7 +128,7 @@ uint64_t CanParser::extractRawValue(const CanFrame& frame, const CanSignalDef& s
         // ═══════════════════════════════════════════════════════════════════════
         for (uint8_t j = 0; j < bytesNeeded; ++j) {
             // Calculate byte index in reverse order (bytesNeeded-1 down to 0)
-            uint8_t byteIndex = static_cast<uint8_t>(bytesNeeded - 1U - j);
+            uint8_t byteIndex  = static_cast<uint8_t>(bytesNeeded - 1U - j);
             uint8_t frameIndex = static_cast<uint8_t>(signal.start_byte + byteIndex);
 
             // Bounds check against frame DLC
@@ -198,56 +192,64 @@ void CanParser::updateEngineData() {
 
     // Helper lambdas for safe clamping conversions
     auto clampU16 = [](double val) -> uint16_t {
-        if (val < 0.0) return 0;
-        if (val > 65535.0) return 65535;
+        if (val < 0.0)
+            return 0;
+        if (val > 65535.0)
+            return 65535;
         return static_cast<uint16_t>(val);
     };
 
     auto clampI16 = [](double val) -> int16_t {
-        if (val < -32768.0) return -32768;
-        if (val > 32767.0) return 32767;
+        if (val < -32768.0)
+            return -32768;
+        if (val > 32767.0)
+            return 32767;
         return static_cast<int16_t>(val);
     };
 
     auto clampU8 = [](double val) -> uint8_t {
-        if (val < 0.0) return 0;
-        if (val > 255.0) return 255;
+        if (val < 0.0)
+            return 0;
+        if (val > 255.0)
+            return 255;
         return static_cast<uint8_t>(val);
     };
 
     auto clampI8 = [](double val) -> int8_t {
-        if (val < -128.0) return -128;
-        if (val > 127.0) return 127;
+        if (val < -128.0)
+            return -128;
+        if (val > 127.0)
+            return 127;
         return static_cast<int8_t>(val);
     };
 
     // ═══════════════════════════════════════════════════════════════════════
     // CORE DATA (all protocols)
     // ═══════════════════════════════════════════════════════════════════════
-    m_engineData.timestamp_ms = m_lastUpdateTimestamp;
-    m_engineData.rpm = clampU16(getValue("rpm"));
-    m_engineData.coolant_temp = clampI8(getValue("coolant_temp"));
-    m_engineData.intake_temp = clampI8(getValue("intake_temp"));
-    m_engineData.tps = clampU8(getValue("tps"));
-    m_engineData.map_kpa = clampU16(getValue("map") * 10.0);
-    m_engineData.lambda = clampU16(getValue("lambda1") * 1000.0);
+    m_engineData.timestamp_ms     = m_lastUpdateTimestamp;
+    m_engineData.rpm              = clampU16(getValue("rpm"));
+    m_engineData.coolant_temp     = clampI8(getValue("coolant_temp"));
+    m_engineData.intake_temp      = clampI8(getValue("intake_temp"));
+    m_engineData.tps              = clampU8(getValue("tps"));
+    m_engineData.map_kpa          = clampU16(getValue("map") * 10.0);
+    m_engineData.lambda           = clampU16(getValue("lambda1") * 1000.0);
     m_engineData.ignition_advance = clampI16(getValue("ignition_advance") * 10.0);
-    m_engineData.injector_duty = clampU8(getValue("injector_duty"));
-    m_engineData.gear = clampU8(getValue("gear"));
-    m_engineData.vehicle_speed = clampU16(getValue("vehicle_speed") * 10.0);
+    m_engineData.injector_duty    = clampU8(getValue("injector_duty"));
+    m_engineData.gear             = clampU8(getValue("gear"));
+    m_engineData.vehicle_speed    = clampU16(getValue("vehicle_speed") * 10.0);
 
     // ═══════════════════════════════════════════════════════════════════════
     // PRESSURES (Haltech, some BMW)
     // ═══════════════════════════════════════════════════════════════════════
     m_engineData.fuel_pressure = clampU16(getValue("fuel_pressure"));
-    m_engineData.oil_pressure = clampU16(getValue("oil_pressure"));
-    m_engineData.boost_target = clampU16(getValue("boost_target") * 10.0);
-    m_engineData.baro = clampU16(getValue("baro") * 10.0);
+    m_engineData.oil_pressure  = clampU16(getValue("oil_pressure"));
+    m_engineData.boost_target  = clampU16(getValue("boost_target") * 10.0);
+    m_engineData.baro          = clampU16(getValue("baro") * 10.0);
 
     // ═══════════════════════════════════════════════════════════════════════
     // TEMPERATURES
     // ═══════════════════════════════════════════════════════════════════════
-    m_engineData.oil_temp = clampI8(getValue("oil_temp"));
+    m_engineData.oil_temp  = clampI8(getValue("oil_temp"));
     m_engineData.fuel_temp = clampI8(getValue("fuel_temp"));
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -260,7 +262,7 @@ void CanParser::updateEngineData() {
     // FUEL SYSTEM (Haltech, BMW)
     // ═══════════════════════════════════════════════════════════════════════
     m_engineData.fuel_consumption = clampU16(getValue("fuel_consumption") * 100.0);
-    m_engineData.fuel_load = clampU8(getValue("fuel_load"));
+    m_engineData.fuel_load        = clampU8(getValue("fuel_load"));
 
     // ═══════════════════════════════════════════════════════════════════════
     // INJECTION (Haltech - per cylinder data)
@@ -273,14 +275,41 @@ void CanParser::updateEngineData() {
     // ═══════════════════════════════════════════════════════════════════════
     // VVT (Variable Valve Timing - Haltech)
     // ═══════════════════════════════════════════════════════════════════════
-    m_engineData.vvt_intake = clampI16(getValue("vvt_intake") * 10.0);
+    m_engineData.vvt_intake  = clampI16(getValue("vvt_intake") * 10.0);
     m_engineData.vvt_exhaust = clampI16(getValue("vvt_exhaust") * 10.0);
 
     // ═══════════════════════════════════════════════════════════════════════
     // TORQUE (BMW only)
     // ═══════════════════════════════════════════════════════════════════════
-    m_engineData.torque_indexed = clampU8(getValue("torque_indexed"));
+    m_engineData.torque_indexed   = clampU8(getValue("torque_indexed"));
     m_engineData.torque_indicated = clampU8(getValue("torque_indicated"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PER-CYLINDER TRIMS (Speeduino 0x3E3)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.fuel_trim_cyl1 = clampI8(getValue("fuel_trim_cyl1"));
+    m_engineData.fuel_trim_cyl2 = clampI8(getValue("fuel_trim_cyl2"));
+    m_engineData.fuel_trim_cyl3 = clampI8(getValue("fuel_trim_cyl3"));
+    m_engineData.fuel_trim_cyl4 = clampI8(getValue("fuel_trim_cyl4"));
+    m_engineData.ign_trim_cyl1  = clampI8(getValue("ign_trim_cyl1"));
+    m_engineData.ign_trim_cyl2  = clampI8(getValue("ign_trim_cyl2"));
+    m_engineData.ign_trim_cyl3  = clampI8(getValue("ign_trim_cyl3"));
+    m_engineData.ign_trim_cyl4  = clampI8(getValue("ign_trim_cyl4"));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADDITIONAL ENGINE DATA (Speeduino 0x3E1, 0x3E2)
+    // ═══════════════════════════════════════════════════════════════════════
+    m_engineData.ve              = clampU8(getValue("ve"));
+    m_engineData.afr_target      = clampU8(getValue("afr_target") * 10.0);  // Store as × 10
+    m_engineData.idle_target_rpm = clampU8(getValue("idle_target_rpm") / 10.0);  // Store as / 10
+    m_engineData.idle_valve_duty = clampU8(getValue("idle_valve_duty"));
+    m_engineData.error_count     = clampU8(getValue("error_count"));
+    m_engineData.sync_status     = clampU8(getValue("sync_status"));
+
+    // Use wideband lambda if available (higher precision than built-in O2)
+    if (hasValue("wideband_lambda") && getValue("wideband_status") > 0.5) {
+        m_engineData.lambda = clampU16(getValue("wideband_lambda") * 1000.0);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // STATUS FLAGS - Build from multiple sources
@@ -318,15 +347,19 @@ void CanParser::updateEngineData() {
         flags |= EngineData::FLAG_CRUISE_ON;
     }
 
-    // Launch control flags (Haltech)
+    // Launch control flags (Haltech or Speeduino)
     if (hasValue("launch_soft") && getValue("launch_soft") > 0.5) {
         flags |= EngineData::FLAG_LAUNCH_SOFT;
     }
     if (hasValue("launch_hard") && getValue("launch_hard") > 0.5) {
         flags |= EngineData::FLAG_LAUNCH_HARD;
     }
+    // Speeduino launch control (single flag for both stages)
+    if (hasValue("launch_active") && getValue("launch_active") > 0.5) {
+        flags |= EngineData::FLAG_LAUNCH_SOFT;
+    }
 
-    // Flat shift flag (Haltech)
+    // Flat shift flag (Haltech or Speeduino)
     if (hasValue("flat_shift_active") && getValue("flat_shift_active") > 0.5) {
         flags |= EngineData::FLAG_FLAT_SHIFT;
     }
@@ -334,6 +367,16 @@ void CanParser::updateEngineData() {
     // Rev limiter flag
     if (hasValue("rev_limit_active") && getValue("rev_limit_active") > 0.5) {
         flags |= EngineData::FLAG_REV_LIMIT;
+    }
+
+    // DFCO (Decel Fuel Cut Off) flag - Speeduino 0x3E2
+    if (hasValue("dfco_active") && getValue("dfco_active") > 0.5) {
+        flags |= EngineData::FLAG_DFCO;
+    }
+
+    // Fan On flag - Speeduino 0x3E2
+    if (hasValue("fan_on") && getValue("fan_on") > 0.5) {
+        flags |= EngineData::FLAG_FAN_ON;
     }
 
     // Low oil pressure warning (safety critical)
@@ -382,8 +425,8 @@ void CanParser::reset() {
         value.valid = false;
     }
 
-    m_engineData = EngineData{};
+    m_engineData          = EngineData{};
     m_lastUpdateTimestamp = 0;
 }
 
-} // namespace speeduino
+}  // namespace speeduino
