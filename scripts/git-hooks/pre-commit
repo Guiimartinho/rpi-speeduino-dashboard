@@ -110,6 +110,48 @@ def get_staged_files() -> list:
 
 
 # =============================================================================
+# AUTO-FIX: CRLF to LF
+# =============================================================================
+def fix_line_endings(files: list) -> int:
+    """Auto-fix CRLF to LF line endings"""
+    text_extensions = (
+        '.cpp', '.hpp', '.h', '.c',
+        '.qml', '.js', '.py', '.sh',
+        '.yaml', '.yml', '.json', '.xml',
+        '.cmake', '.md', '.txt'
+    )
+
+    fixed_count = 0
+    for file in files:
+        if not os.path.exists(file):
+            continue
+
+        # Check if it's a text file
+        if not any(file.lower().endswith(ext) for ext in text_extensions):
+            if Path(file).name not in ('CMakeLists.txt', 'Makefile', '.gitignore'):
+                continue
+
+        try:
+            with open(file, 'rb') as f:
+                content = f.read()
+
+            # Check for CRLF
+            if b'\r\n' in content:
+                # Convert CRLF to LF
+                new_content = content.replace(b'\r\n', b'\n')
+                with open(file, 'wb') as f:
+                    f.write(new_content)
+
+                # Re-stage the file
+                run_command(["git", "add", file])
+                fixed_count += 1
+        except Exception:
+            pass
+
+    return fixed_count
+
+
+# =============================================================================
 # CHECKS
 # =============================================================================
 def check_cpp_formatting(files: list) -> int:
@@ -334,6 +376,13 @@ def main() -> int:
     if not staged_files:
         print_ok("No files staged, skipping checks.")
         return 0
+
+    # Auto-fix line endings (CRLF -> LF)
+    fixed = fix_line_endings(staged_files)
+    if fixed > 0:
+        print(color(f"  [AUTO-FIX] Converted {fixed} file(s) from CRLF to LF", "blue"))
+        # Refresh staged files list after fixes
+        staged_files = get_staged_files()
 
     total_errors = 0
 

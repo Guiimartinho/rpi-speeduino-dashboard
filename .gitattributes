@@ -1,0 +1,52 @@
+# =============================================================================
+# Git Attributes - Enforce LF line endings for cross-platform consistency
+# =============================================================================
+
+# Auto detect text files and normalize to LF
+* text=auto eol=lf
+
+# Source code - always LF
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.h text eol=lf
+*.c text eol=lf
+*.qml text eol=lf
+*.js text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Config files - always LF
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+
+# Documentation - always LF
+*.md text eol=lf
+*.txt text eol=lf
+*.rst text eol=lf
+
+# Git/CI files - always LF
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+Makefile text eol=lf
+
+# Binary files - no conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
+*.deb binary
