@@ -128,6 +128,8 @@ repos:
         name: "clang-format"
         types_or: [c, c++]
         args: [--style=file]
+        stages: [pre-commit]
+        exclude: ^build/
 
   # =============================================================================
   # C++ STATIC ANALYSIS (quick checks for pre-commit)

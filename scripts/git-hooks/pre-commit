@@ -171,7 +171,12 @@ def check_cpp_formatting(files: list) -> int:
 
     clang_format = find_clang_format()
     if not clang_format:
-        print_skip("clang-format not installed")
+        print_skip("clang-format not installed (optional)")
+        print_warn("To enable C++ formatting checks, install clang-format:")
+        print("         Cross-platform: pip install clang-format")
+        print("         Ubuntu/Debian:  sudo apt install clang-format-17")
+        print("         macOS:          brew install clang-format")
+        print("         Windows:        choco install llvm  OR  pip install clang-format")
         return 0
 
     print_header("Checking C++ formatting...")
