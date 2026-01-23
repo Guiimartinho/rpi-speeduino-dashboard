@@ -1,28 +1,28 @@
-#include "reverse_service/reverse_detector.hpp"
 #include "common/config_loader.hpp"
 #include "common/logger.hpp"
 #include "common/zmq_messages.hpp"
+#include "reverse_service/reverse_detector.hpp"
 
-#include <zmq.hpp>
 #include <msgpack.hpp>
+#include <zmq.hpp>
 
-#include <csignal>
-#include <chrono>
-#include <thread>
 #include <atomic>
+#include <chrono>
+#include <csignal>
 #include <getopt.h>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <thread>
 
 #ifdef __linux__
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <linux/can.h>
-#include <linux/can/raw.h>
-#include <unistd.h>
-#include <poll.h>
-#include <cstring>
+    #include <cstring>
+    #include <linux/can.h>
+    #include <linux/can/raw.h>
+    #include <net/if.h>
+    #include <poll.h>
+    #include <sys/ioctl.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
 #endif
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -30,13 +30,13 @@
 // ISO 26262: Named constants for polling and GPIO check intervals
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// Poll timeout for CAN socket in milliseconds
-    constexpr int POLL_TIMEOUT_MS = 50;
-    /// GPIO check interval in milliseconds
-    constexpr int GPIO_CHECK_INTERVAL_MS = 50;
-    /// Idle sleep duration when no CAN socket in milliseconds
-    constexpr int IDLE_SLEEP_MS = 50;
-} // anonymous namespace
+/// Poll timeout for CAN socket in milliseconds
+constexpr int POLL_TIMEOUT_MS = 50;
+/// GPIO check interval in milliseconds
+constexpr int GPIO_CHECK_INTERVAL_MS = 50;
+/// Idle sleep duration when no CAN socket in milliseconds
+constexpr int IDLE_SLEEP_MS = 50;
+}  // anonymous namespace
 
 namespace {
 
@@ -58,23 +58,23 @@ void printUsage(const char* progname) {
               << "  -h, --help               Show this help\n";
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char* argv[]) {
     using namespace speeduino;
 
     // Default options
     std::string interfaceName = "can0";
-    std::string configDir = "/etc/speeduino-ui";
-    bool verbose = false;
+    std::string configDir     = "/etc/speeduino-ui";
+    bool verbose              = false;
 
     // Parse command line
     static struct option long_options[] = {
         {"interface", required_argument, nullptr, 'i'},
-        {"config",    required_argument, nullptr, 'c'},
-        {"verbose",   no_argument,       nullptr, 'v'},
-        {"help",      no_argument,       nullptr, 'h'},
-        {nullptr,     0,                 nullptr, 0}
+        {   "config", required_argument, nullptr, 'c'},
+        {  "verbose",       no_argument, nullptr, 'v'},
+        {     "help",       no_argument, nullptr, 'h'},
+        {    nullptr,                 0, nullptr,   0}
     };
 
     int opt;
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
     }
 
     const auto& reverseConfig = ConfigLoader::getReverseConfig();
-    const auto& sysConfig = ConfigLoader::getSystemConfig();
+    const auto& sysConfig     = ConfigLoader::getSystemConfig();
 
     // Initialize ZMQ publisher
     zmq::context_t zmqContext(1);
@@ -142,11 +142,12 @@ int main(int argc, char* argv[]) {
     // Set callback to publish state changes
     detector.setCallback([&zmqPublisher](bool engaged, uint8_t source) {
         ReverseEvent event;
-        event.timestamp_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count());
+        event.timestamp_ms =
+            static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                      std::chrono::steady_clock::now().time_since_epoch())
+                                      .count());
         event.engaged = engaged;
-        event.source = source;
+        event.source  = source;
 
         try {
             // Serialize with msgpack
@@ -192,12 +193,12 @@ int main(int argc, char* argv[]) {
             } else {
                 struct sockaddr_can addr;
                 std::memset(&addr, 0, sizeof(addr));
-                addr.can_family = AF_CAN;
+                addr.can_family  = AF_CAN;
                 addr.can_ifindex = ifr.ifr_ifindex;
 
                 // Set CAN filter to only receive the reverse detection frame
                 struct can_filter filter;
-                filter.can_id = reverseConfig.can_id;
+                filter.can_id   = reverseConfig.can_id;
                 filter.can_mask = CAN_SFF_MASK;
                 setsockopt(canSocket, SOL_CAN_RAW, CAN_RAW_FILTER, &filter, sizeof(filter));
 
@@ -217,7 +218,7 @@ int main(int argc, char* argv[]) {
 
     // GPIO check interval
     const auto gpioInterval = std::chrono::milliseconds(GPIO_CHECK_INTERVAL_MS);
-    auto lastGpioCheck = std::chrono::steady_clock::now();
+    auto lastGpioCheck      = std::chrono::steady_clock::now();
 
     // Main loop
     while (g_running) {
@@ -225,7 +226,7 @@ int main(int argc, char* argv[]) {
         if (canSocket >= 0) {
             // Poll CAN socket with timeout
             struct pollfd pfd;
-            pfd.fd = canSocket;
+            pfd.fd     = canSocket;
             pfd.events = POLLIN;
 
             int ret = poll(&pfd, 1, POLL_TIMEOUT_MS);

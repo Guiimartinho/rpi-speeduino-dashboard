@@ -1,9 +1,11 @@
 #include "reverse_service/reverse_detector.hpp"
+
 #include "common/logger.hpp"
+
 #include <chrono>
 
 #ifdef HAS_GPIOD
-#include <gpiod.h>
+    #include <gpiod.h>
 #endif
 
 namespace speeduino {
@@ -13,11 +15,10 @@ namespace {
 uint32_t getMonotonicMs() {
     auto now = std::chrono::steady_clock::now();
     return static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()).count());
+        std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 ReverseDetector::ReverseDetector() = default;
 
@@ -32,23 +33,23 @@ bool ReverseDetector::init(const ReverseConfig& config) {
     LOG_INFO("  Detection mode: " + config.detection_mode);
 
     // Determine effective CAN/GPIO enabled based on detection_mode
-    bool effectiveCanEnabled = config.can_enabled;
+    bool effectiveCanEnabled  = config.can_enabled;
     bool effectiveGpioEnabled = config.gpio_enabled;
 
     if (config.detection_mode == "gpio") {
-        effectiveCanEnabled = false;
+        effectiveCanEnabled  = false;
         effectiveGpioEnabled = true;
     } else if (config.detection_mode == "can" || config.detection_mode == "speeduino_can") {
-        effectiveCanEnabled = true;
+        effectiveCanEnabled  = true;
         effectiveGpioEnabled = false;
     } else if (config.detection_mode == "both") {
         // Use individual settings, CAN takes priority
-        effectiveCanEnabled = config.can_enabled;
+        effectiveCanEnabled  = config.can_enabled;
         effectiveGpioEnabled = config.gpio_enabled;
     }
 
     // Store effective settings in config copy
-    m_config.can_enabled = effectiveCanEnabled;
+    m_config.can_enabled  = effectiveCanEnabled;
     m_config.gpio_enabled = effectiveGpioEnabled;
 
     LOG_INFO("  CAN enabled: " + std::string(m_config.can_enabled ? "yes" : "no"));
@@ -114,28 +115,28 @@ void ReverseDetector::procesCanFrame(uint32_t can_id, const uint8_t* data, uint8
         return;
     }
 
-    uint8_t value = data[m_config.byte_index] & m_config.bit_mask;
+    uint8_t value        = data[m_config.byte_index] & m_config.bit_mask;
     bool reverseDetected = (value == m_config.expected_value);
 
     // ═══════════════════════════════════════════════════════════════════════
     // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
     // ═══════════════════════════════════════════════════════════════════════
     bool shouldSetState = false;
-    bool pendingValue = false;
+    bool pendingValue   = false;
     {
         std::lock_guard<std::mutex> lock(m_debounceMutex);
 
         auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - m_lastTransition).count();
+        auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastTransition).count();
 
         if (reverseDetected != m_pendingState) {
-            m_pendingState = reverseDetected;
+            m_pendingState   = reverseDetected;
             m_lastTransition = now;
         } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
                    m_pendingState != m_engaged.load(std::memory_order_acquire)) {
             shouldSetState = true;
-            pendingValue = m_pendingState;
+            pendingValue   = m_pendingState;
         }
     }
 
@@ -161,21 +162,21 @@ void ReverseDetector::checkGpio() {
     // ISO 26262 DATA RACE FIX: Protect debounce state with mutex
     // ═══════════════════════════════════════════════════════════════════════
     bool shouldSetState = false;
-    bool pendingValue = false;
+    bool pendingValue   = false;
     {
         std::lock_guard<std::mutex> lock(m_debounceMutex);
 
         auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - m_lastTransition).count();
+        auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastTransition).count();
 
         if (gpioState != m_pendingState) {
-            m_pendingState = gpioState;
+            m_pendingState   = gpioState;
             m_lastTransition = now;
         } else if (elapsed >= static_cast<long>(m_config.debounce_ms) &&
                    m_pendingState != m_engaged.load(std::memory_order_acquire)) {
             shouldSetState = true;
-            pendingValue = m_pendingState;
+            pendingValue   = m_pendingState;
         }
     }
 
@@ -195,10 +196,9 @@ void ReverseDetector::setState(bool engaged, Source source) {
 
     if (changed) {
         const char* sourceStr = (source == Source::CAN) ? "CAN" : "GPIO";
-        const char* stateStr = engaged ? "ENGAGED" : "DISENGAGED";
+        const char* stateStr  = engaged ? "ENGAGED" : "DISENGAGED";
 
-        LOG_INFO("Reverse gear " + std::string(stateStr) +
-                 " (source: " + sourceStr + ")");
+        LOG_INFO("Reverse gear " + std::string(stateStr) + " (source: " + sourceStr + ")");
 
         if (m_callback) {
             m_callback(engaged, static_cast<uint8_t>(source));
@@ -210,7 +210,7 @@ bool ReverseDetector::initGpio() {
 #ifdef HAS_GPIOD
     // gpiod v2 API - open chip by path
     std::string chipPath = "/dev/" + m_config.gpio_chip;
-    m_gpioChip = gpiod_chip_open(chipPath.c_str());
+    m_gpioChip           = gpiod_chip_open(chipPath.c_str());
     if (!m_gpioChip) {
         LOG_ERROR("Failed to open GPIO chip: " + chipPath);
         return false;
@@ -301,4 +301,4 @@ bool ReverseDetector::readGpio() {
 #endif
 }
 
-} // namespace speeduino
+}  // namespace speeduino
