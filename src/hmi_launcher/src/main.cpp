@@ -1,15 +1,15 @@
-#include "hmi/data_provider.hpp"
 #include "hmi/camera_controller.hpp"
+#include "hmi/data_provider.hpp"
 #include "hmi/openauto_embedded.hpp"
 
 #include <QApplication>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <QQuickStyle>
-#include <QQuickWindow>
-#include <QQuickItem>
 #include <QCommandLineParser>
 #include <QDebug>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
 
 /**
  * main.cpp - Speeduino UI Launcher
@@ -34,13 +34,9 @@
 // RAII helper for cleanup - ensures resources are released on all exit paths
 class ApplicationCleanup {
 public:
-    ApplicationCleanup(speeduino::DataProvider& dp,
-                       speeduino::CameraController& cc,
+    ApplicationCleanup(speeduino::DataProvider& dp, speeduino::CameraController& cc,
                        speeduino::OpenAutoEmbedded& oae)
-        : m_dataProvider(dp)
-        , m_cameraController(cc)
-        , m_openAutoEmbedded(oae)
-    {}
+        : m_dataProvider(dp), m_cameraController(cc), m_openAutoEmbedded(oae) {}
 
     ~ApplicationCleanup() {
         qInfo() << "[Main] Performing cleanup...";
@@ -56,8 +52,7 @@ private:
     speeduino::OpenAutoEmbedded& m_openAutoEmbedded;
 };
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
     // Use QApplication for QWidget support (required by embedded OpenAuto)
     QApplication app(argc, argv);
 
@@ -71,22 +66,25 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
 
-    QCommandLineOption configOption(QStringList() << "c" << "config",
-        "Config directory", "dir", "/etc/speeduino-ui");
+    QCommandLineOption configOption(QStringList() << "c"
+                                                  << "config",
+                                    "Config directory", "dir", "/etc/speeduino-ui");
     parser.addOption(configOption);
 
-    QCommandLineOption fullscreenOption(QStringList() << "f" << "fullscreen",
-        "Run in fullscreen mode");
+    QCommandLineOption fullscreenOption(QStringList() << "f"
+                                                      << "fullscreen",
+                                        "Run in fullscreen mode");
     parser.addOption(fullscreenOption);
 
-    QCommandLineOption debugOption(QStringList() << "d" << "debug",
-        "Enable debug output");
+    QCommandLineOption debugOption(QStringList() << "d"
+                                                 << "debug",
+                                   "Enable debug output");
     parser.addOption(debugOption);
 
     parser.process(app);
 
-    const bool fullscreen = parser.isSet(fullscreenOption);
-    const bool debug = parser.isSet(debugOption);
+    const bool fullscreen   = parser.isSet(fullscreenOption);
+    const bool debug        = parser.isSet(debugOption);
     const QString configDir = parser.value(configOption);
 
     if (debug) {
@@ -141,8 +139,9 @@ int main(int argc, char *argv[])
 
     // Track loading errors
     bool loadFailed = false;
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
-        &app, [&loadFailed]() {
+    QObject::connect(
+        &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+        [&loadFailed]() {
             qCritical() << "[Main] QML object creation failed";
             loadFailed = true;
             QCoreApplication::exit(-1);
@@ -159,7 +158,8 @@ int main(int argc, char *argv[])
     // Get the root window for reference
     QQuickWindow* rootWindow = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
     if (rootWindow) {
-        qInfo() << "[Main] Root window created:" << rootWindow->width() << "x" << rootWindow->height();
+        qInfo() << "[Main] Root window created:" << rootWindow->width() << "x"
+                << rootWindow->height();
 
         // NOTE: Video widget integration is now handled reactively by QML:
         // 1. OpenAutoScreen.qml calls openAutoEmbedded.setVideoContainer() when it loads

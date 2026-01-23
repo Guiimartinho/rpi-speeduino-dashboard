@@ -2,8 +2,8 @@
 #define HMI_CAMERA_CONTROLLER_HPP
 
 #include <QObject>
-#include <QString>
 #include <QProcess>
+#include <QString>
 #include <memory>
 
 namespace speeduino {
@@ -59,6 +59,6 @@ private:
     std::unique_ptr<QProcess> m_process;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // HMI_CAMERA_CONTROLLER_HPP
+#endif  // HMI_CAMERA_CONTROLLER_HPP

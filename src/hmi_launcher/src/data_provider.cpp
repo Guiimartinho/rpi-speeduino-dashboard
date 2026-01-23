@@ -1,6 +1,8 @@
 #include "hmi/data_provider.hpp"
-#include <zmq.hpp>
+
 #include <msgpack.hpp>
+#include <zmq.hpp>
+
 #include <QDebug>
 
 namespace speeduino {
@@ -10,25 +12,22 @@ namespace speeduino {
 // ISO 26262: Named constants for network timing parameters
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// ZMQ receive timeout in milliseconds (extended for automotive reliability)
-    constexpr int ZMQ_RECEIVE_TIMEOUT_MS = 500;
-    /// ZMQ reconnect interval in milliseconds
-    constexpr int ZMQ_RECONNECT_INTERVAL_MS = 100;
-    /// ZMQ max reconnect interval in milliseconds
-    constexpr int ZMQ_RECONNECT_INTERVAL_MAX_MS = 1000;
-    /// ZMQ poll timeout in milliseconds
-    constexpr int ZMQ_POLL_TIMEOUT_MS = 50;
-    /// Worker thread shutdown timeout in milliseconds
-    constexpr int WORKER_THREAD_WAIT_TIMEOUT_MS = 2000;
-    /// ZMQ socket linger time (0 = don't wait on close)
-    constexpr int ZMQ_LINGER_MS = 0;
-} // anonymous namespace
+/// ZMQ receive timeout in milliseconds (extended for automotive reliability)
+constexpr int ZMQ_RECEIVE_TIMEOUT_MS = 500;
+/// ZMQ reconnect interval in milliseconds
+constexpr int ZMQ_RECONNECT_INTERVAL_MS = 100;
+/// ZMQ max reconnect interval in milliseconds
+constexpr int ZMQ_RECONNECT_INTERVAL_MAX_MS = 1000;
+/// ZMQ poll timeout in milliseconds
+constexpr int ZMQ_POLL_TIMEOUT_MS = 50;
+/// Worker thread shutdown timeout in milliseconds
+constexpr int WORKER_THREAD_WAIT_TIMEOUT_MS = 2000;
+/// ZMQ socket linger time (0 = don't wait on close)
+constexpr int ZMQ_LINGER_MS = 0;
+}  // anonymous namespace
 
 // ZmqWorker implementation
-ZmqWorker::ZmqWorker(QObject* parent)
-    : QObject(parent)
-{
-}
+ZmqWorker::ZmqWorker(QObject* parent) : QObject(parent) {}
 
 ZmqWorker::~ZmqWorker() {
     stop();
@@ -67,7 +66,7 @@ void ZmqWorker::process() {
         while (m_running.load(std::memory_order_acquire)) {
             // Poll both sockets
             zmq::pollitem_t items[] = {
-                {*m_engineSub, 0, ZMQ_POLLIN, 0},
+                { *m_engineSub, 0, ZMQ_POLLIN, 0},
                 {*m_reverseSub, 0, ZMQ_POLLIN, 0}
             };
 
@@ -78,10 +77,9 @@ void ZmqWorker::process() {
                 zmq::message_t topic, data;
                 if (m_engineSub->recv(topic, zmq::recv_flags::none) &&
                     m_engineSub->recv(data, zmq::recv_flags::none)) {
-
                     try {
-                        auto oh = msgpack::unpack(
-                            static_cast<const char*>(data.data()), data.size());
+                        auto oh =
+                            msgpack::unpack(static_cast<const char*>(data.data()), data.size());
                         EngineData engineData;
                         oh.get().convert(engineData);
                         emit engineDataReceived(engineData);
@@ -96,10 +94,9 @@ void ZmqWorker::process() {
                 zmq::message_t topic, data;
                 if (m_reverseSub->recv(topic, zmq::recv_flags::none) &&
                     m_reverseSub->recv(data, zmq::recv_flags::none)) {
-
                     try {
-                        auto oh = msgpack::unpack(
-                            static_cast<const char*>(data.data()), data.size());
+                        auto oh =
+                            msgpack::unpack(static_cast<const char*>(data.data()), data.size());
                         ReverseEvent event;
                         oh.get().convert(event);
                         emit reverseEventReceived(event);
@@ -123,9 +120,7 @@ void ZmqWorker::process() {
 }
 
 // DataProvider implementation
-DataProvider::DataProvider(QObject* parent)
-    : QObject(parent)
-{
+DataProvider::DataProvider(QObject* parent) : QObject(parent) {
     // Register metatypes for cross-thread signals
     qRegisterMetaType<EngineData>("EngineData");
     qRegisterMetaType<ReverseEvent>("ReverseEvent");
@@ -211,6 +206,102 @@ double DataProvider::batteryVoltage() const {
     return m_data.battery_voltage / 1000.0;
 }
 
+double DataProvider::boostTarget() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.boost_target / 10.0;
+}
+
+double DataProvider::fuelConsumption() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.fuel_consumption / 100.0;
+}
+
+int DataProvider::ve() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.ve;
+}
+
+double DataProvider::afrTarget() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.afr_target / 10.0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PER-CYLINDER TRIM GETTERS
+// ═══════════════════════════════════════════════════════════════
+
+int DataProvider::fuelTrimCyl1() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.fuel_trim_cyl1;
+}
+
+int DataProvider::fuelTrimCyl2() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.fuel_trim_cyl2;
+}
+
+int DataProvider::fuelTrimCyl3() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.fuel_trim_cyl3;
+}
+
+int DataProvider::fuelTrimCyl4() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.fuel_trim_cyl4;
+}
+
+double DataProvider::ignTrimCyl1() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.ign_trim_cyl1;
+}
+
+double DataProvider::ignTrimCyl2() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.ign_trim_cyl2;
+}
+
+double DataProvider::ignTrimCyl3() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.ign_trim_cyl3;
+}
+
+double DataProvider::ignTrimCyl4() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.ign_trim_cyl4;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// IDLE CONTROL GETTERS
+// ═══════════════════════════════════════════════════════════════
+
+int DataProvider::idleTargetRpm() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.idle_target_rpm * 10;  // Stored as / 10, expand back
+}
+
+int DataProvider::idleValveDuty() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.idle_valve_duty;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DIAGNOSTIC GETTERS
+// ═══════════════════════════════════════════════════════════════
+
+int DataProvider::errorCount() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.error_count;
+}
+
+bool DataProvider::synced() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.sync_status > 0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS FLAG GETTERS
+// ═══════════════════════════════════════════════════════════════
+
 bool DataProvider::celOn() const {
     QMutexLocker locker(&m_dataMutex);
     return m_data.isCelOn();
@@ -231,6 +322,56 @@ bool DataProvider::engineRunning() const {
     return m_data.isEngineRunning();
 }
 
+bool DataProvider::revLimiterActive() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isRevLimiterActive();
+}
+
+bool DataProvider::launchControlActive() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isLaunching();
+}
+
+bool DataProvider::flatShiftActive() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isFlatShifting();
+}
+
+bool DataProvider::clutchIn() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isClutchIn();
+}
+
+bool DataProvider::brakeOn() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isBrakeOn();
+}
+
+bool DataProvider::cruiseOn() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isCruiseOn();
+}
+
+bool DataProvider::lowOilPressure() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isLowOilPressure();
+}
+
+bool DataProvider::lowFuelPressure() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isLowFuelPressure();
+}
+
+bool DataProvider::dfcoActive() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isDfcoActive();
+}
+
+bool DataProvider::fanOn() const {
+    QMutexLocker locker(&m_dataMutex);
+    return m_data.isFanOn();
+}
+
 bool DataProvider::reverseEngaged() const {
     QMutexLocker locker(&m_dataMutex);
     return m_reverseEngaged;
@@ -246,7 +387,7 @@ void DataProvider::start() {
         return;
     }
 
-    m_worker = std::make_unique<ZmqWorker>();
+    m_worker             = std::make_unique<ZmqWorker>();
     ZmqWorker* workerPtr = m_worker.get();  // Raw pointer for Qt connections
 
     workerPtr->moveToThread(&m_workerThread);
@@ -254,12 +395,12 @@ void DataProvider::start() {
     connect(&m_workerThread, &QThread::started, workerPtr, &ZmqWorker::process);
     // Note: Don't use deleteLater with unique_ptr - we manage lifetime ourselves
 
-    connect(workerPtr, &ZmqWorker::engineDataReceived,
-            this, &DataProvider::onEngineDataReceived, Qt::QueuedConnection);
-    connect(workerPtr, &ZmqWorker::reverseEventReceived,
-            this, &DataProvider::onReverseEventReceived, Qt::QueuedConnection);
-    connect(workerPtr, &ZmqWorker::steeringEventReceived,
-            this, &DataProvider::onSteeringEventReceived, Qt::QueuedConnection);
+    connect(workerPtr, &ZmqWorker::engineDataReceived, this, &DataProvider::onEngineDataReceived,
+            Qt::QueuedConnection);
+    connect(workerPtr, &ZmqWorker::reverseEventReceived, this,
+            &DataProvider::onReverseEventReceived, Qt::QueuedConnection);
+    connect(workerPtr, &ZmqWorker::steeringEventReceived, this,
+            &DataProvider::onSteeringEventReceived, Qt::QueuedConnection);
 
     m_workerThread.start();
     qInfo() << "[DataProvider] Started";
@@ -303,7 +444,7 @@ void DataProvider::onReverseEventReceived(const ReverseEvent& event) {
         QMutexLocker locker(&m_dataMutex);
         if (m_reverseEngaged != event.engaged) {
             m_reverseEngaged = event.engaged;
-            changed = true;
+            changed          = true;
         }
     }
     if (changed) {
@@ -317,4 +458,4 @@ void DataProvider::onSteeringEventReceived(const SteeringEvent& event) {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

@@ -1,13 +1,11 @@
 #include "hmi/camera_controller.hpp"
+
 #include <QDebug>
 #include <QFile>
 
 namespace speeduino {
 
-CameraController::CameraController(QObject* parent)
-    : QObject(parent)
-{
-}
+CameraController::CameraController(QObject* parent) : QObject(parent) {}
 
 CameraController::~CameraController() {
     stop();
@@ -18,7 +16,7 @@ void CameraController::setDevice(const QString& device) {
 }
 
 void CameraController::setResolution(int width, int height) {
-    m_width = width;
+    m_width  = width;
     m_height = height;
 }
 
@@ -34,14 +32,14 @@ QString CameraController::buildGstreamerPipeline() const {
     // Low-latency GStreamer pipeline for reverse camera
     // Uses v4l2src with minimal buffering
     QString pipeline = QString(
-        "v4l2src device=%1 ! "
-        "video/x-raw,width=%2,height=%3,framerate=%4/1 ! "
-        "videoconvert ! "
-        "autovideosink sync=false"
-    ).arg(m_device)
-     .arg(m_width)
-     .arg(m_height)
-     .arg(m_fps);
+                           "v4l2src device=%1 ! "
+                           "video/x-raw,width=%2,height=%3,framerate=%4/1 ! "
+                           "videoconvert ! "
+                           "autovideosink sync=false")
+                           .arg(m_device)
+                           .arg(m_width)
+                           .arg(m_height)
+                           .arg(m_fps);
 
     return pipeline;
 }
@@ -136,4 +134,4 @@ void CameraController::clearError() {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

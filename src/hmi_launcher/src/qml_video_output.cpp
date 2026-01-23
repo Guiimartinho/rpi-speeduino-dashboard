@@ -7,9 +7,11 @@
  */
 
 #include "hmi/qml_video_output.hpp"
-#include <QDebug>
-#include <QCoreApplication>
+
 #include <QThread>
+
+#include <QCoreApplication>
+#include <QDebug>
 #include <QImage>
 
 namespace speeduino {
@@ -23,31 +25,28 @@ static const char* DECODER_PRIORITY[] = {
     "v4l2h264dec",   // Raspberry Pi hardware decoder (can hang on state change)
     "nvh264dec",     // NVIDIA hardware decoder
     "vaapih264dec",  // VAAPI hardware decoder
-    nullptr
-};
+    nullptr};
 
 QMLVideoOutput::QMLVideoOutput(openauto::configuration::IConfiguration::Pointer configuration,
                                QObject* parent)
-    : QObject(parent)
-    , openauto::projection::VideoOutput(std::move(configuration))
-{
+    : QObject(parent), openauto::projection::VideoOutput(std::move(configuration)) {
     qInfo() << "[QMLVideoOutput] Creating GStreamer-based video output";
 
     // Get video dimensions from configuration
     switch (this->configuration_->getVideoResolution()) {
-    case aasdk::proto::enums::VideoResolution_Enum__1080p:
-        m_width = 1920;
-        m_height = 1080;
-        break;
-    case aasdk::proto::enums::VideoResolution_Enum__720p:
-        m_width = 1280;
-        m_height = 720;
-        break;
-    case aasdk::proto::enums::VideoResolution_Enum__480p:
-    default:
-        m_width = 800;
-        m_height = 480;
-        break;
+        case aasdk::proto::enums::VideoResolution_Enum__1080p:
+            m_width  = 1920;
+            m_height = 1080;
+            break;
+        case aasdk::proto::enums::VideoResolution_Enum__720p:
+            m_width  = 1280;
+            m_height = 720;
+            break;
+        case aasdk::proto::enums::VideoResolution_Enum__480p:
+        default:
+            m_width  = 800;
+            m_height = 480;
+            break;
     }
 
     qInfo() << "[QMLVideoOutput] Video resolution:" << m_width << "x" << m_height;
@@ -64,8 +63,7 @@ QMLVideoOutput::QMLVideoOutput(openauto::configuration::IConfiguration::Pointer 
     connect(m_frameTimer, &QTimer::timeout, this, &QMLVideoOutput::processFrames);
 }
 
-QMLVideoOutput::~QMLVideoOutput()
-{
+QMLVideoOutput::~QMLVideoOutput() {
     qInfo() << "[QMLVideoOutput] Destroying";
 
     m_playing.store(false);
@@ -78,8 +76,7 @@ QMLVideoOutput::~QMLVideoOutput()
     cleanupGStreamer();
 }
 
-QString QMLVideoOutput::findBestDecoder()
-{
+QString QMLVideoOutput::findBestDecoder() {
     for (int i = 0; DECODER_PRIORITY[i] != nullptr; ++i) {
         GstElementFactory* factory = gst_element_factory_find(DECODER_PRIORITY[i]);
         if (factory != nullptr) {
@@ -92,8 +89,7 @@ QString QMLVideoOutput::findBestDecoder()
     return QString();
 }
 
-bool QMLVideoOutput::initGStreamer()
-{
+bool QMLVideoOutput::initGStreamer() {
     if (m_gstInitialized.load()) {
         return true;
     }
@@ -106,7 +102,8 @@ bool QMLVideoOutput::initGStreamer()
         if (!gst_init_check(nullptr, nullptr, &error)) {
             qCritical() << "[QMLVideoOutput] GStreamer init failed:"
                         << (error ? error->message : "unknown error");
-            if (error) g_error_free(error);
+            if (error)
+                g_error_free(error);
             return false;
         }
     }
@@ -120,25 +117,27 @@ bool QMLVideoOutput::initGStreamer()
 
     // Build pipeline string
     // Pipeline: appsrc -> h264parse -> decoder -> videoconvert -> appsink
-    QString pipelineStr = QString(
-        "appsrc name=src is-live=true format=time do-timestamp=true max-latency=100000000 ! "
-        "queue max-size-buffers=0 max-size-time=0 max-size-bytes=0 ! "
-        "h264parse ! "
-        "%1 ! "
-        "videoconvert ! "
-        "video/x-raw,format=RGB ! "
-        "appsink name=sink emit-signals=true sync=false"
-    ).arg(decoder);
+    QString pipelineStr =
+        QString(
+            "appsrc name=src is-live=true format=time do-timestamp=true max-latency=100000000 ! "
+            "queue max-size-buffers=0 max-size-time=0 max-size-bytes=0 ! "
+            "h264parse ! "
+            "%1 ! "
+            "videoconvert ! "
+            "video/x-raw,format=RGB ! "
+            "appsink name=sink emit-signals=true sync=false")
+            .arg(decoder);
 
     qInfo() << "[QMLVideoOutput] Pipeline:" << pipelineStr;
 
     // Create pipeline
     GError* error = nullptr;
-    m_pipeline = gst_parse_launch(pipelineStr.toUtf8().constData(), &error);
+    m_pipeline    = gst_parse_launch(pipelineStr.toUtf8().constData(), &error);
     if (!m_pipeline) {
         qCritical() << "[QMLVideoOutput] Failed to create pipeline:"
                     << (error ? error->message : "unknown error");
-        if (error) g_error_free(error);
+        if (error)
+            g_error_free(error);
         return false;
     }
     if (error) {
@@ -157,13 +156,10 @@ bool QMLVideoOutput::initGStreamer()
     m_appSrc = GST_APP_SRC(srcElement);
 
     // Configure appsrc for H.264 stream
-    GstCaps* caps = gst_caps_new_simple("video/x-h264",
-                                        "stream-format", G_TYPE_STRING, "byte-stream",
-                                        "alignment", G_TYPE_STRING, "au",
-                                        "width", G_TYPE_INT, m_width,
-                                        "height", G_TYPE_INT, m_height,
-                                        "framerate", GST_TYPE_FRACTION, 30, 1,
-                                        nullptr);
+    GstCaps* caps = gst_caps_new_simple("video/x-h264", "stream-format", G_TYPE_STRING,
+                                        "byte-stream", "alignment", G_TYPE_STRING, "au", "width",
+                                        G_TYPE_INT, m_width, "height", G_TYPE_INT, m_height,
+                                        "framerate", GST_TYPE_FRACTION, 30, 1, nullptr);
     gst_app_src_set_caps(m_appSrc, caps);
     gst_caps_unref(caps);
 
@@ -185,7 +181,7 @@ bool QMLVideoOutput::initGStreamer()
 
     // Configure appsink
     gst_app_sink_set_emit_signals(m_appSink, TRUE);
-    gst_app_sink_set_drop(m_appSink, TRUE);  // Drop frames if we can't keep up
+    gst_app_sink_set_drop(m_appSink, TRUE);      // Drop frames if we can't keep up
     gst_app_sink_set_max_buffers(m_appSink, 2);  // Keep only recent frames
 
     // Set up bus for error handling
@@ -197,8 +193,7 @@ bool QMLVideoOutput::initGStreamer()
     return true;
 }
 
-void QMLVideoOutput::cleanupGStreamer()
-{
+void QMLVideoOutput::cleanupGStreamer() {
     qInfo() << "[QMLVideoOutput] Cleaning up GStreamer";
 
     if (m_pipeline) {
@@ -212,7 +207,7 @@ void QMLVideoOutput::cleanupGStreamer()
     }
 
     // Note: m_appSrc and m_appSink are owned by the pipeline
-    m_appSrc = nullptr;
+    m_appSrc  = nullptr;
     m_appSink = nullptr;
 
     if (m_pipeline) {
@@ -223,48 +218,47 @@ void QMLVideoOutput::cleanupGStreamer()
     m_gstInitialized.store(false);
 }
 
-gboolean QMLVideoOutput::onBusMessage(GstBus* /*bus*/, GstMessage* message, gpointer userData)
-{
+gboolean QMLVideoOutput::onBusMessage(GstBus* /*bus*/, GstMessage* message, gpointer userData) {
     QMLVideoOutput* self = static_cast<QMLVideoOutput*>(userData);
 
     switch (GST_MESSAGE_TYPE(message)) {
-    case GST_MESSAGE_ERROR: {
-        GError* err = nullptr;
-        gchar* debug = nullptr;
-        gst_message_parse_error(message, &err, &debug);
-        qCritical() << "[QMLVideoOutput] GStreamer error:" << err->message;
-        qDebug() << "[QMLVideoOutput] Debug info:" << debug;
-        g_error_free(err);
-        g_free(debug);
+        case GST_MESSAGE_ERROR: {
+            GError* err  = nullptr;
+            gchar* debug = nullptr;
+            gst_message_parse_error(message, &err, &debug);
+            qCritical() << "[QMLVideoOutput] GStreamer error:" << err->message;
+            qDebug() << "[QMLVideoOutput] Debug info:" << debug;
+            g_error_free(err);
+            g_free(debug);
 
-        QMetaObject::invokeMethod(self, [self]() {
-            emit self->errorOccurred("GStreamer pipeline error");
-        }, Qt::QueuedConnection);
-        break;
-    }
-    case GST_MESSAGE_WARNING: {
-        GError* err = nullptr;
-        gchar* debug = nullptr;
-        gst_message_parse_warning(message, &err, &debug);
-        qWarning() << "[QMLVideoOutput] GStreamer warning:" << err->message;
-        g_error_free(err);
-        g_free(debug);
-        break;
-    }
-    case GST_MESSAGE_EOS:
-        qInfo() << "[QMLVideoOutput] End of stream";
-        break;
-    case GST_MESSAGE_STATE_CHANGED:
-        if (GST_MESSAGE_SRC(message) == GST_OBJECT(self->m_pipeline)) {
-            GstState oldState, newState, pending;
-            gst_message_parse_state_changed(message, &oldState, &newState, &pending);
-            qDebug() << "[QMLVideoOutput] Pipeline state:"
-                     << gst_element_state_get_name(oldState) << "->"
-                     << gst_element_state_get_name(newState);
+            QMetaObject::invokeMethod(
+                self, [self]() { emit self->errorOccurred("GStreamer pipeline error"); },
+                Qt::QueuedConnection);
+            break;
         }
-        break;
-    default:
-        break;
+        case GST_MESSAGE_WARNING: {
+            GError* err  = nullptr;
+            gchar* debug = nullptr;
+            gst_message_parse_warning(message, &err, &debug);
+            qWarning() << "[QMLVideoOutput] GStreamer warning:" << err->message;
+            g_error_free(err);
+            g_free(debug);
+            break;
+        }
+        case GST_MESSAGE_EOS:
+            qInfo() << "[QMLVideoOutput] End of stream";
+            break;
+        case GST_MESSAGE_STATE_CHANGED:
+            if (GST_MESSAGE_SRC(message) == GST_OBJECT(self->m_pipeline)) {
+                GstState oldState, newState, pending;
+                gst_message_parse_state_changed(message, &oldState, &newState, &pending);
+                qDebug() << "[QMLVideoOutput] Pipeline state:"
+                         << gst_element_state_get_name(oldState) << "->"
+                         << gst_element_state_get_name(newState);
+            }
+            break;
+        default:
+            break;
     }
 
     return TRUE;
@@ -274,8 +268,7 @@ gboolean QMLVideoOutput::onBusMessage(GstBus* /*bus*/, GstMessage* message, gpoi
 // IVideoOutput interface implementation
 // ═══════════════════════════════════════════════════════════════════════════
 
-bool QMLVideoOutput::open()
-{
+bool QMLVideoOutput::open() {
     QMutexLocker locker(&m_mutex);
 
     if (m_opened.load()) {
@@ -301,18 +294,15 @@ bool QMLVideoOutput::open()
     return true;
 }
 
-bool QMLVideoOutput::init()
-{
+bool QMLVideoOutput::init() {
     qInfo() << "[QMLVideoOutput] Initializing playback";
 
     // Start playback on main thread
-    QMetaObject::invokeMethod(this, &QMLVideoOutput::doStartPlayback,
-                              Qt::QueuedConnection);
+    QMetaObject::invokeMethod(this, &QMLVideoOutput::doStartPlayback, Qt::QueuedConnection);
     return true;
 }
 
-void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuffer& buffer)
-{
+void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuffer& buffer) {
     if (!m_opened.load() || !m_appSrc) {
         return;
     }
@@ -320,7 +310,8 @@ void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuf
     // Debug: log every 30th frame to avoid spam
     static int writeCount = 0;
     if (++writeCount % 30 == 1) {
-        qDebug() << "[QMLVideoOutput] write() called, size:" << buffer.size << "bytes, frame#" << writeCount;
+        qDebug() << "[QMLVideoOutput] write() called, size:" << buffer.size << "bytes, frame#"
+                 << writeCount;
     }
 
     // Create GStreamer buffer
@@ -353,8 +344,7 @@ void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuf
     }
 }
 
-void QMLVideoOutput::stop()
-{
+void QMLVideoOutput::stop() {
     qInfo() << "[QMLVideoOutput] Stopping playback";
 
     // Use BlockingQueuedConnection to ensure stop completes
@@ -377,8 +367,7 @@ void QMLVideoOutput::stop()
 // QML interface
 // ═══════════════════════════════════════════════════════════════════════════
 
-void QMLVideoOutput::setVideoSink(QVideoSink* sink)
-{
+void QMLVideoOutput::setVideoSink(QVideoSink* sink) {
     QMutexLocker locker(&m_mutex);
 
     if (m_videoSink == sink) {
@@ -394,8 +383,7 @@ void QMLVideoOutput::setVideoSink(QVideoSink* sink)
 // Private slots
 // ═══════════════════════════════════════════════════════════════════════════
 
-void QMLVideoOutput::doStartPlayback()
-{
+void QMLVideoOutput::doStartPlayback() {
     QMutexLocker locker(&m_mutex);
 
     if (!m_pipeline) {
@@ -419,7 +407,8 @@ void QMLVideoOutput::doStartPlayback()
     }
     // GST_STATE_CHANGE_ASYNC is expected - pipeline will complete transition after receiving data
     if (ret == GST_STATE_CHANGE_ASYNC) {
-        qDebug() << "[QMLVideoOutput] Pipeline state change async (will complete after receiving data)";
+        qDebug()
+            << "[QMLVideoOutput] Pipeline state change async (will complete after receiving data)";
     }
 
     // Start frame processing timer
@@ -432,8 +421,7 @@ void QMLVideoOutput::doStartPlayback()
     qInfo() << "[QMLVideoOutput] Playback started, videoSink:" << m_videoSink;
 }
 
-void QMLVideoOutput::doStopPlayback()
-{
+void QMLVideoOutput::doStopPlayback() {
     QMutexLocker locker(&m_mutex);
 
     if (m_frameTimer) {
@@ -453,8 +441,7 @@ void QMLVideoOutput::doStopPlayback()
     qInfo() << "[QMLVideoOutput] Playback stopped";
 }
 
-void QMLVideoOutput::processFrames()
-{
+void QMLVideoOutput::processFrames() {
     // Debug: log why we're not processing
     static int skipCount = 0;
     if (!m_playing.load()) {
@@ -490,7 +477,8 @@ void QMLVideoOutput::processFrames()
         // Debug: check if there's data pending in appsink
         static int noSampleCount = 0;
         if (++noSampleCount % 300 == 1) {  // Every 5 seconds approx
-            qDebug() << "[QMLVideoOutput] processFrames() no sample available yet, check#" << noSampleCount;
+            qDebug() << "[QMLVideoOutput] processFrames() no sample available yet, check#"
+                     << noSampleCount;
             // Check pipeline state
             if (m_pipeline) {
                 GstState state, pending;
@@ -502,14 +490,13 @@ void QMLVideoOutput::processFrames()
     }
 }
 
-void QMLVideoOutput::handleDecodedFrame(GstSample* sample)
-{
+void QMLVideoOutput::handleDecodedFrame(GstSample* sample) {
     if (!sample || !m_videoSink) {
         return;
     }
 
     GstBuffer* buffer = gst_sample_get_buffer(sample);
-    GstCaps* caps = gst_sample_get_caps(sample);
+    GstCaps* caps     = gst_sample_get_caps(sample);
 
     if (!buffer || !caps) {
         return;
@@ -522,7 +509,7 @@ void QMLVideoOutput::handleDecodedFrame(GstSample* sample)
         return;
     }
 
-    int width = GST_VIDEO_INFO_WIDTH(&videoInfo);
+    int width  = GST_VIDEO_INFO_WIDTH(&videoInfo);
     int height = GST_VIDEO_INFO_HEIGHT(&videoInfo);
 
     // Map buffer for reading
@@ -548,11 +535,12 @@ void QMLVideoOutput::handleDecodedFrame(GstSample* sample)
     // Debug: log frame delivery
     static int deliveredCount = 0;
     if (++deliveredCount % 30 == 1) {
-        qDebug() << "[QMLVideoOutput] Delivering frame to sink, size:" << width << "x" << height << "frame#" << deliveredCount;
+        qDebug() << "[QMLVideoOutput] Delivering frame to sink, size:" << width << "x" << height
+                 << "frame#" << deliveredCount;
     }
 
     // Send frame to video sink
     m_videoSink->setVideoFrame(frame);
 }
 
-} // namespace speeduino
+}  // namespace speeduino

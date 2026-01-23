@@ -1,15 +1,16 @@
 #ifndef HMI_OPENAUTO_CONTROLLER_HPP
 #define HMI_OPENAUTO_CONTROLLER_HPP
 
-#include <QObject>
-#include <QString>
-#include <QProcess>
 #include <QTimer>
+
 #include <QFileSystemWatcher>
 #include <QMutex>
 #include <QMutexLocker>
-#include <memory>
+#include <QObject>
+#include <QProcess>
+#include <QString>
 #include <chrono>
+#include <memory>
 
 namespace speeduino {
 
@@ -37,7 +38,8 @@ class OpenAutoController : public QObject {
 
     // Configuration
     Q_PROPERTY(bool autoStart READ autoStart WRITE setAutoStart NOTIFY autoStartChanged)
-    Q_PROPERTY(bool wirelessEnabled READ wirelessEnabled WRITE setWirelessEnabled NOTIFY wirelessEnabledChanged)
+    Q_PROPERTY(bool wirelessEnabled READ wirelessEnabled WRITE setWirelessEnabled NOTIFY
+                   wirelessEnabledChanged)
 
 public:
     explicit OpenAutoController(QObject* parent = nullptr);
@@ -150,9 +152,9 @@ private:
 
     // FIX #9: Crash loop prevention (ISO 26262)
     // Limits automatic restarts to prevent infinite crash loops
-    static constexpr int MAX_CRASH_RESTARTS = 3;
+    static constexpr int MAX_CRASH_RESTARTS       = 3;
     static constexpr int INITIAL_RESTART_DELAY_MS = 2000;
-    static constexpr int MAX_RESTART_DELAY_MS = 30000;
+    static constexpr int MAX_RESTART_DELAY_MS     = 30000;
     int m_crashRestartCount{0};
     int m_currentRestartDelayMs{INITIAL_RESTART_DELAY_MS};
     std::chrono::steady_clock::time_point m_lastSuccessfulStart;
@@ -161,6 +163,6 @@ private:
     static const QStringList AA_USB_IDS;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // HMI_OPENAUTO_CONTROLLER_HPP
+#endif  // HMI_OPENAUTO_CONTROLLER_HPP

@@ -20,25 +20,26 @@
 #ifndef HMI_QML_VIDEO_OUTPUT_HPP
 #define HMI_QML_VIDEO_OUTPUT_HPP
 
-#include <QObject>
-#include <QVideoSink>
-#include <QVideoFrame>
-#include <QMutex>
 #include <QTimer>
-#include <memory>
+
+#include <QMutex>
+#include <QObject>
+#include <QVideoFrame>
+#include <QVideoSink>
 #include <atomic>
+#include <memory>
 #include <thread>
 
 // GStreamer includes
-#include <gst/gst.h>
-#include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
+#include <gst/gst.h>
 #include <gst/video/video.h>
 
 // OpenAuto includes
-#include <openauto/Projection/VideoOutput.hpp>
-#include <openauto/Configuration/IConfiguration.hpp>
 #include <aasdk/Common/Data.hpp>
+#include <openauto/Configuration/IConfiguration.hpp>
+#include <openauto/Projection/VideoOutput.hpp>
 
 namespace speeduino {
 
@@ -58,8 +59,7 @@ namespace speeduino {
  * // In C++, call setVideoSink(videoOutput.videoSink)
  * @endcode
  */
-class QMLVideoOutput : public QObject, public openauto::projection::VideoOutput
-{
+class QMLVideoOutput : public QObject, public openauto::projection::VideoOutput {
     Q_OBJECT
 
     Q_PROPERTY(QVideoSink* videoSink READ videoSink WRITE setVideoSink NOTIFY videoSinkChanged)
@@ -193,6 +193,6 @@ private:
     int m_height{480};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // HMI_QML_VIDEO_OUTPUT_HPP
+#endif  // HMI_QML_VIDEO_OUTPUT_HPP

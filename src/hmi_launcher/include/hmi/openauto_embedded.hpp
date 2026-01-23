@@ -1,45 +1,50 @@
 #ifndef HMI_OPENAUTO_EMBEDDED_HPP
 #define HMI_OPENAUTO_EMBEDDED_HPP
 
-#include <QObject>
-#include <QWidget>
+#include "hmi/qml_video_output.hpp"
+
 #include <QThread>
+#include <QTimer>
+
+#include <QMutex>
+#include <QObject>
+#include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
-#include <QPointer>
-#include <QMutex>
-#include <QTimer>
-#include <memory>
-#include <functional>
+#include <QWidget>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
-#include <mutex>
-#include <condition_variable>
-
-#include "hmi/qml_video_output.hpp"
 
 // Boost forward declarations
 #include <boost/asio.hpp>
 namespace aasdk {
-    namespace usb {
-        class USBWrapper;
-        class IUSBHub;
-        class IConnectedAccessoriesEnumerator;
-        class AccessoryModeQueryFactory;
-        class AccessoryModeQueryChainFactory;
-    }
-    namespace tcp { class ITCPWrapper; }
+namespace usb {
+class USBWrapper;
+class IUSBHub;
+class IConnectedAccessoriesEnumerator;
+class AccessoryModeQueryFactory;
+class AccessoryModeQueryChainFactory;
+}  // namespace usb
+namespace tcp {
+class ITCPWrapper;
 }
+}  // namespace aasdk
 namespace openauto {
-    class App;
-    namespace service {
-        class ServiceFactory;
-        class IAndroidAutoEntityFactory;
-    }
-    namespace configuration { class Configuration; }
+class App;
+namespace service {
+class ServiceFactory;
+class IAndroidAutoEntityFactory;
+}  // namespace service
+namespace configuration {
+class Configuration;
 }
+}  // namespace openauto
 struct libusb_context;
 
 namespace speeduino {
@@ -67,8 +72,8 @@ private:
 
     // FIX #10: Exception loop prevention constants
     static constexpr int MAX_CONSECUTIVE_EXCEPTIONS = 10;
-    static constexpr int INITIAL_RETRY_DELAY_MS = 100;
-    static constexpr int MAX_RETRY_DELAY_MS = 5000;
+    static constexpr int INITIAL_RETRY_DELAY_MS     = 100;
+    static constexpr int MAX_RETRY_DELAY_MS         = 5000;
 };
 
 /**
@@ -188,7 +193,7 @@ private:
     bool m_videoVisible{false};
     bool m_waitingForDevice{false};  // FIX: Prevent concurrent waitForDevice() calls
     bool m_pendingRetry{false};      // FIX: Queue retry if device detected before start()
-    bool m_restarting{false};        // FIX: Debounce restart() to prevent multiple simultaneous restarts
+    bool m_restarting{false};  // FIX: Debounce restart() to prevent multiple simultaneous restarts
     QString m_errorMessage;
     QString m_phoneName;
     int m_width{800};
@@ -239,6 +244,6 @@ private:
     std::shared_ptr<openauto::App> m_app;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // HMI_OPENAUTO_EMBEDDED_HPP
+#endif  // HMI_OPENAUTO_EMBEDDED_HPP
