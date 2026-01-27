@@ -21,6 +21,7 @@ std::vector<CanSignalDef> ConfigLoader::s_signals;
 std::vector<CanCommandDef> ConfigLoader::s_allowedCommands;
 std::vector<SteeringButtonDef> ConfigLoader::s_steeringButtons;
 ReverseConfig ConfigLoader::s_reverseConfig;
+BrandingConfig ConfigLoader::s_brandingConfig;
 bool ConfigLoader::s_loaded = false;
 
 namespace {
@@ -258,6 +259,27 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
             }
         }
 
+        // Branding / Splash screen configuration
+        if (config["branding"]) {
+            auto brand = config["branding"];
+            if (brand["show_splash"])
+                s_brandingConfig.show_splash = brand["show_splash"].as<bool>();
+            if (brand["splash_duration_ms"])
+                s_brandingConfig.splash_duration_ms = brand["splash_duration_ms"].as<uint32_t>();
+            if (brand["splash_logo"])
+                s_brandingConfig.splash_logo = brand["splash_logo"].as<std::string>();
+            if (brand["splash_logo_scale"])
+                s_brandingConfig.splash_logo_scale = brand["splash_logo_scale"].as<double>();
+            if (brand["brand_name"])
+                s_brandingConfig.brand_name = brand["brand_name"].as<std::string>();
+            if (brand["brand_color"])
+                s_brandingConfig.brand_color = brand["brand_color"].as<std::string>();
+            if (brand["manufacturer"])
+                s_brandingConfig.manufacturer = brand["manufacturer"].as<std::string>();
+
+            LOG_INFO("Loaded branding config: " + s_brandingConfig.brand_name);
+        }
+
         LOG_INFO("Loaded system config from " + std::string(path));
         return true;
     } catch (const YAML::Exception& e) {
@@ -363,6 +385,11 @@ const std::vector<SteeringButtonDef>& ConfigLoader::getSteeringButtons() {
 const ReverseConfig& ConfigLoader::getReverseConfig() {
     std::shared_lock<std::shared_mutex> lock(s_mutex);
     return s_reverseConfig;
+}
+
+const BrandingConfig& ConfigLoader::getBrandingConfig() {
+    std::shared_lock<std::shared_mutex> lock(s_mutex);
+    return s_brandingConfig;
 }
 
 std::optional<CanSignalDef> ConfigLoader::findSignal(std::string_view name) {

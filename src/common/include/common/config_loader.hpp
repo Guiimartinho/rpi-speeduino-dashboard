@@ -116,6 +116,22 @@ struct SteeringButtonDef {
     std::string action;  // "volume_up", "next_track", etc.
 };
 
+// Branding and splash screen configuration
+struct BrandingConfig {
+    // Splash screen settings
+    bool show_splash          = true;
+    uint32_t splash_duration_ms = 2500;  // Duration in milliseconds
+    std::string splash_logo   = "";      // Path to logo image (PNG/JPG)
+    double splash_logo_scale  = 1.0;     // Logo scale factor
+
+    // Brand information
+    std::string brand_name    = "Speeduino";
+    std::string brand_color   = "#00ff00";  // Primary brand color (hex)
+
+    // Vehicle manufacturer presets
+    std::string manufacturer  = "";  // "volkswagen", "fiat", "chevrolet", "ford", etc.
+};
+
 // System configuration
 struct SystemConfig {
     // CAN interface
@@ -159,6 +175,7 @@ public:
     static const std::vector<CanCommandDef>& getAllowedCommands();
     static const std::vector<SteeringButtonDef>& getSteeringButtons();
     static const ReverseConfig& getReverseConfig();
+    static const BrandingConfig& getBrandingConfig();
 
     // Find signal by name
     static std::optional<CanSignalDef> findSignal(std::string_view name);
@@ -178,6 +195,7 @@ private:
     static std::vector<CanCommandDef> s_allowedCommands;
     static std::vector<SteeringButtonDef> s_steeringButtons;
     static ReverseConfig s_reverseConfig;
+    static BrandingConfig s_brandingConfig;
     static bool s_loaded;
 };
 

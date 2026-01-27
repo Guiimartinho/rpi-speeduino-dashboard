@@ -301,6 +301,12 @@ ApplicationWindow {
             anchors.fill: parent
             z: 999
         }
+
+        // Splash Screen Overlay (highest priority on startup)
+        Components.SplashScreen {
+            id: splashScreen
+            anchors.fill: parent
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════

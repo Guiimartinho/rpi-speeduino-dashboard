@@ -25,6 +25,7 @@ TabButton 1.0 TabButton.qml
 StatusBar 1.0 StatusBar.qml
 IconButton 1.0 IconButton.qml
 NotificationPopup 1.0 NotificationPopup.qml
+SplashScreen 1.0 SplashScreen.qml
 
 # ═══════════════════════════════════════════════════════════════
 # ADVANCED GAUGES

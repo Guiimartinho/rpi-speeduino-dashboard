@@ -22,12 +22,14 @@ qt_add_executable(hmi_launcher
     src/openauto_controller.cpp
     src/openauto_embedded.cpp
     src/qml_video_output.cpp
+    src/branding_manager.cpp
     # Headers with Q_OBJECT macro (required for AUTOMOC)
     include/hmi/data_provider.hpp
     include/hmi/camera_controller.hpp
     include/hmi/openauto_controller.hpp
     include/hmi/openauto_embedded.hpp
     include/hmi/qml_video_output.hpp
+    include/hmi/branding_manager.hpp
 )
 
 qt_add_qml_module(hmi_launcher
@@ -56,6 +58,7 @@ qt_add_qml_module(hmi_launcher
         qml/components/WarningIndicator.qml
         qml/components/IconButton.qml
         qml/components/NotificationPopup.qml
+        qml/components/SplashScreen.qml
 
         # Core gauges
         qml/components/ArcGauge.qml

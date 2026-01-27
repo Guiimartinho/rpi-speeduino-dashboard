@@ -182,6 +182,26 @@ display:
   hide_cursor: true
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BRANDING & SPLASH SCREEN
+# Customizable boot splash screen with manufacturer logo
+#
+# Examples:
+#   Volkswagen: brand_name: "Volkswagen", brand_color: "#00438f"
+#   BMW:        brand_name: "BMW", brand_color: "#0066b1"
+#   Porsche:    brand_name: "Porsche", brand_color: "#d5001c"
+#   Subaru:     brand_name: "Subaru", brand_color: "#013c74"
+#   Generic:    brand_name: "Speeduino", brand_color: "#00ff00"
+# ═══════════════════════════════════════════════════════════════════════════════
+branding:
+  show_splash: true
+  splash_duration_ms: 2500
+  # splash_logo: "/etc/speeduino-ui/assets/logo_vw.png"
+  splash_logo_scale: 1.0
+  brand_name: "Speeduino"
+  brand_color: "#00ff00"
+  # manufacturer: "volkswagen"
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
 logging:

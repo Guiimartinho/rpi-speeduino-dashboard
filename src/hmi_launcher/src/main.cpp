@@ -1,3 +1,4 @@
+#include "hmi/branding_manager.hpp"
 #include "hmi/camera_controller.hpp"
 #include "hmi/data_provider.hpp"
 #include "hmi/openauto_embedded.hpp"
@@ -106,6 +107,7 @@ int main(int argc, char* argv[]) {
     speeduino::DataProvider dataProvider;
     speeduino::CameraController cameraController;
     speeduino::OpenAutoEmbedded openAutoEmbedded;
+    speeduino::BrandingManager brandingManager;
 
     // RAII cleanup - ensures resources are released even on early exit
     ApplicationCleanup cleanup(dataProvider, cameraController, openAutoEmbedded);
@@ -130,6 +132,7 @@ int main(int argc, char* argv[]) {
     rootContext->setContextProperty("dataProvider", &dataProvider);
     rootContext->setContextProperty("cameraController", &cameraController);
     rootContext->setContextProperty("openAutoEmbedded", &openAutoEmbedded);
+    rootContext->setContextProperty("brandingManager", &brandingManager);
     rootContext->setContextProperty("isFullscreen", fullscreen);
 
     // Load main QML

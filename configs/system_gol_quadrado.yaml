@@ -71,6 +71,19 @@ display:
   fullscreen: true
   hide_cursor: true
 
+# =============================================================================
+# BRANDING & SPLASH SCREEN - VW CONFIGURATION
+# =============================================================================
+# Shows VW logo and brand on startup
+branding:
+  show_splash: true
+  splash_duration_ms: 3000
+  splash_logo: "/etc/speeduino-ui/assets/logo_vw.png"
+  splash_logo_scale: 1.0
+  brand_name: "Volkswagen"
+  brand_color: "#00438f"
+  manufacturer: "volkswagen"
+
 # Logging
 logging:
   level: info         # trace, debug, info, warn, error
