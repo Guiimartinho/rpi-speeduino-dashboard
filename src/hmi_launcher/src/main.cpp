@@ -3,6 +3,8 @@
 #include "hmi/data_provider.hpp"
 #include "hmi/openauto_embedded.hpp"
 
+#include "common/config_loader.hpp"
+
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDebug>
@@ -96,6 +98,11 @@ int main(int argc, char* argv[]) {
     qInfo() << "[Main] Config dir:" << configDir;
     qInfo() << "[Main] Fullscreen:" << fullscreen;
     qInfo() << "[Main] OpenAuto mode: EMBEDDED (always)";
+
+    // Load system configuration (branding, CAN, camera, etc.)
+    const std::string configPath = configDir.toStdString() + "/system.yaml";
+    qInfo() << "[Main] Loading config:" << configPath.c_str();
+    speeduino::ConfigLoader::loadSystemConfig(configPath);
 
     // Set Qt Quick style
     QQuickStyle::setStyle("Basic");

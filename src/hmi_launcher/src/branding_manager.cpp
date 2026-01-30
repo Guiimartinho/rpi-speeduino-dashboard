@@ -49,6 +49,7 @@ QString BrandingManager::manufacturer() const
 QString BrandingManager::splashLogoUrl() const
 {
     QString logoPath = splashLogo();
+
     if (logoPath.isEmpty()) {
         return QString();
     }

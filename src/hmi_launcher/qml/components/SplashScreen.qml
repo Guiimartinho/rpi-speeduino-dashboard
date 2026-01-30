@@ -75,7 +75,8 @@ Item {
             text: "S"  // Speeduino initial
             font.pixelSize: Styles.Theme.fontMega * 2
             font.weight: Font.Bold
-            color: (typeof brandingManager !== "undefined" && brandingManager !== null && brandingManager.brandColor !== "")
+            color: (typeof brandingManager !== "undefined" && brandingManager !== null
+                   && typeof brandingManager.brandColor === "string" && brandingManager.brandColor !== "")
                    ? brandingManager.brandColor
                    : Styles.Theme.accentPrimary
             visible: !logoImage.visible
@@ -119,7 +120,8 @@ Item {
                 id: progressBar
                 height: parent.height
                 radius: parent.radius
-                color: (typeof brandingManager !== "undefined" && brandingManager !== null && brandingManager.brandColor !== "")
+                color: (typeof brandingManager !== "undefined" && brandingManager !== null
+                       && typeof brandingManager.brandColor === "string" && brandingManager.brandColor !== "")
                        ? brandingManager.brandColor
                        : Styles.Theme.accentPrimary
                 width: 0
