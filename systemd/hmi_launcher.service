@@ -1,7 +1,10 @@
 [Unit]
 Description=Speeduino HMI Launcher (Dashboard UI)
-After=graphical.target can_service.service
-Wants=can_service.service reverse_service.service
+# Note: Uses EGLFS (direct framebuffer rendering), no X11/Wayland desktop needed
+# Therefore depends on multi-user.target, not graphical.target
+After=multi-user.target can_service.service
+Requires=multi-user.target can_service.service
+Wants=reverse_service.service
 
 [Service]
 Type=simple
@@ -25,4 +28,4 @@ RestartSec=3
 SupplementaryGroups=video input render audio plugdev bluetooth
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
