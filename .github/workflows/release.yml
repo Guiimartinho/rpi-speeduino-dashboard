@@ -94,7 +94,7 @@ jobs:
           cat CHANGELOG_GENERATED.md
 
       - name: Upload changelog
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: changelog
           path: CHANGELOG_GENERATED.md
@@ -145,7 +145,7 @@ jobs:
           find staging -type f | head -50
 
       - name: Upload staged installation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: staging
           path: staging/
@@ -302,7 +302,7 @@ jobs:
           echo "DEB size: $(du -h ${DEB_NAME}.deb | cut -f1)"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-packages
           path: |
