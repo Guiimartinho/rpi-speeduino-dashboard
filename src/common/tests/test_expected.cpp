@@ -135,7 +135,7 @@ TEST(ExpectedTest, MoveSemantics) {
 
 TEST(ExpectedTest, ErrorCodes) {
     EXPECT_STREQ(errorCodeToString(ErrorCode::Success), "Success");
-    EXPECT_STREQ(errorCodeToString(ErrorCode::InvalidArgument), "InvalidArgument");
-    EXPECT_STREQ(errorCodeToString(ErrorCode::IoError), "IoError");
+    EXPECT_STREQ(errorCodeToString(ErrorCode::InvalidArgument), "Invalid argument");
+    EXPECT_STREQ(errorCodeToString(ErrorCode::IoError), "I/O error");
     EXPECT_STREQ(errorCodeToString(ErrorCode::Timeout), "Timeout");
 }

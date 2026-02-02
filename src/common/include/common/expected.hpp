@@ -10,6 +10,7 @@
 #ifndef COMMON_EXPECTED_HPP
 #define COMMON_EXPECTED_HPP
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <type_traits>

@@ -10,6 +10,7 @@
 #ifndef COMMON_SCOPE_GUARD_HPP
 #define COMMON_SCOPE_GUARD_HPP
 
+#include <exception>
 #include <type_traits>
 #include <utility>
 
