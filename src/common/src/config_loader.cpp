@@ -187,14 +187,26 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
 
         if (config["camera"]) {
             auto cam = config["camera"];
+            if (cam["enabled"])
+                s_systemConfig.camera_enabled = cam["enabled"].as<bool>();
             if (cam["device"])
                 s_systemConfig.camera_device = cam["device"].as<std::string>();
+            if (cam["standard"])
+                s_systemConfig.camera_standard = cam["standard"].as<std::string>();
             if (cam["width"])
                 s_systemConfig.camera_width = cam["width"].as<uint32_t>();
             if (cam["height"])
                 s_systemConfig.camera_height = cam["height"].as<uint32_t>();
             if (cam["fps"])
                 s_systemConfig.camera_fps = cam["fps"].as<uint32_t>();
+            if (cam["input"])
+                s_systemConfig.camera_input = cam["input"].as<uint32_t>();
+            if (cam["show_guides"])
+                s_systemConfig.camera_show_guides = cam["show_guides"].as<bool>();
+            if (cam["test_mode"])
+                s_systemConfig.camera_test_mode = cam["test_mode"].as<bool>();
+            if (cam["test_pattern"])
+                s_systemConfig.camera_test_pattern = cam["test_pattern"].as<std::string>();
         }
 
         if (config["openauto"]) {

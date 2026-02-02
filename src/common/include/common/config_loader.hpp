@@ -144,11 +144,18 @@ struct SystemConfig {
     // ZMQ settings
     uint32_t zmq_publish_rate_hz = 50;
 
-    // Camera settings
-    std::string camera_device = "/dev/video0";
-    uint32_t camera_width     = 640;
-    uint32_t camera_height    = 480;
-    uint32_t camera_fps       = 30;
+    // Camera settings (USB capture card / reverse camera)
+    bool camera_enabled          = true;
+    std::string camera_device    = "/dev/video0";
+    std::string camera_standard  = "PAL";         // PAL or NTSC
+    uint32_t camera_width        = 720;           // 720 for PAL/NTSC
+    uint32_t camera_height       = 576;           // 576 for PAL, 480 for NTSC
+    uint32_t camera_fps          = 25;            // 25 for PAL, 30 for NTSC
+    uint32_t camera_input        = 0;             // Composite input selection (0, 1, 2)
+    bool camera_show_guides      = true;          // Show parking guide lines
+    // Test/simulation mode (use when no camera hardware is available)
+    bool camera_test_mode        = false;         // Enable simulated camera
+    std::string camera_test_pattern = "ball";     // Test pattern: ball, smpte, snow, etc.
 
     // OpenAuto path
     std::string openauto_path = "/usr/local/bin/openauto";
