@@ -23,6 +23,7 @@ qt_add_executable(hmi_launcher
     src/openauto_embedded.cpp
     src/qml_video_output.cpp
     src/branding_manager.cpp
+    src/system_monitor.cpp
     # Headers with Q_OBJECT macro (required for AUTOMOC)
     include/hmi/data_provider.hpp
     include/hmi/camera_controller.hpp
@@ -30,6 +31,7 @@ qt_add_executable(hmi_launcher
     include/hmi/openauto_embedded.hpp
     include/hmi/qml_video_output.hpp
     include/hmi/branding_manager.hpp
+    include/hmi/system_monitor.hpp
 )
 
 qt_add_qml_module(hmi_launcher
@@ -74,6 +76,10 @@ qt_add_qml_module(hmi_launcher
         qml/components/GForceMeter.qml
         qml/components/ChartGauge.qml
         qml/components/VEMapDisplay.qml
+        qml/components/ProgressiveShiftBar.qml
+        qml/components/AFRHistogram.qml
+        qml/components/VETableMini.qml
+        qml/components/VETable3D.qml
 
         # Timing and performance components
         qml/components/LapTimer.qml
