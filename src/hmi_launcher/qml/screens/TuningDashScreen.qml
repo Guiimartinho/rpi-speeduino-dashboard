@@ -48,6 +48,9 @@ Item {
     // Tab selector for different views
     property int activeTab: 0  // 0=Maps, 1=Charts, 2=Logger
 
+    // VE Map view mode: 0=2D, 1=3D
+    property int veMapMode: 0
+
     // Header with tab buttons
     Row {
         id: tabHeader
@@ -92,85 +95,139 @@ Item {
         anchors.margins: Styles.Theme.spacingSm
 
         // Tab 0: VE Maps
-        RowLayout {
+        ColumnLayout {
             anchors.fill: parent
-            spacing: Styles.Theme.spacingSm
+            spacing: Styles.Theme.spacingXs
             visible: activeTab === 0
 
-            // VE Map Display
-            Components.VEMapDisplay {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.6
+            // Toggle 2D/3D
+            Row {
+                Layout.alignment: Qt.AlignRight
+                Layout.rightMargin: Styles.Theme.spacingSm
+                spacing: 4
 
-                rpm: tuningDash.engineData.rpm
-                mapKpa: tuningDash.engineData.mapKpa
-                tps: tuningDash.engineData.tps
+                Repeater {
+                    model: ["2D", "3D"]
+
+                    Rectangle {
+                        width: 48
+                        height: 28
+                        radius: 6
+                        color: veMapMode === index ? Styles.Theme.accentSecondary : "#333333"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData
+                            color: veMapMode === index ? "#000000" : Qt.rgba(1, 1, 1, 0.72)
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: veMapMode = index
+                        }
+                    }
+                }
             }
 
-            // Side panel with key gauges
-            ColumnLayout {
+            // Map content
+            RowLayout {
+                Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.preferredWidth: parent.width * 0.4
                 spacing: Styles.Theme.spacingSm
 
-                // RPM
-                Components.SafeGauge {
+                // VE Map Display (2D mode)
+                Components.VEMapDisplay {
+                    visible: veMapMode === 0
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    label: "RPM"
-                    unit: ""
-                    value: tuningDash.engineData.rpm
-                    minValue: 0
-                    maxValue: 8000
-                    warningThreshold: 6500
-                    precision: 0
-                    gaugeColor: Styles.Theme.accentPrimary
-                    showBar: true
+                    Layout.preferredWidth: parent.width * 0.6
+
+                    rpm: tuningDash.engineData.rpm
+                    mapKpa: tuningDash.engineData.mapKpa
+                    tps: tuningDash.engineData.tps
                 }
 
-                // MAP
-                Components.SafeGauge {
+                // VE Table 3D (3D mode)
+                Components.VETable3D {
+                    visible: veMapMode === 1
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    label: "MAP"
-                    unit: "kPa"
-                    value: tuningDash.engineData.mapKpa
-                    minValue: 0
-                    maxValue: 250
-                    precision: 0
-                    gaugeColor: Styles.Theme.accentOrange
-                    showBar: true
+                    Layout.preferredWidth: parent.width * 0.6
+
+                    rpm: tuningDash.engineData.rpm
+                    mapKpa: tuningDash.engineData.mapKpa
+                    veValue: tuningDash.engineData.ve || 0
+                    gridSize: 8
+                    showValues: false
+                    animated: true
                 }
 
-                // AFR
-                Components.SafeGauge {
-                    Layout.fillWidth: true
+                // Side panel with key gauges
+                ColumnLayout {
                     Layout.fillHeight: true
-                    label: "AFR"
-                    unit: ""
-                    value: tuningDash.engineData.lambda * 14.7
-                    minValue: 10
-                    maxValue: 20
-                    warningThreshold: 12
-                    warningThresholdHigh: 16
-                    precision: 1
-                    gaugeColor: Styles.Theme.accentPurple
-                    showBar: true
-                }
+                    Layout.preferredWidth: parent.width * 0.4
+                    spacing: Styles.Theme.spacingSm
 
-                // Ignition
-                Components.SafeGauge {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    label: "IGN ADV"
-                    unit: "\u00B0"
-                    value: tuningDash.engineData.ignitionAdvance
-                    minValue: -10
-                    maxValue: 50
-                    precision: 1
-                    gaugeColor: Styles.Theme.accentPink
-                    showBar: true
+                    // RPM
+                    Components.SafeGauge {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        label: "RPM"
+                        unit: ""
+                        value: tuningDash.engineData.rpm
+                        minValue: 0
+                        maxValue: 8000
+                        warningThreshold: 6500
+                        precision: 0
+                        gaugeColor: Styles.Theme.accentPrimary
+                        showBar: true
+                    }
+
+                    // MAP
+                    Components.SafeGauge {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        label: "MAP"
+                        unit: "kPa"
+                        value: tuningDash.engineData.mapKpa
+                        minValue: 0
+                        maxValue: 250
+                        precision: 0
+                        gaugeColor: Styles.Theme.accentOrange
+                        showBar: true
+                    }
+
+                    // AFR
+                    Components.SafeGauge {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        label: "AFR"
+                        unit: ""
+                        value: tuningDash.engineData.lambda * 14.7
+                        minValue: 10
+                        maxValue: 20
+                        warningThreshold: 12
+                        warningThresholdHigh: 16
+                        precision: 1
+                        gaugeColor: Styles.Theme.accentPurple
+                        showBar: true
+                    }
+
+                    // Ignition
+                    Components.SafeGauge {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        label: "IGN ADV"
+                        unit: "\u00B0"
+                        value: tuningDash.engineData.ignitionAdvance
+                        minValue: -10
+                        maxValue: 50
+                        precision: 1
+                        gaugeColor: Styles.Theme.accentPink
+                        showBar: true
+                    }
                 }
             }
         }

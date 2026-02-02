@@ -18,10 +18,9 @@ Item {
 
     // ═══════════════════════════════════════════════════════════════
     // C++ CONTEXT PROPERTIES (injected by parent)
-    // NOTE: openAutoEmbedded comes from C++ context, not declared here
+    // NOTE: openAutoEmbedded, systemMonitor come from C++ context, not declared here
     // ═══════════════════════════════════════════════════════════════
     property var dataProvider: null
-    property var systemMonitor: null
     property var cameraController: null
     property var canService: null
 

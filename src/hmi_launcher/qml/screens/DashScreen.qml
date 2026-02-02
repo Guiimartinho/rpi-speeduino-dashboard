@@ -40,7 +40,7 @@ Item {
         lowOilPressure: false, lowFuelPressure: false, dfcoActive: false, fanOn: false
     })
 
-    property int displayMode: 0  // 0=Sport, 1=Street, 2=Track, 3=Diagnostic
+    property int displayMode: 0  // 0=Sport, 1=Street, 2=Tuning, 3=Diagnostic
 
     // Calculated values
     property real afr: engineData.lambda * 14.7
@@ -109,10 +109,10 @@ Item {
 
             Repeater {
                 model: [
-                    { label: "SPORT", icon: "⚡" },
-                    { label: "STREET", icon: "🛣" },
-                    { label: "TRACK", icon: "🏁" },
-                    { label: "DIAG", icon: "📊" }
+                    { label: "SPORT", icon: "S" },
+                    { label: "STREET", icon: "R" },
+                    { label: "TUNING", icon: "T" },
+                    { label: "DIAG", icon: "D" }
                 ]
 
                 Rectangle {
@@ -170,55 +170,19 @@ Item {
 
         Item {
 
-        // Progressive Shift Light Bar
-        Item {
+        // Progressive Shift Bar (estilo barra de progresso)
+        Components.ProgressiveShiftBar {
             id: shiftBar
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width * 0.75
-            height: 18
-
-            Row {
-                anchors.centerIn: parent
-                spacing: 3
-
-                Repeater {
-                    model: 15
-
-                    Rectangle {
-                        width: 22
-                        height: 10
-                        radius: 2
-
-                        property real threshold: 4000 + (index * 250)
-                        property bool active: engineData.rpm >= threshold
-
-                        color: {
-                            if (!active) return "#1a1a1a"
-                            if (index < 5) return "#00E676"
-                            if (index < 10) return "#FFEB3B"
-                            if (index < 13) return "#FF9800"
-                            return "#F44336"
-                        }
-
-                        opacity: active ? 1.0 : 0.3
-
-                        // Glow effect for active LEDs
-                        Rectangle {
-                            visible: parent.active && index >= 10
-                            anchors.fill: parent
-                            anchors.margins: -3
-                            radius: 5
-                            color: parent.color
-                            opacity: 0.3
-                            z: -1
-                        }
-
-                        Behavior on color { ColorAnimation { duration: 50 } }
-                        Behavior on opacity { NumberAnimation { duration: 50 } }
-                    }
-                }
-            }
+            anchors.topMargin: 4
+            width: parent.width * 0.85
+            rpm: engineData.rpm
+            minRpm: 2000
+            shiftRpm: 7000
+            showGlow: true
+            showShiftLabel: true
+            barHeight: 16
         }
 
         // Main gauges area - Optimized 3-column layout
@@ -601,9 +565,9 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: engineData.vehicleSpeed.toFixed(0)
                 color: "#00B8D4"
-                font.pixelSize: Math.min(parent.parent.width * 0.28, 180)
+                font.pixelSize: Math.min(parent.parent.width * 0.22, 110)
                 font.bold: true
-                font.family: "Roboto Mono, Consolas, monospace"
+                font.family: "Roboto Mono"
 
                 layer.enabled: true
                 layer.effect: MultiEffect {
@@ -623,76 +587,40 @@ Item {
             }
         }
 
-        // RPM Bar at top
+        // RPM Bar at top (Progressive style)
         Rectangle {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: 16
-            height: 45
+            height: 50
             radius: 10
             color: "#141414"
 
-            RowLayout {
+            Row {
                 anchors.fill: parent
                 anchors.margins: 10
                 spacing: 12
 
-                Text {
-                    text: "RPM"
-                    color: "#666666"
-                    font.pixelSize: 11
-                    font.bold: true
-                    font.letterSpacing: 1
-                }
-
-                // RPM Bar
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 5
-                    color: "#1a1a1a"
-
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        width: parent.width * Math.min(1, engineData.rpm / 8000)
-                        radius: 5
-
-                        gradient: Gradient {
-                            orientation: Gradient.Horizontal
-                            GradientStop { position: 0.0; color: "#00E676" }
-                            GradientStop { position: 0.7; color: "#FFEB3B" }
-                            GradientStop { position: 0.9; color: "#FF9800" }
-                            GradientStop { position: 1.0; color: "#F44336" }
-                        }
-
-                        Behavior on width { NumberAnimation { duration: 80 } }
-                    }
-
-                    // Tick marks
-                    Row {
-                        anchors.fill: parent
-                        Repeater {
-                            model: 8
-                            Rectangle {
-                                width: 1
-                                height: parent.height
-                                x: parent.width * (index / 8)
-                                color: "#333333"
-                            }
-                        }
-                    }
+                Components.ProgressiveShiftBar {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 80
+                    rpm: engineData.rpm
+                    minRpm: 800
+                    shiftRpm: 7000
+                    barHeight: 20
+                    showGlow: false
+                    showShiftLabel: true
+                    showDividers: false
                 }
 
                 Text {
+                    anchors.verticalCenter: parent.verticalCenter
                     text: engineData.rpm.toFixed(0)
                     color: engineData.rpm > 6500 ? "#FF9800" : "#00E676"
-                    font.pixelSize: 22
+                    font.pixelSize: 18
                     font.bold: true
-                    font.family: "Roboto Mono, Consolas, monospace"
-                    Layout.preferredWidth: 55
+                    font.family: "Roboto Mono"
                     horizontalAlignment: Text.AlignRight
                 }
             }
@@ -761,195 +689,335 @@ Item {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MODE 2: TRACK - All critical data visible (Fixed 4 rows)
+    // MODE 2: TUNING - VE Table, AFR Histogram, dados para tunagem
     // ═══════════════════════════════════════════════════════════════════════
 
     Loader {
-        id: trackModeLoader
+        id: tuningModeLoader
         anchors.fill: parent
         anchors.topMargin: 42
         active: displayMode === 2
-        sourceComponent: trackModeComponent
+        sourceComponent: tuningModeComponent
     }
 
     Component {
-        id: trackModeComponent
+        id: tuningModeComponent
 
         Item {
+            // Toggle 2D/3D mode
+            property int veMapMode: 0  // 0=2D, 1=3D
 
-        GridLayout {
-            anchors.fill: parent
-            anchors.margins: 10
-            columns: 4
-            rows: 4
-            columnSpacing: 6
-            rowSpacing: 6
+        // Header row com dados principais
+        Rectangle {
+            id: tuningHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 8
+            height: 40
+            radius: 8
+            color: "#141414"
 
-            // Row 1: Main gauges
-            Components.GaugeCard {
-                Layout.fillWidth: true
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 16
+
+                // RPM
+                Row {
+                    spacing: 4
+                    Text { text: "RPM:"; color: "#666666"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: engineData.rpm.toFixed(0); color: "#00E676"; font.pixelSize: 18; font.bold: true; font.family: "Roboto Mono"; anchors.verticalCenter: parent.verticalCenter }
+                }
+
+                // MAP
+                Row {
+                    spacing: 4
+                    Text { text: "MAP:"; color: "#666666"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: engineData.mapKpa.toFixed(0) + " kPa"; color: "#FF9800"; font.pixelSize: 18; font.bold: true; font.family: "Roboto Mono"; anchors.verticalCenter: parent.verticalCenter }
+                }
+
+                // TPS
+                Row {
+                    spacing: 4
+                    Text { text: "TPS:"; color: "#666666"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: engineData.tps.toFixed(0) + "%"; color: "#00BCD4"; font.pixelSize: 18; font.bold: true; font.family: "Roboto Mono"; anchors.verticalCenter: parent.verticalCenter }
+                }
+
+                // VE
+                Row {
+                    spacing: 4
+                    Text { text: "VE:"; color: "#666666"; font.pixelSize: 11; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: engineData.ve.toFixed(0) + "%"; color: "#AA00FF"; font.pixelSize: 18; font.bold: true; font.family: "Roboto Mono"; anchors.verticalCenter: parent.verticalCenter }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // SYNC indicator
+                Rectangle {
+                    width: 50
+                    height: 24
+                    radius: 12
+                    color: engineData.synced ? "#4CAF50" : "#F44336"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "SYNC"
+                        color: "#FFFFFF"
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
+
+                // Toggle 2D/3D
+                Row {
+                    spacing: 2
+                    Repeater {
+                        model: ["2D", "3D"]
+                        Rectangle {
+                            width: 36
+                            height: 24
+                            radius: 6
+                            color: veMapMode === index ? "#00AAFF" : "#333333"
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData
+                                color: veMapMode === index ? "#000000" : "#888888"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: veMapMode = index
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Main content - VE Table maximizado + sidebar compacta
+        RowLayout {
+            anchors.top: tuningHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 8
+            anchors.topMargin: 4
+            spacing: 6
+
+            // LEFT: VE Table (2D or 3D) - Maximizado
+            Components.VETableMini {
+                visible: veMapMode === 0
                 Layout.fillHeight: true
-                Layout.columnSpan: 2
-                label: "RPM"
-                value: engineData.rpm.toFixed(0)
-                unit: ""
-                progress: engineData.rpm / 8000
-                accentColor: engineData.rpm > 6500 ? "#FF9800" : "#00E676"
-                showBar: true
-                large: true
+                Layout.fillWidth: true
+                rpm: engineData.rpm
+                mapKpa: engineData.mapKpa
+                veValue: engineData.ve
+                gridSize: 8
+                showValues: false
+                showTrail: true
+                showLabels: true
             }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
+            Components.VETable3D {
+                visible: veMapMode === 1
                 Layout.fillHeight: true
-                label: "SPEED"
-                value: engineData.vehicleSpeed.toFixed(0)
-                unit: "km/h"
-                progress: engineData.vehicleSpeed / 280
-                accentColor: "#00B8D4"
-                showBar: true
-                large: true
+                Layout.fillWidth: true
+                rpm: engineData.rpm
+                mapKpa: engineData.mapKpa
+                veValue: engineData.ve
+                animated: true
             }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
+            // RIGHT: Sidebar compacta com AFR vertical + dados
+            Rectangle {
                 Layout.fillHeight: true
-                label: "GEAR"
-                value: engineData.gear === 0 ? "N" : engineData.gear.toString()
-                unit: ""
-                accentColor: engineData.gear === 0 ? "#FF9800" : "#00B8D4"
-                large: true
-                centered: true
-            }
+                Layout.preferredWidth: 110
+                radius: 8
+                color: "#141414"
 
-            // Row 2: Engine params
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "CLT"
-                value: engineData.coolantTemp.toFixed(0)
-                unit: "°C"
-                progress: engineData.coolantTemp / 120
-                accentColor: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676"
-                warning: engineData.coolantTemp > 100
-                showBar: true
-            }
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    spacing: 4
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "IAT"
-                value: engineData.intakeTemp.toFixed(0)
-                unit: "°C"
-                progress: (engineData.intakeTemp + 20) / 100
-                accentColor: engineData.intakeTemp > 50 ? "#FF9800" : "#00B8D4"
-                showBar: true
-            }
+                    // AFR Vertical Bar
+                    Item {
+                        width: parent.width
+                        height: parent.height * 0.45
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "MAP"
-                value: engineData.mapKpa.toFixed(0)
-                unit: "kPa"
-                progress: engineData.mapKpa / 250
-                accentColor: "#FF9800"
-                showBar: true
-            }
+                        // Barra de fundo (escala 10-18)
+                        Rectangle {
+                            id: afrBarBg
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: 16
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            width: 24
+                            radius: 4
+                            color: "#0a0a0a"
+                            border.color: "#333333"
+                            border.width: 1
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: isBoost ? "BOOST" : "VAC"
-                value: boostPsi.toFixed(1)
-                unit: "psi"
-                accentColor: isBoost ? "#FF9800" : "#00B8D4"
-            }
+                            // Zona rica (verde escuro) 10-12
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: parent.height * 0.25
+                                color: "#1B5E20"
+                                radius: 4
+                            }
 
-            // Row 3: Fuel & ignition & temps
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "AFR"
-                value: afr.toFixed(1)
-                unit: ""
-                accentColor: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF"
-                warning: afr > 13.5 || afr < 10.5
-            }
+                            // Zona stoich (verde) 12-15
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                y: parent.height * 0.375
+                                height: parent.height * 0.375
+                                color: "#2E7D32"
+                            }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "OIL T"
-                value: engineData.oilTemp.toFixed(0)
-                unit: "°C"
-                progress: engineData.oilTemp / 150
-                accentColor: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300"
-                warning: engineData.oilTemp > 120
-                showBar: true
-            }
+                            // Zona lean (amarelo/vermelho) 15-18
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                height: parent.height * 0.25
+                                color: "#E65100"
+                                radius: 4
+                            }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "OIL P"
-                value: (engineData.oilPressure / 100).toFixed(1)
-                unit: "bar"
-                accentColor: engineData.lowOilPressure ? "#F44336" : "#FFB300"
-                warning: engineData.lowOilPressure
-            }
+                            // Marcador de target
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: parent.height * (1 - (engineData.afrTarget - 10) / 8) - 2
+                                width: parent.width + 8
+                                height: 4
+                                radius: 2
+                                color: "#00AAFF"
+                            }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "FUEL P"
-                value: (engineData.fuelPressure / 100).toFixed(1)
-                unit: "bar"
-                accentColor: engineData.lowFuelPressure ? "#F44336" : "#00BCD4"
-                warning: engineData.lowFuelPressure
-            }
+                            // Marcador atual
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: Math.max(0, Math.min(parent.height - 8, parent.height * (1 - (afr - 10) / 8) - 4))
+                                width: parent.width + 4
+                                height: 8
+                                radius: 4
+                                color: (afr > 15 || afr < 11) ? "#F44336" : (afr > 14.2 || afr < 12) ? "#FF9800" : "#4CAF50"
+                                border.color: "#FFFFFF"
+                                border.width: 2
+                            }
+                        }
 
-            // Row 4: IGN, INJ, TPS, BATT
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "IGN"
-                value: engineData.ignitionAdvance.toFixed(1)
-                unit: "°"
-                accentColor: "#E91E63"
-            }
+                        // Label AFR
+                        Text {
+                            anchors.top: parent.top
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "AFR"
+                            color: "#888888"
+                            font.pixelSize: 9
+                            font.bold: true
+                        }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "INJ"
-                value: engineData.injectorDuty.toFixed(0)
-                unit: "%"
-                progress: engineData.injectorDuty / 100
-                accentColor: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800"
-                warning: engineData.injectorDuty > 85
-                showBar: true
-            }
+                        // Valor AFR atual
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: afrBarBg.verticalCenter
+                            text: afr.toFixed(1)
+                            color: (afr > 15 || afr < 11) ? "#F44336" : (afr > 14.2 || afr < 12) ? "#FF9800" : "#4CAF50"
+                            font.pixelSize: 16
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "TPS"
-                value: engineData.tps.toFixed(0)
-                unit: "%"
-                progress: engineData.tps / 100
-                accentColor: "#00E676"
-                showBar: true
-            }
+                        // Escala
+                        Column {
+                            anchors.left: parent.left
+                            anchors.top: afrBarBg.top
+                            anchors.bottom: afrBarBg.bottom
+                            width: 18
 
-            Components.GaugeCard {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                label: "BATT"
-                value: engineData.batteryVoltage.toFixed(1)
-                unit: "V"
-                accentColor: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676"
-                warning: engineData.batteryVoltage < 12.5
+                            Text { text: "18"; color: "#666"; font.pixelSize: 8; height: parent.height / 4; verticalAlignment: Text.AlignTop }
+                            Text { text: "15"; color: "#666"; font.pixelSize: 8; height: parent.height / 4; verticalAlignment: Text.AlignVCenter }
+                            Text { text: "12"; color: "#666"; font.pixelSize: 8; height: parent.height / 4; verticalAlignment: Text.AlignVCenter }
+                            Text { text: "10"; color: "#666"; font.pixelSize: 8; height: parent.height / 4; verticalAlignment: Text.AlignBottom }
+                        }
+                    }
+
+                    // Separator
+                    Rectangle { width: parent.width; height: 1; color: "#2a2a2a" }
+
+                    // Dados compactos em grid
+                    Grid {
+                        width: parent.width
+                        columns: 2
+                        rowSpacing: 2
+                        columnSpacing: 4
+
+                        // IGN
+                        Text { text: "IGN"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.ignitionAdvance.toFixed(0) + "°"
+                            color: "#E91E63"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+
+                        // CLT
+                        Text { text: "CLT"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.coolantTemp.toFixed(0) + "°"
+                            color: engineData.coolantTemp > 100 ? "#F44336" : "#00E676"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+
+                        // IAT
+                        Text { text: "IAT"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.intakeTemp.toFixed(0) + "°"
+                            color: engineData.intakeTemp > 50 ? "#FF9800" : "#00BCD4"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+
+                        // INJ%
+                        Text { text: "INJ"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.injectorDuty.toFixed(0) + "%"
+                            color: engineData.injectorDuty > 85 ? "#F44336" : "#FF9800"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+
+                        // Lambda
+                        Text { text: "λ"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.lambda.toFixed(2)
+                            color: "#AA00FF"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+
+                        // TGT (AFR Target)
+                        Text { text: "TGT"; color: "#666"; font.pixelSize: 8; font.bold: true }
+                        Text {
+                            text: engineData.afrTarget.toFixed(1)
+                            color: "#00AAFF"
+                            font.pixelSize: 12
+                            font.bold: true
+                            font.family: "Roboto Mono"
+                        }
+                    }
+                }
             }
         }
         }
@@ -971,106 +1039,212 @@ Item {
         id: diagModeComponent
 
         Item {
-
-        GridLayout {
             anchors.fill: parent
-            anchors.margins: 6
-            columns: 5
-            rows: 6
-            columnSpacing: 5
-            rowSpacing: 5
 
-            Repeater {
-                model: [
-                    // Row 1: Core data
-                    { label: "RPM", value: engineData.rpm.toFixed(0), unit: "", color: "#00E676" },
-                    { label: "SPEED", value: engineData.vehicleSpeed.toFixed(0), unit: "km/h", color: "#00B8D4" },
-                    { label: "GEAR", value: engineData.gear === 0 ? "N" : engineData.gear.toString(), unit: "", color: "#00B8D4" },
-                    { label: "CLT", value: engineData.coolantTemp.toFixed(0), unit: "°C", color: engineData.coolantTemp > 110 ? "#F44336" : engineData.coolantTemp > 100 ? "#FF9800" : "#00E676" },
-                    { label: "IAT", value: engineData.intakeTemp.toFixed(0), unit: "°C", color: "#00B8D4" },
+            // Reference to parent's engineData
+            property var eData: dashScreen.engineData
+            property real afrVal: dashScreen.afr
 
-                    // Row 2: MAP/TPS/AFR
-                    { label: "MAP", value: engineData.mapKpa.toFixed(0), unit: "kPa", color: "#FF9800" },
-                    { label: "TPS", value: engineData.tps.toFixed(0), unit: "%", color: "#00E676" },
-                    { label: "AFR", value: afr.toFixed(1), unit: "", color: (afr > 14.0 || afr < 10.0) ? "#F44336" : (afr > 13.5 || afr < 10.5) ? "#FF9800" : "#AA00FF" },
-                    { label: "AFR TGT", value: engineData.afrTarget.toFixed(1), unit: "", color: "#9C27B0" },
-                    { label: "VE", value: engineData.ve.toFixed(0), unit: "%", color: "#00BCD4" },
+            GridLayout {
+                anchors.fill: parent
+                anchors.margins: 6
+                columns: 5
+                rows: 6
+                columnSpacing: 4
+                rowSpacing: 4
 
-                    // Row 3: Ignition/Injection/Pressures
-                    { label: "IGN ADV", value: engineData.ignitionAdvance.toFixed(1), unit: "°", color: "#E91E63" },
-                    { label: "INJ DC", value: engineData.injectorDuty.toFixed(0), unit: "%", color: "#FF9800" },
-                    { label: "BATT", value: engineData.batteryVoltage.toFixed(1), unit: "V", color: engineData.batteryVoltage < 11.5 ? "#F44336" : engineData.batteryVoltage < 12.5 ? "#FF9800" : "#00E676" },
-                    { label: "FUEL P", value: (engineData.fuelPressure / 100).toFixed(1), unit: "bar", color: engineData.lowFuelPressure ? "#F44336" : "#00BCD4" },
-                    { label: "OIL P", value: (engineData.oilPressure / 100).toFixed(1), unit: "bar", color: engineData.lowOilPressure ? "#F44336" : "#FFB300" },
+                // Row 1
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "RPM"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData ? eData.rpm.toFixed(0) : "0"; color: "#00E676"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "SPEED"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.vehicleSpeed.toFixed(0) : "0"; color: "#00B8D4"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " km/h"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "GEAR"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData ? (eData.gear === 0 ? "N" : eData.gear.toString()) : "N"; color: "#00B8D4"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "CLT"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.coolantTemp.toFixed(0) : "0"; color: eData && eData.coolantTemp > 110 ? "#F44336" : eData && eData.coolantTemp > 100 ? "#FF9800" : "#00E676"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °C"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "IAT"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.intakeTemp.toFixed(0) : "0"; color: "#00B8D4"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °C"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
 
-                    // Row 4: Per-cylinder fuel trims
-                    { label: "F TRM 1", value: engineData.fuelTrimCyl1.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl1) > 10 ? "#FF9800" : "#4CAF50" },
-                    { label: "F TRM 2", value: engineData.fuelTrimCyl2.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl2) > 10 ? "#FF9800" : "#4CAF50" },
-                    { label: "F TRM 3", value: engineData.fuelTrimCyl3.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl3) > 10 ? "#FF9800" : "#4CAF50" },
-                    { label: "F TRM 4", value: engineData.fuelTrimCyl4.toFixed(0), unit: "%", color: Math.abs(engineData.fuelTrimCyl4) > 10 ? "#FF9800" : "#4CAF50" },
-                    { label: "OIL T", value: engineData.oilTemp.toFixed(0), unit: "°C", color: engineData.oilTemp > 140 ? "#F44336" : engineData.oilTemp > 120 ? "#FF9800" : "#FFB300" },
+                // Row 2
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "MAP"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.mapKpa.toFixed(0) : "0"; color: "#FF9800"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " kPa"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "TPS"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.tps.toFixed(0) : "0"; color: "#00E676"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "AFR"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: afrVal ? afrVal.toFixed(1) : "14.7"; color: "#AA00FF"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "AFR TGT"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData ? eData.afrTarget.toFixed(1) : "14.7"; color: "#9C27B0"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "VE"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ve.toFixed(0) : "0"; color: "#00BCD4"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
 
-                    // Row 5: Per-cylinder ignition trims
-                    { label: "I TRM 1", value: engineData.ignTrimCyl1.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl1) > 5 ? "#FF9800" : "#E91E63" },
-                    { label: "I TRM 2", value: engineData.ignTrimCyl2.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl2) > 5 ? "#FF9800" : "#E91E63" },
-                    { label: "I TRM 3", value: engineData.ignTrimCyl3.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl3) > 5 ? "#FF9800" : "#E91E63" },
-                    { label: "I TRM 4", value: engineData.ignTrimCyl4.toFixed(1), unit: "°", color: Math.abs(engineData.ignTrimCyl4) > 5 ? "#FF9800" : "#E91E63" },
-                    { label: "ENGINE", value: engineData.engineRunning ? "RUN" : "OFF", unit: "", color: engineData.engineRunning ? "#4CAF50" : "#9E9E9E" },
+                // Row 3
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "IGN ADV"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ignitionAdvance.toFixed(1) : "0"; color: "#E91E63"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "INJ DC"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.injectorDuty.toFixed(0) : "0"; color: "#FF9800"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "BATT"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.batteryVoltage.toFixed(1) : "12.0"; color: "#00E676"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " V"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "FUEL P"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? (eData.fuelPressure / 100).toFixed(1) : "0"; color: "#00BCD4"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " bar"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "OIL P"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? (eData.oilPressure / 100).toFixed(1) : "0"; color: "#FFB300"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " bar"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
 
-                    // Row 6: Idle/Diag/Status
-                    { label: "IDLE TGT", value: engineData.idleTargetRpm.toFixed(0), unit: "rpm", color: "#9E9E9E" },
-                    { label: "IAC", value: engineData.idleValveDuty.toFixed(0), unit: "%", color: "#9E9E9E" },
-                    { label: "ERRORS", value: engineData.errorCount.toFixed(0), unit: "", color: engineData.errorCount > 0 ? "#F44336" : "#4CAF50" },
-                    { label: "SYNC", value: engineData.synced ? "OK" : "LOST", unit: "", color: engineData.synced ? "#4CAF50" : "#F44336" },
-                    { label: "CONS", value: engineData.fuelConsumption.toFixed(1), unit: "L/h", color: "#9E9E9E" }
-                ]
+                // Row 4
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "F TRM 1"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.fuelTrimCyl1.toFixed(0) : "0"; color: "#4CAF50"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "F TRM 2"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.fuelTrimCyl2.toFixed(0) : "0"; color: "#4CAF50"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "F TRM 3"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.fuelTrimCyl3.toFixed(0) : "0"; color: "#4CAF50"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "F TRM 4"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.fuelTrimCyl4.toFixed(0) : "0"; color: "#4CAF50"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "OIL T"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.oilTemp.toFixed(0) : "0"; color: "#FFB300"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °C"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 6
-                    color: "#141414"
-                    border.color: "#1e1e1e"
-                    border.width: 1
+                // Row 5
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "I TRM 1"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ignTrimCyl1.toFixed(1) : "0"; color: "#E91E63"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "I TRM 2"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ignTrimCyl2.toFixed(1) : "0"; color: "#E91E63"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "I TRM 3"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ignTrimCyl3.toFixed(1) : "0"; color: "#E91E63"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "I TRM 4"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.ignTrimCyl4.toFixed(1) : "0"; color: "#E91E63"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " °"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "ENGINE"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData && eData.engineRunning ? "RUN" : "OFF"; color: eData && eData.engineRunning ? "#4CAF50" : "#9E9E9E"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
 
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 2
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.label
-                            color: "#666666"
-                            font.pixelSize: 10
-                            font.bold: true
-                            font.letterSpacing: 0.5
-                        }
-
-                        Row {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 2
-
-                            Text {
-                                text: modelData.value
-                                color: modelData.color
-                                font.pixelSize: 22
-                                font.bold: true
-                                font.family: "Roboto Mono, Consolas, monospace"
-                            }
-
-                            Text {
-                                visible: modelData.unit !== ""
-                                text: modelData.unit
-                                color: "#555555"
-                                font.pixelSize: 9
-                                anchors.bottom: parent.children[0].bottom
-                                anchors.bottomMargin: 2
-                            }
-                        }
+                // Row 6
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "IDLE TGT"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.idleTargetRpm.toFixed(0) : "0"; color: "#9E9E9E"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " rpm"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "IAC"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.idleValveDuty.toFixed(0) : "0"; color: "#9E9E9E"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " %"; color: "#555"; font.pixelSize: 9 } }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "ERRORS"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData ? eData.errorCount.toFixed(0) : "0"; color: eData && eData.errorCount > 0 ? "#F44336" : "#4CAF50"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "SYNC"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: eData && eData.synced ? "OK" : "LOST"; color: eData && eData.synced ? "#4CAF50" : "#F44336"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; radius: 6; color: "#141414"; border.color: "#1e1e1e"
+                    Column { anchors.centerIn: parent; spacing: 2
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "CONS"; color: "#666"; font.pixelSize: 10; font.bold: true }
+                        Row { anchors.horizontalCenter: parent.horizontalCenter; Text { text: eData ? eData.fuelConsumption.toFixed(1) : "0"; color: "#9E9E9E"; font.pixelSize: 20; font.bold: true; font.family: "Roboto Mono" } Text { text: " L/h"; color: "#555"; font.pixelSize: 9 } }
                     }
                 }
             }
-        }
         }
     }
 
@@ -1122,9 +1296,9 @@ Item {
             }
         }
 
-        // Low Oil Pressure Warning
+        // Low Oil Pressure Warning (disabled - no real data yet)
         Rectangle {
-            visible: engineData.lowOilPressure
+            visible: false // engineData.lowOilPressure
             width: 160
             height: 32
             radius: 16
@@ -1205,9 +1379,9 @@ Item {
             }
         }
 
-        // Low Fuel Pressure Warning
+        // Low Fuel Pressure Warning (disabled - no real data yet)
         Rectangle {
-            visible: engineData.lowFuelPressure
+            visible: false // engineData.lowFuelPressure
             width: lowFuelText.width + 28
             height: 28
             radius: 14
