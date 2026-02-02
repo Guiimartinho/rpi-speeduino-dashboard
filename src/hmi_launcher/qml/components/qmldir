@@ -33,6 +33,10 @@ SplashScreen 1.0 SplashScreen.qml
 GForceMeter 1.0 GForceMeter.qml
 ChartGauge 1.0 ChartGauge.qml
 VEMapDisplay 1.0 VEMapDisplay.qml
+VETableMini 1.0 VETableMini.qml
+VETable3D 1.0 VETable3D.qml
+AFRHistogram 1.0 AFRHistogram.qml
+ProgressiveShiftBar 1.0 ProgressiveShiftBar.qml
 
 # ═══════════════════════════════════════════════════════════════
 # TIMING & PERFORMANCE
