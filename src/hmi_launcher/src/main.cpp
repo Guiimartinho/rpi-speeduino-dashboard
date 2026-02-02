@@ -2,6 +2,7 @@
 #include "hmi/camera_controller.hpp"
 #include "hmi/data_provider.hpp"
 #include "hmi/openauto_embedded.hpp"
+#include "hmi/system_monitor.hpp"
 
 #include "common/config_loader.hpp"
 
@@ -115,14 +116,31 @@ int main(int argc, char* argv[]) {
     speeduino::CameraController cameraController;
     speeduino::OpenAutoEmbedded openAutoEmbedded;
     speeduino::BrandingManager brandingManager;
+    hmi::SystemMonitor systemMonitor;
 
     // RAII cleanup - ensures resources are released even on early exit
     ApplicationCleanup cleanup(dataProvider, cameraController, openAutoEmbedded);
 
-    // Configure camera
-    cameraController.setDevice("/dev/video0");
-    cameraController.setResolution(640, 480);
-    cameraController.setFramerate(30);
+    // Configure camera from system.yaml
+    const auto& sysConfig = speeduino::ConfigLoader::getSystemConfig();
+    cameraController.setDevice(QString::fromStdString(sysConfig.camera_device));
+    cameraController.setVideoStandard(QString::fromStdString(sysConfig.camera_standard));
+    cameraController.setResolution(sysConfig.camera_width, sysConfig.camera_height);
+    cameraController.setFramerate(sysConfig.camera_fps);
+    cameraController.setCompositeInput(sysConfig.camera_input);
+
+    // Configure test mode (simulated camera when no hardware available)
+    if (sysConfig.camera_test_mode) {
+        cameraController.setTestMode(true);
+        cameraController.setTestPattern(QString::fromStdString(sysConfig.camera_test_pattern));
+        qInfo() << "[Main] Camera TEST MODE enabled with pattern:"
+                << sysConfig.camera_test_pattern.c_str();
+    } else {
+        qInfo() << "[Main] Camera configured:" << sysConfig.camera_device.c_str()
+                << sysConfig.camera_standard.c_str()
+                << sysConfig.camera_width << "x" << sysConfig.camera_height
+                << "@" << sysConfig.camera_fps << "fps";
+    }
 
     // Configure embedded OpenAuto (ALWAYS embedded, never process-based)
     // NOTE: Use VIDEO resolution (800x480), not container size (800x380).
@@ -140,6 +158,7 @@ int main(int argc, char* argv[]) {
     rootContext->setContextProperty("cameraController", &cameraController);
     rootContext->setContextProperty("openAutoEmbedded", &openAutoEmbedded);
     rootContext->setContextProperty("brandingManager", &brandingManager);
+    rootContext->setContextProperty("systemMonitor", &systemMonitor);
     rootContext->setContextProperty("isFullscreen", fullscreen);
 
     // Load main QML

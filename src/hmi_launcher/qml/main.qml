@@ -38,10 +38,9 @@ ApplicationWindow {
     // ═══════════════════════════════════════════════════════════════
     // These can have fallback values for QML preview mode:
     property var dataProvider: null
-    property var systemMonitor: null
     property var cameraController: null
     property var canService: null
-    // DO NOT declare: openAutoEmbedded, isFullscreen
+    // DO NOT declare: openAutoEmbedded, isFullscreen, systemMonitor
     // (they must come from C++ context properties)
     // NOTE: openAutoController was removed - we ALWAYS use embedded mode now
 
@@ -131,15 +130,28 @@ ApplicationWindow {
     // Sync with CameraController
     Connections {
         target: cameraController
-        enabled: cameraController !== undefined
+        enabled: cameraController !== undefined && cameraController !== null
 
-        function onCameraAvailableChanged() {
-            State.AppState.cameraAvailable = cameraController.cameraAvailable
+        function onAvailableChanged() {
+            State.AppState.cameraAvailable = cameraController.available
             State.AppState.updateSystemMode()
         }
 
-        function onCameraActiveChanged() {
-            State.AppState.cameraActive = cameraController.cameraActive
+        function onActiveChanged() {
+            State.AppState.cameraActive = cameraController.active
+        }
+
+        function onCameraReady() {
+            console.log("Main: Camera ready")
+        }
+
+        function onCameraError(message) {
+            console.log("Main: Camera error -", message)
+            notificationPopup.show("Camera Error", message, Components.NotificationPopup.Warning)
+        }
+
+        function onCameraDisconnected() {
+            console.log("Main: Camera disconnected")
         }
     }
 

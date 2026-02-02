@@ -217,6 +217,13 @@ Item {
                             visible: State.AppState.cameraActive
                         }
 
+                        // Test mode indicator
+                        StatusBadge {
+                            text: "TEST MODE"
+                            color: "#ff9900"
+                            visible: typeof cameraController !== "undefined" && cameraController && cameraController.testMode
+                        }
+
                         Item { Layout.fillWidth: true }
 
                         ConfigButton {
@@ -251,46 +258,82 @@ Item {
                 title: "System"
                 iconText: "\u2139"  // ℹ
 
+                Component.onCompleted: {
+                    console.log("ConfigScreen: systemMonitor =", systemMonitor)
+                    if (systemMonitor) {
+                        console.log("ConfigScreen: hostname =", systemMonitor.hostname)
+                        console.log("ConfigScreen: cpuTemp =", systemMonitor.cpuTemp)
+                    }
+                }
+
                 GridLayout {
                     width: parent.width
-                    columns: 2
+                    columns: 4
                     rowSpacing: Styles.Theme.spacingXs
                     columnSpacing: Styles.Theme.spacingLg
 
+                    // Linha 1: Hostname e Kernel
+                    ConfigLabel { text: "Hostname:" }
+                    ConfigValue {
+                        text: systemMonitor && systemMonitor.hostname ? systemMonitor.hostname : "N/A"
+                        valueColor: Styles.Theme.accentPrimary
+                    }
+
+                    ConfigLabel { text: "Kernel:" }
+                    ConfigValue {
+                        text: systemMonitor && systemMonitor.kernelVersion ? systemMonitor.kernelVersion : "N/A"
+                    }
+
+                    // Linha 2: CPU Temp e CPU Usage
                     ConfigLabel { text: "CPU Temp:" }
                     ConfigValue {
-                        text: configScreen.systemInfo.cpuTemp.toFixed(1) + "\u00B0C"
-                        valueColor: configScreen.systemInfo.cpuTemp > 70
+                        property real temp: systemMonitor ? systemMonitor.cpuTemp : 0
+                        text: temp.toFixed(1) + "\u00B0C"
+                        valueColor: temp > 70
                                    ? Styles.Theme.statusCritical
-                                   : configScreen.systemInfo.cpuTemp > 60
+                                   : temp > 60
                                      ? Styles.Theme.statusWarning
                                      : Styles.Theme.textPrimary
                     }
 
                     ConfigLabel { text: "CPU Usage:" }
                     ConfigValue {
-                        text: configScreen.systemInfo.cpuUsage.toFixed(0) + "%"
-                        valueColor: configScreen.systemInfo.cpuUsage > 80
+                        property real usage: systemMonitor ? systemMonitor.cpuUsage : 0
+                        text: usage.toFixed(0) + "%"
+                        valueColor: usage > 80
                                    ? Styles.Theme.statusWarning
                                    : Styles.Theme.textPrimary
                     }
 
+                    // Linha 3: Memory e Disk
                     ConfigLabel { text: "Memory:" }
                     ConfigValue {
-                        text: configScreen.systemInfo.memUsage.toFixed(0) + "%"
-                        valueColor: configScreen.systemInfo.memUsage > 85
+                        property real mem: systemMonitor ? systemMonitor.memUsage : 0
+                        text: mem.toFixed(0) + "%"
+                        valueColor: mem > 85
                                    ? Styles.Theme.statusWarning
                                    : Styles.Theme.textPrimary
                     }
 
+                    ConfigLabel { text: "Disk:" }
+                    ConfigValue {
+                        property real disk: systemMonitor ? systemMonitor.diskUsage : 0
+                        text: disk.toFixed(0) + "%"
+                        valueColor: disk > 90
+                                   ? Styles.Theme.statusCritical
+                                   : disk > 80
+                                     ? Styles.Theme.statusWarning
+                                     : Styles.Theme.textPrimary
+                    }
+
+                    // Linha 4: Uptime e Display
                     ConfigLabel { text: "Uptime:" }
-                    ConfigValue { text: configScreen.systemInfo.uptime }
+                    ConfigValue {
+                        text: systemMonitor && systemMonitor.uptime ? systemMonitor.uptime : "0:00:00"
+                    }
 
                     ConfigLabel { text: "Display:" }
                     ConfigValue { text: Styles.Theme.windowWidth + "x" + Styles.Theme.windowHeight }
-
-                    ConfigLabel { text: "Scale:" }
-                    ConfigValue { text: (Styles.Theme.scale * 100).toFixed(0) + "%" }
                 }
             }
 

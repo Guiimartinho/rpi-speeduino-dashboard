@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtMultimedia
 import "../styles" as Styles
 import "../state" as State
 
@@ -8,11 +9,12 @@ import "../state" as State
  * Full-screen reverse camera overlay with highest priority
  *
  * Features:
- * - Fullscreen camera feed
- * - Parking guide lines overlay
+ * - Fullscreen camera feed via Qt6 VideoOutput
+ * - Parking guide lines overlay (Canvas)
  * - Warning indicators
  * - Auto-dismiss when reverse disengaged
  * - Quick dismiss button for manual close
+ * - Graceful handling when camera unavailable
  */
 Item {
     id: reverseOverlay
@@ -21,8 +23,35 @@ Item {
     visible: State.AppState.currentOverlay === State.AppState.overlayReverseCamera
     z: 1000  // Highest z-index to overlay everything
 
-    // Camera status
-    property bool cameraReady: State.AppState.cameraAvailable
+    // Camera status - use cameraController directly
+    property bool cameraReady: typeof cameraController !== "undefined" && cameraController && cameraController.available
+    property bool cameraActive: typeof cameraController !== "undefined" && cameraController && cameraController.active
+    property bool cameraTestMode: typeof cameraController !== "undefined" && cameraController && cameraController.testMode
+
+    // Connect video sink when overlay becomes visible
+    onVisibleChanged: {
+        if (visible) {
+            connectVideoSink()
+            if (cameraReady && typeof cameraController !== "undefined" && cameraController) {
+                cameraController.start()
+            }
+        } else {
+            if (typeof cameraController !== "undefined" && cameraController) {
+                cameraController.stop()
+            }
+        }
+    }
+
+    // Retry connecting video sink
+    function connectVideoSink() {
+        if (typeof cameraController !== "undefined" && cameraController && cameraVideoOutput.videoSink) {
+            console.log("ReverseOverlay: Connecting video sink")
+            cameraController.setVideoSink(cameraVideoOutput.videoSink)
+        } else {
+            // Retry on next frame
+            Qt.callLater(connectVideoSink)
+        }
+    }
 
     // Fade in/out animation
     opacity: visible ? 1.0 : 0.0
@@ -45,12 +74,15 @@ Item {
         anchors.fill: parent
         color: "black"
 
-        // Placeholder for actual camera feed
-        // In production, this is replaced by GStreamer/Qt Multimedia VideoOutput
-        Item {
-            id: cameraVideoPlaceholder
+        // Qt6 VideoOutput for camera feed
+        VideoOutput {
+            id: cameraVideoOutput
             anchors.fill: parent
-            objectName: "reverseCameraVideoSurface"  // C++ looks for this
+            fillMode: VideoOutput.PreserveAspectCrop
+            visible: reverseOverlay.cameraActive
+
+            // Mirror the video horizontally for rear-view effect (optional)
+            // transform: Scale { xScale: -1; origin.x: cameraVideoOutput.width / 2 }
         }
 
         // Camera unavailable message
@@ -78,8 +110,30 @@ Item {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Check camera connection"
+                text: typeof cameraController !== "undefined" && cameraController
+                      ? cameraController.statusMessage
+                      : "Check camera connection"
                 font.pixelSize: Styles.Theme.fontMd
+                color: Styles.Theme.textSecondary
+            }
+        }
+
+        // Loading indicator when camera is starting
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: Styles.Theme.spacingMd
+            visible: reverseOverlay.cameraReady && !reverseOverlay.cameraActive
+
+            BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+                running: parent.visible
+                palette.dark: Styles.Theme.accentPrimary
+            }
+
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Starting camera..."
+                font.pixelSize: Styles.Theme.fontLg
                 color: Styles.Theme.textSecondary
             }
         }
@@ -89,7 +143,7 @@ Item {
     Canvas {
         id: parkingGuides
         anchors.fill: parent
-        visible: reverseOverlay.cameraReady
+        visible: reverseOverlay.cameraActive
 
         onPaint: {
             var ctx = getContext("2d")
@@ -230,10 +284,11 @@ Item {
             // Camera status
             Text {
                 Layout.alignment: Qt.AlignVCenter
-                text: reverseOverlay.cameraReady ? "CAM OK" : "CAM ERR"
+                text: reverseOverlay.cameraActive ? "CAM OK" : (reverseOverlay.cameraReady ? "STARTING" : "CAM ERR")
                 font.pixelSize: Styles.Theme.fontSm
                 font.weight: Styles.Theme.fontWeightBold
-                color: reverseOverlay.cameraReady ? Styles.Theme.statusOk : Styles.Theme.statusCritical
+                color: reverseOverlay.cameraActive ? Styles.Theme.statusOk
+                     : (reverseOverlay.cameraReady ? Styles.Theme.statusWarning : Styles.Theme.statusCritical)
             }
         }
     }
@@ -261,6 +316,36 @@ Item {
             id: closeButtonMouse
             anchors.fill: parent
             onClicked: State.AppState.hideReverseCamera()
+        }
+    }
+
+    // Test mode indicator badge
+    Rectangle {
+        id: testModeBadge
+        anchors.top: topBar.bottom
+        anchors.left: parent.left
+        anchors.margins: Styles.Theme.spacingMd
+        width: testModeLabel.width + Styles.Theme.spacingMd * 2
+        height: Styles.Theme.dp(28)
+        radius: Styles.Theme.radiusSmall
+        color: "#ff9900"  // Orange for test mode
+        visible: reverseOverlay.cameraTestMode
+
+        Text {
+            id: testModeLabel
+            anchors.centerIn: parent
+            text: "TEST MODE"
+            font.pixelSize: Styles.Theme.fontSm
+            font.weight: Styles.Theme.fontWeightBold
+            color: "#000000"
+        }
+
+        // Subtle pulse animation
+        SequentialAnimation on opacity {
+            running: testModeBadge.visible
+            loops: Animation.Infinite
+            NumberAnimation { to: 0.7; duration: 800 }
+            NumberAnimation { to: 1.0; duration: 800 }
         }
     }
 
@@ -292,7 +377,7 @@ Item {
         font.pixelSize: Styles.Theme.fontSm
         color: Styles.Theme.textSecondary
         opacity: hintTimer.running ? 0 : 0.7
-        visible: reverseOverlay.cameraReady
+        visible: reverseOverlay.cameraActive
 
         Timer {
             id: hintTimer
