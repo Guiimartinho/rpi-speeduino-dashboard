@@ -24,6 +24,7 @@
 
 #include <QMutex>
 #include <QObject>
+#include <QPointer>
 #include <QVideoFrame>
 #include <QVideoSink>
 #include <atomic>
@@ -120,7 +121,7 @@ public:
      */
     QVideoSink* videoSink() const {
         QMutexLocker locker(&m_mutex);
-        return m_videoSink;
+        return m_videoSink.data();
     }
 
     /**
@@ -169,7 +170,8 @@ private:
     void handleDecodedFrame(GstSample* sample);
 
     // Video sink (owned by QML VideoOutput)
-    QVideoSink* m_videoSink{nullptr};
+    // Using QPointer so it auto-nullifies when VideoOutput is destroyed
+    QPointer<QVideoSink> m_videoSink;
 
     // GStreamer pipeline components
     GstElement* m_pipeline{nullptr};
