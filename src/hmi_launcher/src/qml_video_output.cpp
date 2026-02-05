@@ -303,14 +303,25 @@ bool QMLVideoOutput::init() {
 }
 
 void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuffer& buffer) {
+    // DEBUG: Log EVERY write call to diagnose why no data is arriving
+    static int totalWriteCalls = 0;
+    totalWriteCalls++;
+    if (totalWriteCalls <= 5 || totalWriteCalls % 100 == 0) {
+        qInfo() << "[QMLVideoOutput] write() called #" << totalWriteCalls
+                << " size:" << buffer.size << " opened:" << m_opened.load()
+                << " appSrc:" << (m_appSrc != nullptr);
+    }
+
     if (!m_opened.load() || !m_appSrc) {
+        qWarning() << "[QMLVideoOutput] write() SKIPPED: opened=" << m_opened.load()
+                   << " appSrc=" << (m_appSrc != nullptr);
         return;
     }
 
     // Debug: log every 30th frame to avoid spam
     static int writeCount = 0;
     if (++writeCount % 30 == 1) {
-        qDebug() << "[QMLVideoOutput] write() called, size:" << buffer.size << "bytes, frame#"
+        qDebug() << "[QMLVideoOutput] write() processing, size:" << buffer.size << "bytes, frame#"
                  << writeCount;
     }
 
