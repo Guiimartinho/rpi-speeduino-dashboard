@@ -33,16 +33,11 @@ ApplicationWindow {
 
     // ═══════════════════════════════════════════════════════════════
     // C++ CONTEXT PROPERTIES (injected by main.cpp)
-    // NOTE: openAutoEmbedded comes ONLY from C++ context
-    // (declaring local properties with same name would override them!)
+    // CRITICAL: Do NOT declare local properties with same names - they shadow C++ context!
     // ═══════════════════════════════════════════════════════════════
-    // These can have fallback values for QML preview mode:
-    property var dataProvider: null
-    property var cameraController: null
-    property var canService: null
-    // DO NOT declare: openAutoEmbedded, isFullscreen, systemMonitor
-    // (they must come from C++ context properties)
-    // NOTE: openAutoController was removed - we ALWAYS use embedded mode now
+    // Context properties from C++: dataProvider, cameraController, openAutoEmbedded,
+    //                              brandingManager, systemMonitor, isFullscreen
+    // These are automatically available from main.cpp setContextProperty calls.
 
     // Fullscreen mode (controlled by C++ isFullscreen property)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
@@ -52,6 +47,27 @@ ApplicationWindow {
         Styles.Theme.windowWidth = Qt.binding(function() { return window.width })
         Styles.Theme.windowHeight = Qt.binding(function() { return window.height })
         console.log("Main: Window initialized", window.width, "x", window.height)
+
+        // Initialize camera state using timer (context properties need a frame to settle)
+        cameraInitTimer.start()
+    }
+
+    // Timer to initialize camera state after QML is fully loaded
+    // (the availableChanged signal may fire before QML Connections are set up)
+    Timer {
+        id: cameraInitTimer
+        interval: 100  // 100ms delay
+        repeat: false
+        onTriggered: {
+            if (cameraController) {
+                State.AppState.cameraAvailable = cameraController.available
+                State.AppState.cameraActive = cameraController.active
+                console.log("Main: Camera state initialized - available:", cameraController.available,
+                            "active:", cameraController.active, "testMode:", cameraController.testMode)
+            } else {
+                console.log("Main: cameraController not available")
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
