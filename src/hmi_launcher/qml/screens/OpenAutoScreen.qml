@@ -64,9 +64,17 @@ Item {
         }
     }
 
-    // HIGH FIX: Track video sink connection retries to prevent infinite loops
+    // Track video sink connection retries
     property int _videoSinkRetryCount: 0
-    readonly property int _maxVideoSinkRetries: 10  // Maximum retry attempts
+    readonly property int _maxVideoSinkRetries: 20  // Increased for reliability
+
+    // Timer for delayed video sink connection (more reliable than Qt.callLater)
+    Timer {
+        id: videoSinkRetryTimer
+        interval: 50  // 50ms between retries
+        repeat: false
+        onTriggered: connectVideoSink()
+    }
 
     // Helper function to connect video sink with retry limit
     function connectVideoSink() {
@@ -75,7 +83,7 @@ Item {
             openAutoEmbedded.qmlVideoOutput.setVideoSink(openAutoVideoOutput.videoSink)
             _videoSinkRetryCount = 0  // Reset on success
         } else {
-            // HIGH FIX: Limit retry attempts to prevent infinite loop
+            // Limit retry attempts to prevent infinite loop
             _videoSinkRetryCount++
             if (_videoSinkRetryCount >= _maxVideoSinkRetries) {
                 console.error("OpenAutoScreen: Failed to connect video sink after",
@@ -84,17 +92,18 @@ Item {
                 return
             }
             console.log("OpenAutoScreen: Video sink not ready, retry", _videoSinkRetryCount, "of", _maxVideoSinkRetries)
-            Qt.callLater(connectVideoSink)
+            // Use Timer for more reliable timing than Qt.callLater
+            videoSinkRetryTimer.start()
         }
     }
 
     Component.onDestruction: {
         if (useEmbedded && openAutoEmbedded) {
             openAutoEmbedded.setVideoVisible(false)
-            // MEDIUM FIX: Disconnect video sink on destruction to prevent dangling references
-            if (openAutoEmbedded.qmlVideoOutput) {
-                openAutoEmbedded.qmlVideoOutput.setVideoSink(null)
-            }
+            // NOTE: Do NOT set videoSink to null here!
+            // The C++ side uses QPointer<QVideoSink> which auto-nullifies when
+            // the QML VideoOutput is destroyed. Setting to null manually caused
+            // the video to stay black when navigating back to this screen.
         }
         // Reset retry counter on destruction
         _videoSinkRetryCount = 0
