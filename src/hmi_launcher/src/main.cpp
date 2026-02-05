@@ -142,6 +142,16 @@ int main(int argc, char* argv[]) {
                 << "@" << sysConfig.camera_fps << "fps";
     }
 
+    // Configure parking guide lines from system.yaml
+    cameraController.setShowGuides(sysConfig.camera_show_guides);
+    cameraController.setGuideBottomWidth(sysConfig.guide_bottom_width);
+    cameraController.setGuideTopWidth(sysConfig.guide_top_width);
+    cameraController.setGuideBottomY(sysConfig.guide_bottom_y);
+    cameraController.setGuideTopY(sysConfig.guide_top_y);
+    cameraController.setGuideDistance1(sysConfig.guide_distance_1);
+    cameraController.setGuideDistance2(sysConfig.guide_distance_2);
+    cameraController.setGuideDistance3(sysConfig.guide_distance_3);
+
     // Configure embedded OpenAuto (ALWAYS embedded, never process-based)
     // NOTE: Use VIDEO resolution (800x480), not container size (800x380).
     // QML transforms touch from container space to video space - C++ must use video dimensions.

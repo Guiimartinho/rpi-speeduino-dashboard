@@ -235,10 +235,76 @@ QString CameraController::buildTestPipelineString() const {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Parking guide line configuration
+// ═══════════════════════════════════════════════════════════════════════════════
+
+void CameraController::setGuideBottomWidth(double value) {
+    if (m_guideBottomWidth != value) {
+        m_guideBottomWidth = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideTopWidth(double value) {
+    if (m_guideTopWidth != value) {
+        m_guideTopWidth = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideBottomY(double value) {
+    if (m_guideBottomY != value) {
+        m_guideBottomY = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideTopY(double value) {
+    if (m_guideTopY != value) {
+        m_guideTopY = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideDistance1(double value) {
+    if (m_guideDistance1 != value) {
+        m_guideDistance1 = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideDistance2(double value) {
+    if (m_guideDistance2 != value) {
+        m_guideDistance2 = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setGuideDistance3(double value) {
+    if (m_guideDistance3 != value) {
+        m_guideDistance3 = value;
+        emit guideChanged();
+    }
+}
+
+void CameraController::setShowGuides(bool show) {
+    if (m_showGuides != show) {
+        m_showGuides = show;
+        emit guideChanged();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Device availability
 // ═══════════════════════════════════════════════════════════════════════════════
 
 bool CameraController::checkAvailability() {
+    // In test mode, camera is always "available" - don't check real device
+    if (m_testMode) {
+        setAvailable(true);
+        return true;
+    }
+
     // Check if device file exists
     if (!QFile::exists(m_device)) {
         setStatus("Camera not connected");
@@ -299,6 +365,12 @@ bool CameraController::checkAvailability() {
 }
 
 void CameraController::onDeviceCheckTimer() {
+    // Skip device checks in test mode
+    if (m_testMode) {
+        m_deviceCheckTimer->stop();
+        return;
+    }
+
     // Only check if not active and not available
     if (!m_active.load() && !m_available.load()) {
         checkAvailability();

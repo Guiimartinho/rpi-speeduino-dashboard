@@ -157,6 +157,17 @@ struct SystemConfig {
     bool camera_test_mode        = false;         // Enable simulated camera
     std::string camera_test_pattern = "ball";     // Test pattern: ball, smpte, snow, etc.
 
+    // Parking guide line calibration (adjust for your car's rear camera position)
+    // All values are percentages (0.0 to 1.0) of screen dimensions
+    double guide_bottom_width    = 0.8;           // Width at bottom of screen (80%)
+    double guide_top_width       = 0.4;           // Width at top/far end (40%)
+    double guide_bottom_y        = 0.95;          // Y position of bottom line (95%)
+    double guide_top_y           = 0.45;          // Y position of top line (45%)
+    // Distance markers in meters (adjust based on camera mounting height/angle)
+    double guide_distance_1      = 0.5;           // Near marker (green)
+    double guide_distance_2      = 1.0;           // Middle marker (yellow)
+    double guide_distance_3      = 1.5;           // Far marker (red)
+
     // OpenAuto path
     std::string openauto_path = "/usr/local/bin/openauto";
 

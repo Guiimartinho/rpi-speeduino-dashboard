@@ -70,6 +70,16 @@ class CameraController : public QObject {
     Q_PROPERTY(bool testMode READ isTestMode WRITE setTestMode NOTIFY testModeChanged)
     Q_PROPERTY(QString testPattern READ testPattern WRITE setTestPattern NOTIFY testPatternChanged)
 
+    // Parking guide line calibration (read from config, editable at runtime)
+    Q_PROPERTY(double guideBottomWidth READ guideBottomWidth WRITE setGuideBottomWidth NOTIFY guideChanged)
+    Q_PROPERTY(double guideTopWidth READ guideTopWidth WRITE setGuideTopWidth NOTIFY guideChanged)
+    Q_PROPERTY(double guideBottomY READ guideBottomY WRITE setGuideBottomY NOTIFY guideChanged)
+    Q_PROPERTY(double guideTopY READ guideTopY WRITE setGuideTopY NOTIFY guideChanged)
+    Q_PROPERTY(double guideDistance1 READ guideDistance1 WRITE setGuideDistance1 NOTIFY guideChanged)
+    Q_PROPERTY(double guideDistance2 READ guideDistance2 WRITE setGuideDistance2 NOTIFY guideChanged)
+    Q_PROPERTY(double guideDistance3 READ guideDistance3 WRITE setGuideDistance3 NOTIFY guideChanged)
+    Q_PROPERTY(bool showGuides READ showGuides WRITE setShowGuides NOTIFY guideChanged)
+
 public:
     explicit CameraController(QObject* parent = nullptr);
     ~CameraController() override;
@@ -88,6 +98,16 @@ public:
     QVideoSink* videoSink() const;
     bool isTestMode() const { return m_testMode; }
     QString testPattern() const { return m_testPattern; }
+
+    // Parking guide line getters
+    double guideBottomWidth() const { return m_guideBottomWidth; }
+    double guideTopWidth() const { return m_guideTopWidth; }
+    double guideBottomY() const { return m_guideBottomY; }
+    double guideTopY() const { return m_guideTopY; }
+    double guideDistance1() const { return m_guideDistance1; }
+    double guideDistance2() const { return m_guideDistance2; }
+    double guideDistance3() const { return m_guideDistance3; }
+    bool showGuides() const { return m_showGuides; }
 
     // ═══════════════════════════════════════════════════════════════════════
     // Configuration (call before start)
@@ -127,6 +147,16 @@ public:
      */
     Q_INVOKABLE QStringList availableTestPatterns() const;
 
+    // Parking guide line setters (for runtime calibration)
+    Q_INVOKABLE void setGuideBottomWidth(double value);
+    Q_INVOKABLE void setGuideTopWidth(double value);
+    Q_INVOKABLE void setGuideBottomY(double value);
+    Q_INVOKABLE void setGuideTopY(double value);
+    Q_INVOKABLE void setGuideDistance1(double value);
+    Q_INVOKABLE void setGuideDistance2(double value);
+    Q_INVOKABLE void setGuideDistance3(double value);
+    Q_INVOKABLE void setShowGuides(bool show);
+
     // ═══════════════════════════════════════════════════════════════════════
     // Control
     // ═══════════════════════════════════════════════════════════════════════
@@ -157,6 +187,7 @@ signals:
     void videoSinkChanged();
     void testModeChanged();
     void testPatternChanged();
+    void guideChanged();  // Emitted when any guide property changes
 
     // High-level events
     void cameraReady();
@@ -205,6 +236,16 @@ private:
     // Test/simulation mode
     bool m_testMode{false};
     QString m_testPattern{"ball"};  // Default: moving ball animation
+
+    // Parking guide line configuration (percentages 0.0-1.0)
+    double m_guideBottomWidth{0.8};   // Width at bottom of screen
+    double m_guideTopWidth{0.4};      // Width at top/far end
+    double m_guideBottomY{0.95};      // Y position of bottom line
+    double m_guideTopY{0.45};         // Y position of top line
+    double m_guideDistance1{0.5};     // Near marker distance (meters)
+    double m_guideDistance2{1.0};     // Middle marker distance
+    double m_guideDistance3{1.5};     // Far marker distance
+    bool m_showGuides{true};          // Show/hide guide lines
 
     // ═══════════════════════════════════════════════════════════════════════
     // State

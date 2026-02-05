@@ -140,11 +140,27 @@ Item {
         }
     }
 
+    // Parking guide line configuration from cameraController (or defaults)
+    property double guideBottomWidth: typeof cameraController !== "undefined" && cameraController ? cameraController.guideBottomWidth : 0.8
+    property double guideTopWidth: typeof cameraController !== "undefined" && cameraController ? cameraController.guideTopWidth : 0.4
+    property double guideBottomY: typeof cameraController !== "undefined" && cameraController ? cameraController.guideBottomY : 0.95
+    property double guideTopY: typeof cameraController !== "undefined" && cameraController ? cameraController.guideTopY : 0.45
+    property double guideDistance1: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance1 : 0.5
+    property double guideDistance2: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance2 : 1.0
+    property double guideDistance3: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance3 : 1.5
+    property bool showGuides: typeof cameraController !== "undefined" && cameraController ? cameraController.showGuides : true
+
     // Parking guide lines overlay
     Canvas {
         id: parkingGuides
         anchors.fill: parent
-        visible: reverseOverlay.cameraActive
+        visible: reverseOverlay.cameraActive && reverseOverlay.showGuides
+
+        // Repaint when guide configuration changes
+        Connections {
+            target: typeof cameraController !== "undefined" && cameraController ? cameraController : null
+            function onGuideChanged() { parkingGuides.requestPaint() }
+        }
 
         onPaint: {
             var ctx = getContext("2d")
@@ -157,11 +173,11 @@ Item {
             ctx.lineWidth = 3
             ctx.lineCap = "round"
 
-            // Calculate guide positions (trapezoidal shape)
-            var bottomY = h * 0.95
-            var topY = h * 0.45
-            var bottomWidth = w * 0.8
-            var topWidth = w * 0.4
+            // Calculate guide positions from configurable values (trapezoidal shape)
+            var bottomY = h * reverseOverlay.guideBottomY
+            var topY = h * reverseOverlay.guideTopY
+            var bottomWidth = w * reverseOverlay.guideBottomWidth
+            var topWidth = w * reverseOverlay.guideTopWidth
 
             var leftBottomX = (w - bottomWidth) / 2
             var rightBottomX = leftBottomX + bottomWidth
@@ -174,14 +190,18 @@ Item {
             // Right guide line
             drawGuideLine(ctx, rightBottomX, bottomY, rightTopX, topY, false)
 
-            // Horizontal distance markers
-            drawDistanceMarker(ctx, leftBottomX, rightBottomX, h * 0.85, "0.5m", "#00ff00")
+            // Horizontal distance markers with configurable distances
+            var dist1Label = reverseOverlay.guideDistance1.toFixed(1) + "m"
+            var dist2Label = reverseOverlay.guideDistance2.toFixed(1) + "m"
+            var dist3Label = reverseOverlay.guideDistance3.toFixed(1) + "m"
+
+            drawDistanceMarker(ctx, leftBottomX, rightBottomX, h * 0.85, dist1Label, "#00ff00")
             drawDistanceMarker(ctx, leftBottomX + (leftTopX - leftBottomX) * 0.33,
                               rightBottomX + (rightTopX - rightBottomX) * 0.33,
-                              h * 0.7, "1m", "#ffaa00")
+                              h * 0.7, dist2Label, "#ffaa00")
             drawDistanceMarker(ctx, leftBottomX + (leftTopX - leftBottomX) * 0.66,
                               rightBottomX + (rightTopX - rightBottomX) * 0.66,
-                              h * 0.55, "1.5m", "#ff0000")
+                              h * 0.55, dist3Label, "#ff0000")
         }
 
         function drawGuideLine(ctx, x1, y1, x2, y2, isLeft) {

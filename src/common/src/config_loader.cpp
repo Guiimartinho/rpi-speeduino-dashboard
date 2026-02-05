@@ -207,6 +207,22 @@ bool ConfigLoader::loadSystemConfig(std::string_view path) {
                 s_systemConfig.camera_test_mode = cam["test_mode"].as<bool>();
             if (cam["test_pattern"])
                 s_systemConfig.camera_test_pattern = cam["test_pattern"].as<std::string>();
+
+            // Parking guide line calibration
+            if (cam["guide_bottom_width"])
+                s_systemConfig.guide_bottom_width = cam["guide_bottom_width"].as<double>();
+            if (cam["guide_top_width"])
+                s_systemConfig.guide_top_width = cam["guide_top_width"].as<double>();
+            if (cam["guide_bottom_y"])
+                s_systemConfig.guide_bottom_y = cam["guide_bottom_y"].as<double>();
+            if (cam["guide_top_y"])
+                s_systemConfig.guide_top_y = cam["guide_top_y"].as<double>();
+            if (cam["guide_distance_1"])
+                s_systemConfig.guide_distance_1 = cam["guide_distance_1"].as<double>();
+            if (cam["guide_distance_2"])
+                s_systemConfig.guide_distance_2 = cam["guide_distance_2"].as<double>();
+            if (cam["guide_distance_3"])
+                s_systemConfig.guide_distance_3 = cam["guide_distance_3"].as<double>();
         }
 
         if (config["openauto"]) {
