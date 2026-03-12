@@ -222,11 +222,11 @@ display:
 branding:
   show_splash: true
   splash_duration_ms: 2500
-  # splash_logo: "/etc/speeduino-ui/assets/logo_vw.png"
+  splash_logo: "/etc/speeduino-ui/assets/logo_vw_white.png"
   splash_logo_scale: 1.0
-  brand_name: "Speeduino"
-  brand_color: "#00ff00"
-  # manufacturer: "volkswagen"
+  brand_name: "Volkswagen"
+  brand_color: "#00438f"
+  manufacturer: "volkswagen"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LOGGING
