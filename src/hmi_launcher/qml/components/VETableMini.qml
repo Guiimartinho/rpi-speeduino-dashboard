@@ -30,8 +30,11 @@ Item {
     property var rpmBins: [500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000]
     property var mapBins: [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
 
-    // Dados da tabela VE (10x10 demo)
-    property var veData: generateDemoVE()
+    // Dados da tabela VE - construída em tempo real a partir do CAN
+    // Cada célula acumula a média dos valores VE reais recebidos
+    property var veData: initEmptyTable()
+    property var veSampleCount: initEmptyCountTable()  // contagem de amostras por célula
+    property int totalSamples: 0  // total de amostras coletadas
 
     // Opções visuais
     property int gridSize: 8
@@ -66,22 +69,70 @@ Item {
         return 0
     }
 
-    function generateDemoVE() {
+    // Inicializa tabela vazia (0 = sem dados)
+    function initEmptyTable() {
         var data = []
         for (var row = 0; row < 10; row++) {
             var rowData = []
             for (var col = 0; col < 10; col++) {
-                // Simula valores VE típicos (30-100%)
-                var ve = 40 + (row * 4) + (col * 3) + Math.random() * 8
-                rowData.push(Math.min(100, Math.max(30, ve)))
+                rowData.push(0)
             }
             data.push(rowData)
         }
         return data
     }
 
-    function getVEColor(ve) {
-        // Gradiente 4-etapas igual ao VETable3D: Azul → Ciano → Verde → Amarelo → Vermelho
+    function initEmptyCountTable() {
+        var data = []
+        for (var row = 0; row < 10; row++) {
+            var rowData = []
+            for (var col = 0; col < 10; col++) {
+                rowData.push(0)
+            }
+            data.push(rowData)
+        }
+        return data
+    }
+
+    // Registra amostra VE real na célula correspondente (média móvel)
+    function recordVESample() {
+        if (veValue <= 0 || rpm <= 0) return
+
+        var ri = rpmIndex
+        var mi = mapIndex
+        if (ri < 0 || ri >= 10 || mi < 0 || mi >= 10) return
+
+        var count = veSampleCount[mi][ri]
+        var current = veData[mi][ri]
+
+        if (count === 0) {
+            // Primeira amostra nesta célula
+            veData[mi][ri] = veValue
+        } else {
+            // Média móvel exponencial (peso maior para amostras recentes)
+            var alpha = Math.max(0.05, 1.0 / (count + 1))
+            veData[mi][ri] = current * (1 - alpha) + veValue * alpha
+        }
+
+        veSampleCount[mi][ri] = count + 1
+        totalSamples++
+        veDataChanged()
+    }
+
+    // Reseta a tabela
+    function resetTable() {
+        veData = initEmptyTable()
+        veSampleCount = initEmptyCountTable()
+        totalSamples = 0
+    }
+
+    function getVEColor(ve, rowIdx, colIdx) {
+        // Célula sem dados - cinza escuro
+        if (ve <= 0 || (typeof rowIdx !== "undefined" && veSampleCount[rowIdx] && veSampleCount[rowIdx][colIdx] === 0)) {
+            return Qt.rgba(0.15, 0.15, 0.15, 0.6)
+        }
+
+        // Gradiente 4-etapas: Azul → Ciano → Verde → Amarelo → Vermelho
         var t = (ve - 30) / 70  // Normaliza 30-100 para 0-1
         t = Math.max(0, Math.min(1, t))
 
@@ -89,14 +140,14 @@ Item {
             var s = t / 0.25
             return Qt.rgba(0, s * 0.8, 1 - s * 0.3, 0.85)  // Azul -> Ciano
         } else if (t < 0.5) {
-            var s = (t - 0.25) / 0.25
-            return Qt.rgba(0, 0.8 + s * 0.2, 0.7 - s * 0.7, 0.85)  // Ciano -> Verde
+            var s2 = (t - 0.25) / 0.25
+            return Qt.rgba(0, 0.8 + s2 * 0.2, 0.7 - s2 * 0.7, 0.85)  // Ciano -> Verde
         } else if (t < 0.75) {
-            var s = (t - 0.5) / 0.25
-            return Qt.rgba(s, 1, 0, 0.85)  // Verde -> Amarelo
+            var s3 = (t - 0.5) / 0.25
+            return Qt.rgba(s3, 1, 0, 0.85)  // Verde -> Amarelo
         } else {
-            var s = (t - 0.75) / 0.25
-            return Qt.rgba(1, 1 - s, 0, 0.85)  // Amarelo -> Vermelho
+            var s4 = (t - 0.75) / 0.25
+            return Qt.rgba(1, 1 - s4, 0, 0.85)  // Amarelo -> Vermelho
         }
     }
 
@@ -120,12 +171,15 @@ Item {
         trailHistoryChanged()
     }
 
-    // Timer para atualizar trail
+    // Timer para atualizar trail e coletar amostras VE reais
     Timer {
         interval: 100
         running: true
         repeat: true
-        onTriggered: updateTrail()
+        onTriggered: {
+            recordVESample()
+            updateTrail()
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -155,8 +209,23 @@ Item {
                 font.weight: Font.Bold
             }
 
+            Text {
+                text: "LIVE"
+                color: totalSamples > 0 ? "#00FF00" : Styles.Theme.textTertiary
+                font.pixelSize: Styles.Theme.fontXs
+                font.weight: Font.Bold
+                visible: totalSamples > 0
+
+                SequentialAnimation on opacity {
+                    running: totalSamples > 0
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.4; duration: 600 }
+                    NumberAnimation { to: 1.0; duration: 600 }
+                }
+            }
+
             // Spacer
-            Item { width: header.width - 120; height: 1 }
+            Item { width: header.width - 160; height: 1 }
 
             Text {
                 text: veValue.toFixed(0) + "%"
@@ -249,7 +318,7 @@ Item {
 
                         width: (gridContainer.width - mapLabels.width - Styles.Theme.spacingXs) / gridSize
                         height: (gridContainer.height - rpmLabels.height) / gridSize
-                        color: getVEColor(cellVE)
+                        color: getVEColor(cellVE, rowIdx, colIdx)
                         border.color: isCurrent ? Styles.Theme.textPrimary : Styles.Theme.backgroundPrimary
                         border.width: isCurrent ? 2 : 1
 

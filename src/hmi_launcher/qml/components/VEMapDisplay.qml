@@ -21,8 +21,10 @@ Item {
     // Map type: "VE", "ADVANCE", "AFR"
     property string mapType: "VE"
 
-    // Map data (16x16 for Speeduino)
-    property var mapData: generateDemoMap()
+    // Map data - construída em tempo real a partir do CAN
+    property var mapData: initEmptyMap()
+    property var sampleCount: initEmptySampleMap()
+    property int totalSamples: 0
     property var rpmBins: [500, 700, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500]
     property var loadBins: [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170]
 
@@ -82,33 +84,75 @@ Item {
         }
     }
 
-    // Generate demo map data for preview
-    function generateDemoMap() {
+    function initEmptyMap() {
         var data = []
         for (var load = 0; load < 16; load++) {
             var row = []
-            for (var rpmIdx = 0; rpmIdx < 16; rpmIdx++) {
-                var value
-                if (mapType === "VE") {
-                    value = 30 + (load * 3) + (rpmIdx * 2) + Math.random() * 5
-                    value = Math.min(100, Math.max(20, value))
-                } else if (mapType === "ADVANCE") {
-                    value = 10 + (rpmIdx * 2) - (load * 0.3) + Math.random() * 3
-                    value = Math.min(45, Math.max(5, value))
-                } else {
-                    value = 14.7 - (load * 0.02) - (rpmIdx * 0.1) + Math.random() * 0.3
-                    value = Math.min(16, Math.max(10, value))
-                }
-                row.push(value.toFixed(mapType === "AFR" ? 1 : 0))
+            for (var r = 0; r < 16; r++) {
+                row.push("--")
             }
             data.push(row)
         }
         return data
     }
 
-    // Update map data from external source
-    function setMapData(data) {
-        mapData = data
+    function initEmptySampleMap() {
+        var data = []
+        for (var load = 0; load < 16; load++) {
+            var row = []
+            for (var r = 0; r < 16; r++) {
+                row.push(0)
+            }
+            data.push(row)
+        }
+        return data
+    }
+
+    // Registra amostra real na célula correspondente
+    function recordSample() {
+        if (rpm <= 0) return
+
+        var ri = currentRpmIdx
+        var li = currentLoadIdx
+        if (ri < 0 || ri >= 16 || li < 0 || li >= 16) return
+
+        var value
+        if (mapType === "VE") {
+            value = mapKpa > 0 ? tps : 0  // usa veValue que vem via binding externo
+        }
+        // Para VE, o valor vem do contexto externo - usamos o que já temos
+        // O componente pai deve passar o valor via propriedade
+
+        var count = sampleCount[li][ri]
+        var current = mapData[li][ri]
+
+        if (count === 0 || current === "--") {
+            mapData[li][ri] = getCurrentLiveValue()
+        } else {
+            var numCurrent = parseFloat(current)
+            var numNew = parseFloat(getCurrentLiveValue())
+            if (!isNaN(numCurrent) && !isNaN(numNew)) {
+                var alpha = Math.max(0.05, 1.0 / (count + 1))
+                mapData[li][ri] = (numCurrent * (1 - alpha) + numNew * alpha).toFixed(mapType === "AFR" ? 1 : 0)
+            }
+        }
+
+        sampleCount[li][ri] = count + 1
+        totalSamples++
+    }
+
+    // Propriedade para receber valor VE/ADV/AFR atual do CAN
+    property real liveValue: 0
+
+    function getCurrentLiveValue() {
+        return liveValue.toFixed(mapType === "AFR" ? 1 : 0)
+    }
+
+    function resetMap() {
+        mapData = initEmptyMap()
+        sampleCount = initEmptySampleMap()
+        totalSamples = 0
+        cellHistory = ({})
     }
 
     // Get color for cell value
@@ -119,6 +163,11 @@ Item {
 
         if (isCurrent) {
             return "#FFFFFF"
+        }
+
+        // Célula sem dados
+        if (value === "--" || value === "" || value === "0") {
+            return Qt.rgba(0.15, 0.15, 0.15, 0.4)
         }
 
         if (showHistory && historyAge > 0) {
@@ -167,12 +216,15 @@ Item {
         return "--"
     }
 
-    // Update timer
+    // Update timer - coleta amostras e atualiza célula
     Timer {
         interval: 100
         running: true
         repeat: true
-        onTriggered: updateCurrentCell()
+        onTriggered: {
+            updateCurrentCell()
+            recordSample()
+        }
     }
 
     // Visual display
@@ -199,6 +251,21 @@ Item {
                     font.pixelSize: 12
                     font.bold: true
                     font.family: "Roboto Mono, monospace"
+                }
+
+                Text {
+                    text: "LIVE"
+                    color: totalSamples > 0 ? "#00FF00" : Qt.rgba(1, 1, 1, 0.36)
+                    font.pixelSize: 9
+                    font.bold: true
+                    visible: totalSamples > 0
+
+                    SequentialAnimation on opacity {
+                        running: totalSamples > 0
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.4; duration: 600 }
+                        NumberAnimation { to: 1.0; duration: 600 }
+                    }
                 }
 
                 Item { width: 10; height: 1 }
@@ -235,7 +302,7 @@ Item {
                                 anchors.fill: parent
                                 onClicked: {
                                     mapType = modelData === "ADV" ? "ADVANCE" : modelData
-                                    mapData = generateDemoMap()
+                                    resetMap()
                                 }
                             }
                         }

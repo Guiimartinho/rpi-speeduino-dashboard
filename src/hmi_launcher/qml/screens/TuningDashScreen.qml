@@ -147,6 +147,7 @@ Item {
                     rpm: tuningDash.engineData.rpm
                     mapKpa: tuningDash.engineData.mapKpa
                     tps: tuningDash.engineData.tps
+                    liveValue: tuningDash.engineData.ve || 0
                 }
 
                 // VE Table 3D (3D mode)

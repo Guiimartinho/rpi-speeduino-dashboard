@@ -29,7 +29,11 @@ Item {
 
     property var rpmBins: [500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000]
     property var mapBins: [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]
-    property var veData: generateDemoVE()
+
+    // Dados VE construídos em tempo real a partir do CAN
+    property var veData: initEmptyTable()
+    property var veSampleCount: initEmptyCountTable()
+    property int totalSamples: 0
 
     property int gridSize: 10       // Aumentado para melhor resolução
     property real rotationX: 30      // Inclinacao (tilt) - aumentado
@@ -79,20 +83,57 @@ Item {
         return 0
     }
 
-    function generateDemoVE() {
+    function initEmptyTable() {
         var data = []
         for (var row = 0; row < 10; row++) {
             var rowData = []
             for (var col = 0; col < 10; col++) {
-                // Simula curva VE tipica - pico no meio-alto RPM e alta carga
-                var rpmFactor = Math.sin((col / 9) * Math.PI * 0.9) * 0.4 + 0.6
-                var mapFactor = (row / 9) * 0.5 + 0.5
-                var ve = 35 + rpmFactor * mapFactor * 65 + (Math.random() - 0.5) * 5
-                rowData.push(Math.min(100, Math.max(30, ve)))
+                rowData.push(0)
             }
             data.push(rowData)
         }
         return data
+    }
+
+    function initEmptyCountTable() {
+        var data = []
+        for (var row = 0; row < 10; row++) {
+            var rowData = []
+            for (var col = 0; col < 10; col++) {
+                rowData.push(0)
+            }
+            data.push(rowData)
+        }
+        return data
+    }
+
+    // Registra amostra VE real na célula correspondente
+    function recordVESample() {
+        if (veValue <= 0 || rpm <= 0) return
+
+        var ri = rpmIndex
+        var mi = mapIndex
+        if (ri < 0 || ri >= 10 || mi < 0 || mi >= 10) return
+
+        var count = veSampleCount[mi][ri]
+        var current = veData[mi][ri]
+
+        if (count === 0) {
+            veData[mi][ri] = veValue
+        } else {
+            var alpha = Math.max(0.05, 1.0 / (count + 1))
+            veData[mi][ri] = current * (1 - alpha) + veValue * alpha
+        }
+
+        veSampleCount[mi][ri] = count + 1
+        totalSamples++
+        veDataChanged()
+    }
+
+    function resetTable() {
+        veData = initEmptyTable()
+        veSampleCount = initEmptyCountTable()
+        totalSamples = 0
     }
 
     // Projeta ponto 3D para 2D com perspectiva isometrica
@@ -122,6 +163,9 @@ Item {
 
     // Cor baseada no valor VE (gradiente profissional)
     function getVEColor(ve) {
+        // Célula sem dados
+        if (ve <= 0) return Qt.rgba(0.15, 0.15, 0.15, 0.3)
+
         var t = (ve - 30) / 70  // Normaliza 30-100 para 0-1
         t = Math.max(0, Math.min(1, t))
 
@@ -130,14 +174,14 @@ Item {
             var s = t / 0.25
             return Qt.rgba(0, s * 0.8, 1 - s * 0.3, 0.85)  // Azul -> Ciano
         } else if (t < 0.5) {
-            var s = (t - 0.25) / 0.25
-            return Qt.rgba(0, 0.8 + s * 0.2, 0.7 - s * 0.7, 0.85)  // Ciano -> Verde
+            var s2 = (t - 0.25) / 0.25
+            return Qt.rgba(0, 0.8 + s2 * 0.2, 0.7 - s2 * 0.7, 0.85)  // Ciano -> Verde
         } else if (t < 0.75) {
-            var s = (t - 0.5) / 0.25
-            return Qt.rgba(s, 1, 0, 0.85)  // Verde -> Amarelo
+            var s3 = (t - 0.5) / 0.25
+            return Qt.rgba(s3, 1, 0, 0.85)  // Verde -> Amarelo
         } else {
-            var s = (t - 0.75) / 0.25
-            return Qt.rgba(1, 1 - s, 0, 0.85)  // Amarelo -> Vermelho
+            var s4 = (t - 0.75) / 0.25
+            return Qt.rgba(1, 1 - s4, 0, 0.85)  // Amarelo -> Vermelho
         }
     }
 
@@ -166,6 +210,7 @@ Item {
         running: true
         repeat: true
         onTriggered: {
+            recordVESample()
             updateTrail()
             canvas.requestPaint()
         }
@@ -196,6 +241,21 @@ Item {
                 color: Styles.Theme.accentSecondary
                 font.pixelSize: Styles.Theme.fontMd
                 font.weight: Font.Bold
+            }
+
+            Text {
+                text: "LIVE"
+                color: totalSamples > 0 ? "#00FF00" : Styles.Theme.textTertiary
+                font.pixelSize: Styles.Theme.fontSm
+                font.weight: Font.Bold
+                visible: totalSamples > 0
+
+                SequentialAnimation on opacity {
+                    running: totalSamples > 0
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.4; duration: 600 }
+                    NumberAnimation { to: 1.0; duration: 600 }
+                }
             }
 
             Item { width: header.width - 300; height: 1 }  // Spacer
