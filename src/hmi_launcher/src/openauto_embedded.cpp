@@ -896,13 +896,14 @@ bool OpenAutoEmbedded::initializeOpenauto() {
         // loop: playbackStopped → activeCallback(false) → onProjectionActive(false) → stop() →
         // playbackStopped
 
-        // Create ServiceFactory with custom video output and input widget
-        // Video goes to QMLVideoOutput, input events go to m_inputWidget
-        // Input widget provides geometry for mapActiveAreaToGlobal() and receives touch events
+        // Create ServiceFactory with custom video output
+        // Pass m_inputWidget so InputDevice event filter is installed on it (not QCoreApplication).
+        // Without this, InputDevice intercepts ALL touch events system-wide, including tab bar.
+        // mapActiveAreaToGlobal() is fixed to handle hidden widgets under EGLFS.
         m_serviceFactory = std::make_unique<openauto::service::ServiceFactory>(
             *m_ioService, m_configuration,
             m_qmlVideoOutput,     // QML-native video output
-            m_inputWidget.get(),  // Hidden widget for touch input forwarding
+            m_inputWidget.get(),  // Input widget for event filter scope
             activeCallback, m_nightMode);
 
         // Create AndroidAutoEntityFactory
