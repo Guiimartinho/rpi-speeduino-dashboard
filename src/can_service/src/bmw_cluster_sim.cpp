@@ -1,4 +1,5 @@
 #include "can_service/bmw_cluster_sim.hpp"
+
 #include "common/logger.hpp"
 
 #include <algorithm>
@@ -10,10 +11,7 @@ namespace speeduino {
 // BMWClusterSim Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-BMWClusterSim::BMWClusterSim(CanInterface& interface)
-    : m_interface(interface)
-{
-}
+BMWClusterSim::BMWClusterSim(CanInterface& interface) : m_interface(interface) {}
 
 BMWClusterSim::~BMWClusterSim() {
     stop();
@@ -21,22 +19,39 @@ BMWClusterSim::~BMWClusterSim() {
 
 void BMWClusterSim::setGear(uint8_t gear) {
     switch (gear) {
-        case 0:  m_gear = BMWGear::NEUTRAL; break;
-        case 1:  m_gear = BMWGear::GEAR_1; break;
-        case 2:  m_gear = BMWGear::GEAR_2; break;
-        case 3:  m_gear = BMWGear::GEAR_3; break;
-        case 4:  m_gear = BMWGear::GEAR_4; break;
-        case 5:  m_gear = BMWGear::GEAR_5; break;
-        case 6:  m_gear = BMWGear::GEAR_6; break;
-        case 7:  m_gear = BMWGear::REVERSE; break;
-        default: m_gear = BMWGear::NEUTRAL; break;
+        case 0:
+            m_gear = BMWGear::NEUTRAL;
+            break;
+        case 1:
+            m_gear = BMWGear::GEAR_1;
+            break;
+        case 2:
+            m_gear = BMWGear::GEAR_2;
+            break;
+        case 3:
+            m_gear = BMWGear::GEAR_3;
+            break;
+        case 4:
+            m_gear = BMWGear::GEAR_4;
+            break;
+        case 5:
+            m_gear = BMWGear::GEAR_5;
+            break;
+        case 6:
+            m_gear = BMWGear::GEAR_6;
+            break;
+        case 7:
+            m_gear = BMWGear::REVERSE;
+            break;
+        default:
+            m_gear = BMWGear::NEUTRAL;
+            break;
     }
 }
 
 void BMWClusterSim::setSteeringAngle(int16_t angleDeg) {
     // Clamp to ±720 degrees (2 full turns)
-    m_steeringAngle = std::clamp(angleDeg, static_cast<int16_t>(-720),
-                                           static_cast<int16_t>(720));
+    m_steeringAngle = std::clamp(angleDeg, static_cast<int16_t>(-720), static_cast<int16_t>(720));
 }
 
 void BMWClusterSim::setAllWheelSpeeds(uint16_t speed) {
@@ -51,12 +66,11 @@ void BMWClusterSim::start() {
         return;
     }
 
-    m_running = true;
+    m_running  = true;
     m_txThread = std::thread(&BMWClusterSim::transmitLoop, this);
 
-    LOG_INFO("BMW Cluster Sim: Started (ASC=" + std::to_string(m_ascEnabled.load()) +
-             ", EGS=" + std::to_string(m_egsEnabled.load()) +
-             ", SAS=" + std::to_string(m_sasEnabled.load()) +
+    LOG_INFO("BMW Cluster Sim: Started (ASC=" + std::to_string(m_ascEnabled.load()) + ", EGS=" +
+             std::to_string(m_egsEnabled.load()) + ", SAS=" + std::to_string(m_sasEnabled.load()) +
              ", ABS=" + std::to_string(m_absEnabled.load()) + ")");
 }
 
@@ -101,7 +115,7 @@ void BMWClusterSim::transmitLoop() {
 
         tick();
 
-        auto elapsed = std::chrono::steady_clock::now() - start;
+        auto elapsed   = std::chrono::steady_clock::now() - start;
         auto sleepTime = interval - elapsed;
 
         if (sleepTime > std::chrono::milliseconds(0)) {
@@ -124,16 +138,20 @@ void BMWClusterSim::transmitLoop() {
 
 void BMWClusterSim::sendASC1() {
     CanFrame frame;
-    frame.id = bmw::ASC1_ID;
+    frame.id  = bmw::ASC1_ID;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
     // Build status byte
     uint8_t status = 0;
-    if (m_dscOff) status |= 0x01;
-    if (m_dscActive) status |= 0x02;
-    if (m_tractionActive) status |= 0x04;
-    if (m_absActive) status |= 0x08;
+    if (m_dscOff)
+        status |= 0x01;
+    if (m_dscActive)
+        status |= 0x02;
+    if (m_tractionActive)
+        status |= 0x04;
+    if (m_absActive)
+        status |= 0x08;
 
     frame.data[0] = status;
     frame.data[1] = static_cast<uint8_t>(m_tickCounter & 0xFF);  // Rolling counter
@@ -158,7 +176,7 @@ void BMWClusterSim::sendASC1() {
 
 void BMWClusterSim::sendEGS() {
     CanFrame frame;
-    frame.id = bmw::EGS_ID;
+    frame.id  = bmw::EGS_ID;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
@@ -192,19 +210,19 @@ void BMWClusterSim::sendEGS() {
 
 void BMWClusterSim::sendSAS() {
     CanFrame frame;
-    frame.id = bmw::SAS_ID;
+    frame.id  = bmw::SAS_ID;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
     // Angle × 10 for 0.1 degree resolution
     int16_t angleScaled = m_steeringAngle.load() * 10;
-    frame.data[0] = angleScaled & 0xFF;
-    frame.data[1] = (angleScaled >> 8) & 0xFF;
+    frame.data[0]       = angleScaled & 0xFF;
+    frame.data[1]       = (angleScaled >> 8) & 0xFF;
 
     // Rate × 10
     int16_t rateScaled = m_steeringRate.load() * 10;
-    frame.data[2] = rateScaled & 0xFF;
-    frame.data[3] = (rateScaled >> 8) & 0xFF;
+    frame.data[2]      = rateScaled & 0xFF;
+    frame.data[3]      = (rateScaled >> 8) & 0xFF;
 
     // Status: calibrated and valid
     frame.data[4] = 0x03;
@@ -228,7 +246,7 @@ void BMWClusterSim::sendSAS() {
 void BMWClusterSim::sendABS() {
     // Front wheels (0x1F0)
     CanFrame frameFront;
-    frameFront.id = bmw::ABS1_ID;
+    frameFront.id  = bmw::ABS1_ID;
     frameFront.dlc = 8;
     frameFront.data.fill(0x00);
 
@@ -250,7 +268,7 @@ void BMWClusterSim::sendABS() {
 
     // Rear wheels (0x1F5)
     CanFrame frameRear;
-    frameRear.id = bmw::ABS2_ID;
+    frameRear.id  = bmw::ABS2_ID;
     frameRear.dlc = 8;
     frameRear.data.fill(0x00);
 
@@ -270,4 +288,4 @@ void BMWClusterSim::sendABS() {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

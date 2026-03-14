@@ -4,10 +4,11 @@
  */
 
 #include "common/watchdog_notifier.hpp"
+
 #include "common/logger.hpp"
 
 #ifdef __linux__
-#include <systemd/sd-daemon.h>
+    #include <systemd/sd-daemon.h>
 #endif
 
 #include <cstdlib>
@@ -19,16 +20,16 @@ namespace speeduino {
 // ISO 26262: Named constants for watchdog notification intervals
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// Divisor for calculating watchdog notify interval (half timeout per systemd recommendation)
-    constexpr int WATCHDOG_NOTIFY_INTERVAL_DIVISOR = 2;
-    /// Sleep chunk size for responsive shutdown in milliseconds
-    constexpr int WATCHDOG_SLEEP_CHUNK_MS = 100;
-} // anonymous namespace
+/// Divisor for calculating watchdog notify interval (half timeout per systemd recommendation)
+constexpr int WATCHDOG_NOTIFY_INTERVAL_DIVISOR = 2;
+/// Sleep chunk size for responsive shutdown in milliseconds
+constexpr int WATCHDOG_SLEEP_CHUNK_MS = 100;
+}  // anonymous namespace
 
 WatchdogNotifier::WatchdogNotifier() {
 #ifdef __linux__
     uint64_t usec = 0;
-    int ret = sd_watchdog_enabled(0, &usec);
+    int ret       = sd_watchdog_enabled(0, &usec);
 
     if (ret > 0 && usec > 0) {
         enabled_ = true;
@@ -36,9 +37,8 @@ WatchdogNotifier::WatchdogNotifier() {
         // Notify at half the timeout interval as recommended by systemd
         interval_ = std::chrono::microseconds(usec / WATCHDOG_NOTIFY_INTERVAL_DIVISOR);
 
-        Logger::info("systemd watchdog enabled, timeout: " +
-                    std::to_string(usec / 1000) + "ms, notify interval: " +
-                    std::to_string(usec / 2000) + "ms");
+        Logger::info("systemd watchdog enabled, timeout: " + std::to_string(usec / 1000) +
+                     "ms, notify interval: " + std::to_string(usec / 2000) + "ms");
     } else {
         Logger::debug("systemd watchdog not enabled");
     }
@@ -188,14 +188,13 @@ void WatchdogNotifier::notifyLoop() {
 
         // Sleep for the interval
         // Use shorter sleeps to be more responsive to stop() calls
-        auto remaining = interval_;
+        auto remaining        = interval_;
         const auto sleepChunk = std::chrono::milliseconds(WATCHDOG_SLEEP_CHUNK_MS);
 
         while (remaining > std::chrono::microseconds(0) &&
                running_.load(std::memory_order_acquire)) {
             auto sleepTime = std::min(
-                remaining,
-                std::chrono::duration_cast<std::chrono::microseconds>(sleepChunk));
+                remaining, std::chrono::duration_cast<std::chrono::microseconds>(sleepChunk));
 
             std::this_thread::sleep_for(sleepTime);
             remaining -= sleepTime;
@@ -203,4 +202,4 @@ void WatchdogNotifier::notifyLoop() {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

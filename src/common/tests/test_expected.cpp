@@ -3,8 +3,10 @@
  * @brief Unit tests for Expected<T, E> error handling
  */
 
-#include <gtest/gtest.h>
 #include "common/expected.hpp"
+
+#include <gtest/gtest.h>
+
 #include <string>
 
 using namespace speeduino;
@@ -57,7 +59,7 @@ TEST(ExpectedTest, AndThen) {
     Expected<int, std::string> success(21);
     Expected<int, std::string> failure(Unexpected<std::string>("error"));
 
-    auto doubled = success.andThen(doubler);
+    auto doubled     = success.andThen(doubler);
     auto stillFailed = failure.andThen(doubler);
 
     EXPECT_TRUE(doubled.hasValue());
@@ -71,7 +73,7 @@ TEST(ExpectedTest, Map) {
     Expected<int, std::string> success(21);
     Expected<int, std::string> failure(Unexpected<std::string>("error"));
 
-    auto doubled = success.map([](int x) { return x * 2; });
+    auto doubled     = success.map([](int x) { return x * 2; });
     auto stillFailed = failure.map([](int x) { return x * 2; });
 
     EXPECT_TRUE(doubled.hasValue());
@@ -84,13 +86,11 @@ TEST(ExpectedTest, OrElse) {
     Expected<int, std::string> success(42);
     Expected<int, std::string> failure(Unexpected<std::string>("error"));
 
-    auto recovered = failure.orElse([](const std::string&) {
-        return Expected<int, std::string>(0);
-    });
+    auto recovered =
+        failure.orElse([](const std::string&) { return Expected<int, std::string>(0); });
 
-    auto unchanged = success.orElse([](const std::string&) {
-        return Expected<int, std::string>(0);
-    });
+    auto unchanged =
+        success.orElse([](const std::string&) { return Expected<int, std::string>(0); });
 
     EXPECT_TRUE(recovered.hasValue());
     EXPECT_EQ(recovered.value(), 0);
@@ -125,8 +125,7 @@ TEST(ExpectedTest, VoidResultAlias) {
 }
 
 TEST(ExpectedTest, MoveSemantics) {
-    Expected<std::unique_ptr<int>, std::string> result(
-        std::make_unique<int>(42));
+    Expected<std::unique_ptr<int>, std::string> result(std::make_unique<int>(42));
 
     EXPECT_TRUE(result.hasValue());
 
@@ -136,7 +135,7 @@ TEST(ExpectedTest, MoveSemantics) {
 
 TEST(ExpectedTest, ErrorCodes) {
     EXPECT_STREQ(errorCodeToString(ErrorCode::Success), "Success");
-    EXPECT_STREQ(errorCodeToString(ErrorCode::InvalidArgument), "InvalidArgument");
-    EXPECT_STREQ(errorCodeToString(ErrorCode::IoError), "IoError");
+    EXPECT_STREQ(errorCodeToString(ErrorCode::InvalidArgument), "Invalid argument");
+    EXPECT_STREQ(errorCodeToString(ErrorCode::IoError), "I/O error");
     EXPECT_STREQ(errorCodeToString(ErrorCode::Timeout), "Timeout");
 }

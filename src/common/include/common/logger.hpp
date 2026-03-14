@@ -1,10 +1,10 @@
 #ifndef COMMON_LOGGER_HPP
 #define COMMON_LOGGER_HPP
 
-#include <string>
-#include <string_view>
 #include <cstdint>
 #include <source_location>
+#include <string>
+#include <string_view>
 
 namespace speeduino {
 
@@ -45,15 +45,14 @@ public:
                       const std::source_location& loc = std::source_location::current());
 
     // Formatted log (printf-style)
-    template<typename... Args>
+    template <typename... Args>
     static void log(LogLevel level, const char* fmt, Args&&... args);
 
     // Check if level is enabled
     static bool isEnabled(LogLevel level);
 
 private:
-    static void logImpl(LogLevel level, std::string_view message,
-                        const std::source_location& loc);
+    static void logImpl(LogLevel level, std::string_view message, const std::source_location& loc);
 
     static LogLevel s_minLevel;
     static std::string s_serviceName;
@@ -68,6 +67,6 @@ private:
 #define LOG_ERROR(msg) speeduino::Logger::error(msg)
 #define LOG_FATAL(msg) speeduino::Logger::fatal(msg)
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_LOGGER_HPP
+#endif  // COMMON_LOGGER_HPP

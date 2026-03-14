@@ -2,18 +2,20 @@
 #define HMI_DATA_PROVIDER_HPP
 
 #include "common/zmq_messages.hpp"
-#include <QObject>
+
 #include <QThread>
+
 #include <QMutex>
 #include <QMutexLocker>
+#include <QObject>
 #include <QString>
-#include <memory>
 #include <atomic>
+#include <memory>
 
 namespace zmq {
-    class context_t;
-    class socket_t;
-}
+class context_t;
+class socket_t;
+}  // namespace zmq
 
 namespace speeduino {
 
@@ -61,12 +63,45 @@ class DataProvider : public QObject {
     Q_PROPERTY(int fuelPressure READ fuelPressure NOTIFY dataChanged)
     Q_PROPERTY(int oilPressure READ oilPressure NOTIFY dataChanged)
     Q_PROPERTY(int oilTemp READ oilTemp NOTIFY dataChanged)
+    Q_PROPERTY(double batteryVoltage READ batteryVoltage NOTIFY dataChanged)
+    Q_PROPERTY(double boostTarget READ boostTarget NOTIFY dataChanged)
+    Q_PROPERTY(double fuelConsumption READ fuelConsumption NOTIFY dataChanged)
+    Q_PROPERTY(int ve READ ve NOTIFY dataChanged)
+    Q_PROPERTY(double afrTarget READ afrTarget NOTIFY dataChanged)
+
+    // Per-cylinder trims
+    Q_PROPERTY(int fuelTrimCyl1 READ fuelTrimCyl1 NOTIFY dataChanged)
+    Q_PROPERTY(int fuelTrimCyl2 READ fuelTrimCyl2 NOTIFY dataChanged)
+    Q_PROPERTY(int fuelTrimCyl3 READ fuelTrimCyl3 NOTIFY dataChanged)
+    Q_PROPERTY(int fuelTrimCyl4 READ fuelTrimCyl4 NOTIFY dataChanged)
+    Q_PROPERTY(double ignTrimCyl1 READ ignTrimCyl1 NOTIFY dataChanged)
+    Q_PROPERTY(double ignTrimCyl2 READ ignTrimCyl2 NOTIFY dataChanged)
+    Q_PROPERTY(double ignTrimCyl3 READ ignTrimCyl3 NOTIFY dataChanged)
+    Q_PROPERTY(double ignTrimCyl4 READ ignTrimCyl4 NOTIFY dataChanged)
+
+    // Idle control
+    Q_PROPERTY(int idleTargetRpm READ idleTargetRpm NOTIFY dataChanged)
+    Q_PROPERTY(int idleValveDuty READ idleValveDuty NOTIFY dataChanged)
+
+    // Diagnostic data
+    Q_PROPERTY(int errorCount READ errorCount NOTIFY dataChanged)
+    Q_PROPERTY(bool synced READ synced NOTIFY dataChanged)
 
     // Status properties
     Q_PROPERTY(bool celOn READ celOn NOTIFY dataChanged)
     Q_PROPERTY(bool overheat READ overheat NOTIFY dataChanged)
     Q_PROPERTY(bool canConnected READ canConnected NOTIFY dataChanged)
     Q_PROPERTY(bool engineRunning READ engineRunning NOTIFY dataChanged)
+    Q_PROPERTY(bool revLimiterActive READ revLimiterActive NOTIFY dataChanged)
+    Q_PROPERTY(bool launchControlActive READ launchControlActive NOTIFY dataChanged)
+    Q_PROPERTY(bool flatShiftActive READ flatShiftActive NOTIFY dataChanged)
+    Q_PROPERTY(bool clutchIn READ clutchIn NOTIFY dataChanged)
+    Q_PROPERTY(bool brakeOn READ brakeOn NOTIFY dataChanged)
+    Q_PROPERTY(bool cruiseOn READ cruiseOn NOTIFY dataChanged)
+    Q_PROPERTY(bool lowOilPressure READ lowOilPressure NOTIFY dataChanged)
+    Q_PROPERTY(bool lowFuelPressure READ lowFuelPressure NOTIFY dataChanged)
+    Q_PROPERTY(bool dfcoActive READ dfcoActive NOTIFY dataChanged)
+    Q_PROPERTY(bool fanOn READ fanOn NOTIFY dataChanged)
 
     // Reverse state
     Q_PROPERTY(bool reverseEngaged READ reverseEngaged NOTIFY reverseChanged)
@@ -89,11 +124,45 @@ public:
     int fuelPressure() const;
     int oilPressure() const;
     int oilTemp() const;
+    double batteryVoltage() const;
+    double boostTarget() const;
+    double fuelConsumption() const;
+    int ve() const;
+    double afrTarget() const;
 
+    // Per-cylinder trims
+    int fuelTrimCyl1() const;
+    int fuelTrimCyl2() const;
+    int fuelTrimCyl3() const;
+    int fuelTrimCyl4() const;
+    double ignTrimCyl1() const;
+    double ignTrimCyl2() const;
+    double ignTrimCyl3() const;
+    double ignTrimCyl4() const;
+
+    // Idle control
+    int idleTargetRpm() const;
+    int idleValveDuty() const;
+
+    // Diagnostic data
+    int errorCount() const;
+    bool synced() const;
+
+    // Status flags
     bool celOn() const;
     bool overheat() const;
     bool canConnected() const;
     bool engineRunning() const;
+    bool revLimiterActive() const;
+    bool launchControlActive() const;
+    bool flatShiftActive() const;
+    bool clutchIn() const;
+    bool brakeOn() const;
+    bool cruiseOn() const;
+    bool lowOilPressure() const;
+    bool lowFuelPressure() const;
+    bool dfcoActive() const;
+    bool fanOn() const;
 
     bool reverseEngaged() const;
 
@@ -124,11 +193,11 @@ private:
     std::unique_ptr<ZmqWorker> m_worker;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
 // Register metatypes for signal/slot
 Q_DECLARE_METATYPE(speeduino::EngineData)
 Q_DECLARE_METATYPE(speeduino::ReverseEvent)
 Q_DECLARE_METATYPE(speeduino::SteeringEvent)
 
-#endif // HMI_DATA_PROVIDER_HPP
+#endif  // HMI_DATA_PROVIDER_HPP

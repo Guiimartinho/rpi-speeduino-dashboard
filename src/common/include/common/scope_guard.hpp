@@ -10,8 +10,9 @@
 #ifndef COMMON_SCOPE_GUARD_HPP
 #define COMMON_SCOPE_GUARD_HPP
 
-#include <utility>
+#include <exception>
 #include <type_traits>
+#include <utility>
 
 namespace speeduino {
 
@@ -29,7 +30,7 @@ namespace speeduino {
  *   // ptr is automatically freed when scope exits
  * @endcode
  */
-template<typename Func>
+template <typename Func>
 class ScopeGuard {
 public:
     /**
@@ -37,16 +38,14 @@ public:
      * @param func The callable to execute on scope exit
      */
     explicit ScopeGuard(Func&& func) noexcept(std::is_nothrow_move_constructible_v<Func>)
-        : func_(std::move(func))
-        , active_(true) {}
+        : func_(std::move(func)), active_(true) {}
 
     /**
      * @brief Construct a scope guard (copy)
      * @param func The callable to copy and execute on scope exit
      */
     explicit ScopeGuard(const Func& func) noexcept(std::is_nothrow_copy_constructible_v<Func>)
-        : func_(func)
-        , active_(true) {}
+        : func_(func), active_(true) {}
 
     /**
      * @brief Destructor - executes the cleanup function if still active
@@ -63,13 +62,12 @@ public:
 
     // Move constructor
     ScopeGuard(ScopeGuard&& other) noexcept(std::is_nothrow_move_constructible_v<Func>)
-        : func_(std::move(other.func_))
-        , active_(std::exchange(other.active_, false)) {}
+        : func_(std::move(other.func_)), active_(std::exchange(other.active_, false)) {}
 
     // Non-copyable
-    ScopeGuard(const ScopeGuard&) = delete;
+    ScopeGuard(const ScopeGuard&)            = delete;
     ScopeGuard& operator=(const ScopeGuard&) = delete;
-    ScopeGuard& operator=(ScopeGuard&&) = delete;
+    ScopeGuard& operator=(ScopeGuard&&)      = delete;
 
     /**
      * @brief Dismiss the guard - cleanup will not be executed
@@ -77,17 +75,13 @@ public:
      * Call this when you want to prevent the cleanup action,
      * typically when the operation succeeded and cleanup is not needed.
      */
-    void dismiss() noexcept {
-        active_ = false;
-    }
+    void dismiss() noexcept { active_ = false; }
 
     /**
      * @brief Check if the guard is still active
      * @return true if cleanup will be executed on destruction
      */
-    [[nodiscard]] bool isActive() const noexcept {
-        return active_;
-    }
+    [[nodiscard]] bool isActive() const noexcept { return active_; }
 
 private:
     Func func_;
@@ -105,7 +99,7 @@ private:
  *   auto guard = makeScopeGuard([]() { cleanup(); });
  * @endcode
  */
-template<typename Func>
+template <typename Func>
 [[nodiscard]] auto makeScopeGuard(Func&& func) {
     return ScopeGuard<std::decay_t<Func>>(std::forward<Func>(func));
 }
@@ -116,7 +110,7 @@ template<typename Func>
  *
  * Lighter weight alternative when you always want cleanup to happen.
  */
-template<typename Func>
+template <typename Func>
 class ScopeExit {
 public:
     explicit ScopeExit(Func&& func) noexcept(std::is_nothrow_move_constructible_v<Func>)
@@ -134,10 +128,10 @@ public:
     }
 
     // Non-copyable, non-movable
-    ScopeExit(const ScopeExit&) = delete;
+    ScopeExit(const ScopeExit&)            = delete;
     ScopeExit& operator=(const ScopeExit&) = delete;
-    ScopeExit(ScopeExit&&) = delete;
-    ScopeExit& operator=(ScopeExit&&) = delete;
+    ScopeExit(ScopeExit&&)                 = delete;
+    ScopeExit& operator=(ScopeExit&&)      = delete;
 
 private:
     Func func_;
@@ -146,7 +140,7 @@ private:
 /**
  * @brief Factory function for ScopeExit
  */
-template<typename Func>
+template <typename Func>
 [[nodiscard]] auto makeScopeExit(Func&& func) {
     return ScopeExit<std::decay_t<Func>>(std::forward<Func>(func));
 }
@@ -157,12 +151,11 @@ template<typename Func>
  *
  * Uses uncaught_exceptions() to detect if an exception is in flight.
  */
-template<typename Func>
+template <typename Func>
 class ScopeFail {
 public:
     explicit ScopeFail(Func&& func) noexcept(std::is_nothrow_move_constructible_v<Func>)
-        : func_(std::move(func))
-        , uncaughtOnCreation_(std::uncaught_exceptions()) {}
+        : func_(std::move(func)), uncaughtOnCreation_(std::uncaught_exceptions()) {}
 
     ~ScopeFail() noexcept {
         if (std::uncaught_exceptions() > uncaughtOnCreation_) {
@@ -175,10 +168,10 @@ public:
     }
 
     // Non-copyable, non-movable
-    ScopeFail(const ScopeFail&) = delete;
+    ScopeFail(const ScopeFail&)            = delete;
     ScopeFail& operator=(const ScopeFail&) = delete;
-    ScopeFail(ScopeFail&&) = delete;
-    ScopeFail& operator=(ScopeFail&&) = delete;
+    ScopeFail(ScopeFail&&)                 = delete;
+    ScopeFail& operator=(ScopeFail&&)      = delete;
 
 private:
     Func func_;
@@ -188,7 +181,7 @@ private:
 /**
  * @brief Factory function for ScopeFail
  */
-template<typename Func>
+template <typename Func>
 [[nodiscard]] auto makeScopeFail(Func&& func) {
     return ScopeFail<std::decay_t<Func>>(std::forward<Func>(func));
 }
@@ -199,12 +192,11 @@ template<typename Func>
  *
  * Opposite of ScopeFail - executes only when no exception is thrown.
  */
-template<typename Func>
+template <typename Func>
 class ScopeSuccess {
 public:
     explicit ScopeSuccess(Func&& func) noexcept(std::is_nothrow_move_constructible_v<Func>)
-        : func_(std::move(func))
-        , uncaughtOnCreation_(std::uncaught_exceptions()) {}
+        : func_(std::move(func)), uncaughtOnCreation_(std::uncaught_exceptions()) {}
 
     ~ScopeSuccess() noexcept {
         if (std::uncaught_exceptions() <= uncaughtOnCreation_) {
@@ -217,10 +209,10 @@ public:
     }
 
     // Non-copyable, non-movable
-    ScopeSuccess(const ScopeSuccess&) = delete;
+    ScopeSuccess(const ScopeSuccess&)            = delete;
     ScopeSuccess& operator=(const ScopeSuccess&) = delete;
-    ScopeSuccess(ScopeSuccess&&) = delete;
-    ScopeSuccess& operator=(ScopeSuccess&&) = delete;
+    ScopeSuccess(ScopeSuccess&&)                 = delete;
+    ScopeSuccess& operator=(ScopeSuccess&&)      = delete;
 
 private:
     Func func_;
@@ -230,7 +222,7 @@ private:
 /**
  * @brief Factory function for ScopeSuccess
  */
-template<typename Func>
+template <typename Func>
 [[nodiscard]] auto makeScopeSuccess(Func&& func) {
     return ScopeSuccess<std::decay_t<Func>>(std::forward<Func>(func));
 }
@@ -241,33 +233,33 @@ template<typename Func>
 namespace detail {
 
 struct ScopeExitHelper {
-    template<typename F>
+    template <typename F>
     auto operator+(F&& f) const {
         return makeScopeExit(std::forward<F>(f));
     }
 };
 
 struct ScopeFailHelper {
-    template<typename F>
+    template <typename F>
     auto operator+(F&& f) const {
         return makeScopeFail(std::forward<F>(f));
     }
 };
 
 struct ScopeSuccessHelper {
-    template<typename F>
+    template <typename F>
     auto operator+(F&& f) const {
         return makeScopeSuccess(std::forward<F>(f));
     }
 };
 
-} // namespace detail
+}  // namespace detail
 
-} // namespace speeduino
+}  // namespace speeduino
 
 // Convenience macros for anonymous scope guards
-#define SPEEDUINO_CONCAT_IMPL(a, b) a##b
-#define SPEEDUINO_CONCAT(a, b) SPEEDUINO_CONCAT_IMPL(a, b)
+#define SPEEDUINO_CONCAT_IMPL(a, b)   a##b
+#define SPEEDUINO_CONCAT(a, b)        SPEEDUINO_CONCAT_IMPL(a, b)
 #define SPEEDUINO_UNIQUE_NAME(prefix) SPEEDUINO_CONCAT(prefix, __LINE__)
 
 /**
@@ -296,4 +288,4 @@ struct ScopeSuccessHelper {
 #define SCOPE_SUCCESS \
     auto SPEEDUINO_UNIQUE_NAME(scopeSuccess_) = ::speeduino::detail::ScopeSuccessHelper{} + [&]()
 
-#endif // COMMON_SCOPE_GUARD_HPP
+#endif  // COMMON_SCOPE_GUARD_HPP

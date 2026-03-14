@@ -2,11 +2,12 @@
 #define CAN_SERVICE_WIDEBAND_FORWARDER_HPP
 
 #include "can_service/can_interface.hpp"
-#include <cstdint>
+
 #include <atomic>
-#include <thread>
 #include <chrono>
+#include <cstdint>
 #include <mutex>
+#include <thread>
 
 namespace speeduino {
 
@@ -33,19 +34,19 @@ namespace speeduino {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 namespace wideband {
-    // CAN IDs for different wideband controllers
-    constexpr uint32_t AEM_XSERIES_ID     = 0x180;
-    constexpr uint32_t INNOVATE_LC2_ID    = 0x190;
-    constexpr uint32_t PLX_SM_AFR_ID      = 0x181;
-    constexpr uint32_t SPARTAN_14POINT7   = 0x182;
+// CAN IDs for different wideband controllers
+constexpr uint32_t AEM_XSERIES_ID   = 0x180;
+constexpr uint32_t INNOVATE_LC2_ID  = 0x190;
+constexpr uint32_t PLX_SM_AFR_ID    = 0x181;
+constexpr uint32_t SPARTAN_14POINT7 = 0x182;
 
-    // Lambda limits (safety bounds)
-    constexpr float LAMBDA_MIN = 0.50f;   // Rich limit (AFR ~7.35)
-    constexpr float LAMBDA_MAX = 2.00f;   // Lean limit (AFR ~29.4)
+// Lambda limits (safety bounds)
+constexpr float LAMBDA_MIN = 0.50f;  // Rich limit (AFR ~7.35)
+constexpr float LAMBDA_MAX = 2.00f;  // Lean limit (AFR ~29.4)
 
-    // AFR for gasoline
-    constexpr float STOICH_AFR = 14.7f;
-}
+// AFR for gasoline
+constexpr float STOICH_AFR = 14.7f;
+}  // namespace wideband
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Wideband Data Format
@@ -144,8 +145,8 @@ private:
 
     // Configuration
     WidebandFormat m_format = WidebandFormat::AEM_XSERIES;
-    uint32_t m_canId = wideband::AEM_XSERIES_ID;
-    uint32_t m_rateHz = 20;  // 20Hz default
+    uint32_t m_canId        = wideband::AEM_XSERIES_ID;
+    uint32_t m_rateHz       = 20;  // 20Hz default
     std::atomic<bool> m_enabled{false};
 
     // Data
@@ -164,6 +165,6 @@ private:
     std::atomic<uint32_t> m_framesFailed{0};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_WIDEBAND_FORWARDER_HPP
+#endif  // CAN_SERVICE_WIDEBAND_FORWARDER_HPP

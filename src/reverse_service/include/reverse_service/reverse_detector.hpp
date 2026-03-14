@@ -3,10 +3,11 @@
 
 #include "common/config_loader.hpp"
 #include "common/zmq_messages.hpp"
-#include <cstdint>
-#include <functional>
+
 #include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <functional>
 #include <mutex>
 
 // Forward declarations for gpiod v2 types
@@ -49,7 +50,7 @@ public:
 
     // Source of last detection
     enum class Source : uint8_t {
-        CAN = 0,
+        CAN  = 0,
         GPIO = 1
     };
     // FIX #5: Thread-safe getter using atomic load
@@ -87,6 +88,6 @@ private:
     bool m_gpioInitialized{false};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // REVERSE_SERVICE_REVERSE_DETECTOR_HPP
+#endif  // REVERSE_SERVICE_REVERSE_DETECTOR_HPP

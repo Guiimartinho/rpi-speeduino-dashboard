@@ -1,16 +1,17 @@
 #include "can_service/can_interface.hpp"
+
 #include "common/logger.hpp"
 
 #ifdef __linux__
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <linux/can.h>
-#include <linux/can/raw.h>
-#include <unistd.h>
-#include <poll.h>
-#include <cstring>
-#include <cerrno>
+    #include <cerrno>
+    #include <cstring>
+    #include <linux/can.h>
+    #include <linux/can/raw.h>
+    #include <net/if.h>
+    #include <poll.h>
+    #include <sys/ioctl.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
 #endif
 
 #include <chrono>
@@ -23,10 +24,10 @@ namespace {
 // ISO 26262 ASIL-B: Named constants for CAN protocol limits
 // MISRA C++:2008 Rule 2-13-5: Avoid magic numbers
 // ═══════════════════════════════════════════════════════════════════════════
-constexpr uint8_t CAN_CLASSIC_MAX_DLC = 8;    // CAN 2.0 maximum DLC
-constexpr uint8_t CAN_FD_MAX_DLC = 64;        // CAN FD maximum DLC
-constexpr uint32_t CAN_STD_ID_MAX = 0x7FF;    // 11-bit standard ID max
-constexpr uint32_t CAN_EXT_ID_MAX = 0x1FFFFFFF; // 29-bit extended ID max
+constexpr uint8_t CAN_CLASSIC_MAX_DLC = 8;           // CAN 2.0 maximum DLC
+constexpr uint8_t CAN_FD_MAX_DLC      = 64;          // CAN FD maximum DLC
+constexpr uint32_t CAN_STD_ID_MAX     = 0x7FF;       // 11-bit standard ID max
+constexpr uint32_t CAN_EXT_ID_MAX     = 0x1FFFFFFF;  // 29-bit extended ID max
 
 // Thread-safe error string helper
 std::string getErrorString(int errnum) {
@@ -50,8 +51,7 @@ std::string getErrorString(int errnum) {
 // ═══════════════════════════════════════════════════════════════════════════
 uint32_t getMonotonicMs() {
     auto now = std::chrono::steady_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()).count();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
     // Explicit mask to handle overflow after ~49 days
     return static_cast<uint32_t>(ms & 0xFFFFFFFF);
 }
@@ -63,7 +63,7 @@ int32_t getTimeDeltaMs(uint32_t now, uint32_t past) {
     return static_cast<int32_t>(now - past);
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 CanInterface::CanInterface() = default;
 
@@ -89,8 +89,8 @@ bool CanInterface::open(const std::string& interface_name) {
     ifr.ifr_name[IFNAMSIZ - 1] = '\0';  // Ensure null termination
 
     if (ioctl(m_socket, SIOCGIFINDEX, &ifr) < 0) {
-        LOG_ERROR("Failed to get interface index for " + interface_name +
-                  ": " + getErrorString(errno));
+        LOG_ERROR("Failed to get interface index for " + interface_name + ": " +
+                  getErrorString(errno));
         ::close(m_socket);
         m_socket = -1;
         return false;
@@ -99,7 +99,7 @@ bool CanInterface::open(const std::string& interface_name) {
     // Bind socket
     struct sockaddr_can addr;
     std::memset(&addr, 0, sizeof(addr));
-    addr.can_family = AF_CAN;
+    addr.can_family  = AF_CAN;
     addr.can_ifindex = ifr.ifr_ifindex;
 
     if (bind(m_socket, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -157,8 +157,8 @@ bool CanInterface::send(const CanFrame& frame) {
     // MISRA C++:2008 Rule 5-0-15: Array bounds must be checked
     // ═══════════════════════════════════════════════════════════════════════
     if (frame.dlc > CAN_CLASSIC_MAX_DLC) {
-        LOG_ERROR("Invalid CAN DLC " + std::to_string(frame.dlc) +
-                  " (max " + std::to_string(CAN_CLASSIC_MAX_DLC) + ")");
+        LOG_ERROR("Invalid CAN DLC " + std::to_string(frame.dlc) + " (max " +
+                  std::to_string(CAN_CLASSIC_MAX_DLC) + ")");
         m_errorCount++;
         return false;
     }
@@ -173,8 +173,7 @@ bool CanInterface::send(const CanFrame& frame) {
         }
     } else {
         if (frame.id > CAN_STD_ID_MAX) {
-            LOG_ERROR("Invalid standard CAN ID 0x" + std::to_string(frame.id) +
-                      " (max 0x7FF)");
+            LOG_ERROR("Invalid standard CAN ID 0x" + std::to_string(frame.id) + " (max 0x7FF)");
             m_errorCount++;
             return false;
         }
@@ -218,7 +217,7 @@ std::optional<CanFrame> CanInterface::receive(int timeout_ms) {
 
     // Poll with timeout
     struct pollfd pfd;
-    pfd.fd = m_socket;
+    pfd.fd     = m_socket;
     pfd.events = POLLIN;
 
     int ret = poll(&pfd, 1, timeout_ms);
@@ -241,17 +240,17 @@ std::optional<CanFrame> CanInterface::receive(int timeout_ms) {
     // ═══════════════════════════════════════════════════════════════════════
     uint8_t safeDlc = cf.can_dlc;
     if (safeDlc > CAN_CLASSIC_MAX_DLC) {
-        LOG_WARN("Received CAN frame with invalid DLC " +
-                 std::to_string(safeDlc) + ", clamping to 8");
+        LOG_WARN("Received CAN frame with invalid DLC " + std::to_string(safeDlc) +
+                 ", clamping to 8");
         safeDlc = CAN_CLASSIC_MAX_DLC;
     }
 
     CanFrame frame;
-    frame.id = cf.can_id & CAN_EFF_MASK;
+    frame.id          = cf.can_id & CAN_EFF_MASK;
     frame.is_extended = (cf.can_id & CAN_EFF_FLAG) != 0;
-    frame.is_rtr = (cf.can_id & CAN_RTR_FLAG) != 0;
-    frame.is_error = (cf.can_id & CAN_ERR_FLAG) != 0;
-    frame.dlc = safeDlc;
+    frame.is_rtr      = (cf.can_id & CAN_RTR_FLAG) != 0;
+    frame.is_error    = (cf.can_id & CAN_ERR_FLAG) != 0;
+    frame.dlc         = safeDlc;
     // Safe: safeDlc validated to be <= 8 (size of frame.data)
     std::memcpy(frame.data.data(), cf.data, safeDlc);
     frame.timestamp_us = getMonotonicMs() * 1000;
@@ -280,12 +279,12 @@ void CanInterface::stopReceiveLoop() {
 
 CanStatus CanInterface::getStatus() const {
     CanStatus status;
-    status.connected = isConnected();
-    status.rx_count = m_rxCount;
-    status.tx_count = m_txCount;
-    status.error_count = m_errorCount;
+    status.connected         = isConnected();
+    status.rx_count          = m_rxCount;
+    status.tx_count          = m_txCount;
+    status.error_count       = m_errorCount;
     status.last_rx_timestamp = m_lastRxTimestamp;
     return status;
 }
 
-} // namespace speeduino
+}  // namespace speeduino

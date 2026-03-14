@@ -1,37 +1,50 @@
 #ifndef HMI_OPENAUTO_EMBEDDED_HPP
 #define HMI_OPENAUTO_EMBEDDED_HPP
 
-#include <QObject>
-#include <QWidget>
+#include "hmi/qml_video_output.hpp"
+
 #include <QThread>
+#include <QTimer>
+
+#include <QMutex>
+#include <QObject>
+#include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
-#include <QPointer>
-#include <QMutex>
-#include <QTimer>
-#include <memory>
-#include <functional>
+#include <QWidget>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 // Boost forward declarations
 #include <boost/asio.hpp>
 namespace aasdk {
-    namespace usb {
-        class USBWrapper;
-        class IUSBHub;
-        class IConnectedAccessoriesEnumerator;
-    }
-    namespace tcp { class ITCPWrapper; }
+namespace usb {
+class USBWrapper;
+class IUSBHub;
+class IConnectedAccessoriesEnumerator;
+class AccessoryModeQueryFactory;
+class AccessoryModeQueryChainFactory;
+}  // namespace usb
+namespace tcp {
+class ITCPWrapper;
 }
+}  // namespace aasdk
 namespace openauto {
-    class App;
-    namespace service {
-        class ServiceFactory;
-        class IAndroidAutoEntityFactory;
-    }
-    namespace configuration { class Configuration; }
+class App;
+namespace service {
+class ServiceFactory;
+class IAndroidAutoEntityFactory;
+}  // namespace service
+namespace configuration {
+class Configuration;
 }
+}  // namespace openauto
 struct libusb_context;
 
 namespace speeduino {
@@ -59,8 +72,8 @@ private:
 
     // FIX #10: Exception loop prevention constants
     static constexpr int MAX_CONSECUTIVE_EXCEPTIONS = 10;
-    static constexpr int INITIAL_RETRY_DELAY_MS = 100;
-    static constexpr int MAX_RETRY_DELAY_MS = 5000;
+    static constexpr int INITIAL_RETRY_DELAY_MS     = 100;
+    static constexpr int MAX_RETRY_DELAY_MS         = 5000;
 };
 
 /**
@@ -86,6 +99,7 @@ class OpenAutoEmbedded : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorChanged)
     Q_PROPERTY(QString phoneName READ phoneName NOTIFY phoneNameChanged)
     Q_PROPERTY(bool videoVisible READ isVideoVisible NOTIFY videoVisibleChanged)
+    Q_PROPERTY(QMLVideoOutput* qmlVideoOutput READ qmlVideoOutput NOTIFY qmlVideoOutputChanged)
 
 public:
     explicit OpenAutoEmbedded(QObject* parent = nullptr);
@@ -97,7 +111,7 @@ public:
     QString errorMessage() const;
     QString phoneName() const;
     bool isVideoVisible() const;
-    QWidget* videoWidget() const { return m_videoWidget.get(); }
+    QMLVideoOutput* qmlVideoOutput() const { return m_qmlVideoOutput.get(); }
 
     // Control
     Q_INVOKABLE bool start();
@@ -105,37 +119,17 @@ public:
     Q_INVOKABLE void restart();
 
     // ═══════════════════════════════════════════════════════════════
-    // VIDEO CONTAINER INTEGRATION (called from QML)
+    // VIDEO OUTPUT (QML-native approach)
     // ═══════════════════════════════════════════════════════════════
 
     /**
-     * @brief Register the QML container item where video should be displayed
-     * @param container The QQuickItem that defines the video display area
-     *
-     * Called from OpenAutoScreen.qml Component.onCompleted.
-     * This establishes the parent relationship and positions the video widget.
-     */
-    Q_INVOKABLE void setVideoContainer(QQuickItem* container);
-
-    /**
-     * @brief Update video widget visibility based on screen state
+     * @brief Update video visibility based on screen state
      * @param visible Whether the OpenAutoScreen is currently visible
      *
      * Called from OpenAutoScreen.qml onVisibleChanged.
-     * Hides video when user navigates to other tabs, shows when returning.
+     * Controls video playback when navigating between screens.
      */
     Q_INVOKABLE void setVideoVisible(bool visible);
-
-    /**
-     * @brief Update video widget geometry when container resizes
-     * @param x X position relative to window
-     * @param y Y position relative to window
-     * @param width Container width
-     * @param height Container height
-     *
-     * Called from OpenAutoScreen.qml when geometry changes.
-     */
-    Q_INVOKABLE void updateVideoGeometry(int x, int y, int width, int height);
 
     // Touch/input forwarding
     Q_INVOKABLE void sendTouch(int x, int y, int action);
@@ -145,12 +139,22 @@ public:
     Q_INVOKABLE void setResolution(int width, int height);
     Q_INVOKABLE void setNightMode(bool nightMode);
 
+    /**
+     * @brief Retry device detection when external USB detection finds a device
+     *
+     * Called from main.cpp when OpenAutoController detects an Android Auto device.
+     * This is a workaround for libusb hotplug not working reliably on all systems.
+     * Triggers aasdk to re-enumerate USB devices and attempt connection.
+     */
+    Q_INVOKABLE void retryDeviceDetection();
+
 signals:
     void runningChanged();
     void connectedChanged();
     void errorChanged();
     void phoneNameChanged();
     void videoVisibleChanged();
+    void qmlVideoOutputChanged();
 
     void started();
     void stopped();
@@ -161,9 +165,6 @@ signals:
 
 private slots:
     void onProjectionActive(bool active);
-    void onContainerGeometryChanged();
-    void onContainerDestroyed();
-    void onGeometryUpdateTimeout();
 
 private:
     bool initializeLibusb();
@@ -172,13 +173,15 @@ private:
     void cleanupOpenauto();
     void setError(const QString& msg);
     void setConnected(bool connected);
-    void updateVideoWidgetPosition();
 
-    // Coordinate validation helpers (ISO 26262 defensive programming)
-    static constexpr int MAX_COORDINATE = 10000;  // Reasonable display limit
-    static constexpr int MIN_DIMENSION = 1;
-    int safeCoordinate(qreal value, int minVal, int maxVal) const;
-    bool validateGeometry(int x, int y, int w, int h) const;
+    // MISRA 15.6 FIX: Helper function for restart attempts (reduces nesting depth)
+    void tryRestartAttempt(int attemptNumber, int delayMs);
+
+    // Phase 1: USB worker synchronization helpers
+    void stopUsbWorkersSync();  // Stops USB workers with proper synchronization
+
+    // Phase 2: Graceful disconnect helper
+    bool requestGracefulDisconnect(int timeoutMs);  // Request phone to disconnect cleanly
 
     // Thread synchronization - protects shared state accessed from multiple threads
     mutable QMutex m_stateMutex;
@@ -188,23 +191,21 @@ private:
     bool m_connected{false};
     bool m_touchPressed{false};
     bool m_videoVisible{false};
-    bool m_containerRegistered{false};
+    bool m_waitingForDevice{false};  // FIX: Prevent concurrent waitForDevice() calls
+    bool m_pendingRetry{false};      // FIX: Queue retry if device detected before start()
+    bool m_restarting{false};  // FIX: Debounce restart() to prevent multiple simultaneous restarts
     QString m_errorMessage;
     QString m_phoneName;
     int m_width{800};
     int m_height{480};
     bool m_nightMode{false};
 
-    // Video widget for rendering
-    std::unique_ptr<QWidget> m_videoWidget;
+    // QML-native video output (renders to QVideoSink for QML VideoOutput)
+    std::shared_ptr<QMLVideoOutput> m_qmlVideoOutput;
 
-    // QML container reference (for geometry tracking)
-    // Using QPointer to safely detect if container is destroyed
-    QPointer<QQuickItem> m_container;
-    QPointer<QQuickWindow> m_containerWindow;
-
-    // Geometry update debounce timer (prevents excessive updates during animations)
-    std::unique_ptr<QTimer> m_geometryUpdateTimer;
+    // Hidden input widget for InputDevice event filter
+    // (required because openauto's InputDevice uses QWidget event filter)
+    std::unique_ptr<QWidget> m_inputWidget;
 
     // libusb
     libusb_context* m_usbContext{nullptr};
@@ -215,17 +216,34 @@ private:
     std::unique_ptr<QThread> m_ioThread;
     std::unique_ptr<OpenAutoIOWorker> m_ioWorker;
 
+    // USB worker threads - CRITICAL for processing libusb async transfers!
+    // Without these, USB control transfers (AOA protocol) never complete.
+    std::vector<std::thread> m_usbWorkerThreads;
+    std::atomic<bool> m_usbWorkersRunning{false};
+
+    // Phase 1: USB worker synchronization for clean shutdown
+    std::mutex m_usbWorkerMutex;
+    std::condition_variable m_usbWorkerCV;
+    std::atomic<int> m_usbWorkersActive{0};  // Count of active USB workers
+
     // openauto components
     std::unique_ptr<aasdk::usb::USBWrapper> m_usbWrapper;
     std::unique_ptr<aasdk::tcp::ITCPWrapper> m_tcpWrapper;
     std::shared_ptr<openauto::configuration::Configuration> m_configuration;
     std::unique_ptr<openauto::service::ServiceFactory> m_serviceFactory;
     std::unique_ptr<openauto::service::IAndroidAutoEntityFactory> m_androidAutoEntityFactory;
+
+    // FIX: Query factories MUST be member variables to persist for lifetime of USBHub/Enumerator
+    // Previously these were local variables in initializeOpenauto() causing USE-AFTER-FREE!
+    // USBHub and ConnectedAccessoriesEnumerator store REFERENCES to these factories.
+    std::unique_ptr<aasdk::usb::AccessoryModeQueryFactory> m_queryFactory;
+    std::unique_ptr<aasdk::usb::AccessoryModeQueryChainFactory> m_queryChainFactory;
+
     std::shared_ptr<aasdk::usb::IUSBHub> m_usbHub;
     std::shared_ptr<aasdk::usb::IConnectedAccessoriesEnumerator> m_connectedAccessoriesEnumerator;
     std::shared_ptr<openauto::App> m_app;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // HMI_OPENAUTO_EMBEDDED_HPP
+#endif  // HMI_OPENAUTO_EMBEDDED_HPP

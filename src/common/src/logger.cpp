@@ -1,54 +1,68 @@
 #include "common/logger.hpp"
-#include <iostream>
+
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
-#include <cstdio>
 
 #ifdef __linux__
-#include <syslog.h>
+    #include <syslog.h>
 #endif
 
 namespace speeduino {
 
-LogLevel Logger::s_minLevel = LogLevel::Info;
+LogLevel Logger::s_minLevel       = LogLevel::Info;
 std::string Logger::s_serviceName = "speeduino";
-bool Logger::s_initialized = false;
+bool Logger::s_initialized        = false;
 
 namespace {
 
 const char* levelToString(LogLevel level) {
     switch (level) {
-        case LogLevel::Trace: return "TRACE";
-        case LogLevel::Dbg:   return "DEBUG";
-        case LogLevel::Info:  return "INFO ";
-        case LogLevel::Warn:  return "WARN ";
-        case LogLevel::Err:   return "ERROR";
-        case LogLevel::Fatal: return "FATAL";
-        default:              return "?????";
+        case LogLevel::Trace:
+            return "TRACE";
+        case LogLevel::Dbg:
+            return "DEBUG";
+        case LogLevel::Info:
+            return "INFO ";
+        case LogLevel::Warn:
+            return "WARN ";
+        case LogLevel::Err:
+            return "ERROR";
+        case LogLevel::Fatal:
+            return "FATAL";
+        default:
+            return "?????";
     }
 }
 
 #ifdef __linux__
 int levelToSyslog(LogLevel level) {
     switch (level) {
-        case LogLevel::Trace: return LOG_DEBUG;
-        case LogLevel::Dbg:   return LOG_DEBUG;
-        case LogLevel::Info:  return LOG_INFO;
-        case LogLevel::Warn:  return LOG_WARNING;
-        case LogLevel::Err:   return LOG_ERR;
-        case LogLevel::Fatal: return LOG_CRIT;
-        default:              return LOG_INFO;
+        case LogLevel::Trace:
+            return LOG_DEBUG;
+        case LogLevel::Dbg:
+            return LOG_DEBUG;
+        case LogLevel::Info:
+            return LOG_INFO;
+        case LogLevel::Warn:
+            return LOG_WARNING;
+        case LogLevel::Err:
+            return LOG_ERR;
+        case LogLevel::Fatal:
+            return LOG_CRIT;
+        default:
+            return LOG_INFO;
     }
 }
 #endif
 
 std::string getCurrentTimestamp() {
-    auto now = std::chrono::system_clock::now();
+    auto now        = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     std::tm tm_now;
 #ifdef _WIN32
@@ -58,8 +72,8 @@ std::string getCurrentTimestamp() {
 #endif
 
     std::ostringstream oss;
-    oss << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S")
-        << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    oss << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3)
+        << ms.count();
     return oss.str();
 }
 
@@ -72,7 +86,7 @@ std::string extractFilename(const char* path) {
     return std::string(sv);
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 void Logger::init(std::string_view service_name) {
     s_serviceName = std::string(service_name);
@@ -86,7 +100,8 @@ void Logger::init(std::string_view service_name) {
 }
 
 void Logger::shutdown() {
-    if (!s_initialized) return;
+    if (!s_initialized)
+        return;
 
     info("Logger shutting down");
 
@@ -105,9 +120,9 @@ bool Logger::isEnabled(LogLevel level) {
     return static_cast<uint8_t>(level) >= static_cast<uint8_t>(s_minLevel);
 }
 
-void Logger::logImpl(LogLevel level, std::string_view message,
-                     const std::source_location& loc) {
-    if (!isEnabled(level)) return;
+void Logger::logImpl(LogLevel level, std::string_view message, const std::source_location& loc) {
+    if (!isEnabled(level))
+        return;
 
     std::string filename = extractFilename(loc.file_name());
 
@@ -115,8 +130,7 @@ void Logger::logImpl(LogLevel level, std::string_view message,
     std::ostringstream oss;
     oss << "[" << getCurrentTimestamp() << "] "
         << "[" << levelToString(level) << "] "
-        << "[" << filename << ":" << loc.line() << "] "
-        << message;
+        << "[" << filename << ":" << loc.line() << "] " << message;
 
     std::string formatted = oss.str();
 
@@ -126,8 +140,7 @@ void Logger::logImpl(LogLevel level, std::string_view message,
 #ifdef __linux__
     // Also log to syslog/journald
     if (s_initialized) {
-        syslog(levelToSyslog(level), "%s:%d %.*s",
-               filename.c_str(), static_cast<int>(loc.line()),
+        syslog(levelToSyslog(level), "%s:%d %.*s", filename.c_str(), static_cast<int>(loc.line()),
                static_cast<int>(message.size()), message.data());
     }
 #endif
@@ -157,4 +170,4 @@ void Logger::fatal(std::string_view message, const std::source_location& loc) {
     logImpl(LogLevel::Fatal, message, loc);
 }
 
-} // namespace speeduino
+}  // namespace speeduino

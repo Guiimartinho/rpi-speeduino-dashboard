@@ -179,23 +179,24 @@ std::vector<CanSignalDef> createBMWSignals() {
     // Status flags
     signals.push_back({"motor_running_329", 0x329, 3, 3, 1, false, false, 1.0, 0, ""});
     signals.push_back({"brake_pressed", 0x329, 6, 0, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"clutch_pressed", 0x329, 6, 1, 1, false, false, 1.0, 0, ""});
 
     // ═══════════════════════════════════════════════════════════════════════
-    // DME4 (0x545) - Diagnostics and Consumption @ 10Hz
+    // DME4 (0x545) - Diagnostics and Consumption @ 5Hz
     // ═══════════════════════════════════════════════════════════════════════
-    // Byte 0: CEL/MIL status flags
-    //         Bit 1 (0x02): MIL (Check Engine Light) ON
-    //         Bit 4 (0x10): Cruise control active
-    // Bytes 1-2: Fuel consumption (L/h × 100, Little Endian)
-    // Byte 3: Overheat warning
-    //         0x08: Overheat active (CLT > 120°C)
-    // Byte 4: Oil temperature (same formula as coolant)
-    // Bytes 5-7: Reserved
-    signals.push_back({"cel_status", 0x545, 0, 1, 1, false, false, 1.0, 0, ""});
-    signals.push_back({"cruise_active", 0x545, 0, 4, 1, false, false, 1.0, 0, ""});
-    signals.push_back({"fuel_consumption", 0x545, 1, 0, 16, false, false, 0.01, 0, "L/h"});
-    signals.push_back({"overheat_warning", 0x545, 3, 3, 1, false, false, 1.0, 0, ""});
-    signals.push_back({"oil_temp", 0x545, 4, 0, 8, false, false, 0.75, -48.0, "C"});
+    // Bytes 0-1: Oil Temperature (12-bit, (OilTemp + 48) × 4)
+    //            Decode: ((byte[1] << 8 | byte[0]) / 4) - 48
+    // Byte 2: Coolant Temp backup (same as 0x329)
+    // Byte 3: Ambient Temperature ((Temp + 48))
+    // Bytes 4-5: Fuel Consumption (L/h × 10, Little Endian)
+    // Byte 6: CEL Status (bit 0 = CEL ON)
+    // Byte 7: Cruise Status (0x00 typically)
+    signals.push_back({"oil_temp", 0x545, 0, 0, 16, false, false, 0.25, -48.0, "C"});
+    signals.push_back({"coolant_temp_545", 0x545, 2, 0, 8, false, false, 0.75, -48.0, "C"});
+    signals.push_back({"ambient_temp", 0x545, 3, 0, 8, false, false, 1.0, -48.0, "C"});
+    signals.push_back({"fuel_consumption", 0x545, 4, 0, 16, false, false, 0.1, 0, "L/h"});
+    signals.push_back({"cel_status", 0x545, 6, 0, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"cruise_status", 0x545, 7, 0, 8, false, false, 1.0, 0, ""});
 
     return signals;
 }
@@ -238,6 +239,151 @@ std::vector<CanSignalDef> createVAGSignals() {
     return signals;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// SPEEDUINO NATIVE CAN PROTOCOL (Little Endian - LSB First)
+// Source: SCG-ECU 2.0 CAN Dashboard Master Reference (Jan 2026)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Primary engine data broadcast for HMI display
+// Messages: 0x3E0, 0x3E1, 0x3E2, 0x3E3, 0x370
+//
+// Note: This is separate from Haltech signals which use different message IDs
+
+std::vector<CanSignalDef> createSpeeduinoSignals() {
+    std::vector<CanSignalDef> signals;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x3E0 - Engine Data 1 @ 20Hz (Core engine data)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0-1: RPM (direct, Little Endian)
+    // Byte 2: MAP (kPa direct)
+    // Byte 3: TPS × 2
+    // Byte 4: CLT + 40
+    // Byte 5: IAT + 40
+    // Byte 6: Battery × 10
+    // Byte 7: AFR Target × 10
+    signals.push_back({"rpm", 0x3E0, 0, 0, 16, false, false, 1.0, 0, "rpm"});
+    signals.push_back({"map", 0x3E0, 2, 0, 8, false, false, 1.0, 0, "kPa"});
+    signals.push_back({"tps", 0x3E0, 3, 0, 8, false, false, 0.5, 0, "%"});
+    signals.push_back({"coolant_temp", 0x3E0, 4, 0, 8, false, false, 1.0, -40.0, "C"});
+    signals.push_back({"intake_temp", 0x3E0, 5, 0, 8, false, false, 1.0, -40.0, "C"});
+    signals.push_back({"battery_voltage", 0x3E0, 6, 0, 8, false, false, 0.1, 0, "V"});
+    signals.push_back({"afr_target", 0x3E0, 7, 0, 8, false, false, 0.1, 0, "AFR"});
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x3E1 - Engine Data 2 @ 20Hz (AFR, Ignition, Pressures)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0: AFR Actual × 10
+    // Byte 1: Ignition Advance × 2
+    // Byte 2-3: Fuel PW × 10 (ms, Little Endian)
+    // Byte 4: VE (%)
+    // Byte 5: Fuel Pressure × 10 (bar)
+    // Byte 6: Oil Pressure × 10 (bar)
+    // Byte 7: Boost Target (kPa)
+    signals.push_back({"lambda1", 0x3E1, 0, 0, 8, false, false, 0.1, 0, "AFR"});
+    signals.push_back({"ignition_advance", 0x3E1, 1, 0, 8, false, false, 0.5, 0, "deg"});
+    signals.push_back({"pw1", 0x3E1, 2, 0, 16, false, false, 0.1, 0, "ms"});
+    signals.push_back({"ve", 0x3E1, 4, 0, 8, false, false, 1.0, 0, "%"});
+    signals.push_back({"fuel_pressure", 0x3E1, 5, 0, 8, false, false, 10.0, 0, "kPa"});  // bar×10 → kPa
+    signals.push_back({"oil_pressure", 0x3E1, 6, 0, 8, false, false, 10.0, 0, "kPa"});   // bar×10 → kPa
+    signals.push_back({"boost_target", 0x3E1, 7, 0, 8, false, false, 1.0, 0, "kPa"});
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x3E2 - Engine Status @ 10Hz (Status flags and idle control)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0: Status flags 1
+    //   Bit 0: Engine Running
+    //   Bit 1: Cranking
+    //   Bit 2: ASE Active
+    //   Bit 3: Warmup Active
+    //   Bit 4: Accel Enrich
+    //   Bit 5: Decel Fuel Cut (DFCO)
+    //   Bit 6: Rev Limiter
+    //   Bit 7: Boost Cut
+    // Byte 1: Status flags 2
+    //   Bit 0: Fan On
+    //   Bit 1: Fuel Pump
+    //   Bit 2: CEL (Check Engine)
+    //   Bit 3: EGO Heating
+    //   Bit 4: Launch Control
+    //   Bit 5: Flat Shift
+    //   Bit 6: Nitrous Stage 1
+    //   Bit 7: Nitrous Stage 2
+    // Byte 2: Error Count
+    // Byte 3: Sync Status
+    // Byte 4: Idle Target RPM / 10
+    // Byte 5: Idle Valve Duty
+    signals.push_back({"engine_running", 0x3E2, 0, 0, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"cranking", 0x3E2, 0, 1, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"ase_active", 0x3E2, 0, 2, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"warmup_active", 0x3E2, 0, 3, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"accel_enrich", 0x3E2, 0, 4, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"dfco_active", 0x3E2, 0, 5, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"rev_limit_active", 0x3E2, 0, 6, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"boost_cut_active", 0x3E2, 0, 7, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"fan_on", 0x3E2, 1, 0, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"fuel_pump_on", 0x3E2, 1, 1, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"cel_flag", 0x3E2, 1, 2, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"ego_heating", 0x3E2, 1, 3, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"launch_active", 0x3E2, 1, 4, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"flat_shift_active", 0x3E2, 1, 5, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"nitrous_stage1", 0x3E2, 1, 6, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"nitrous_stage2", 0x3E2, 1, 7, 1, false, false, 1.0, 0, ""});
+    signals.push_back({"error_count", 0x3E2, 2, 0, 8, false, false, 1.0, 0, ""});
+    signals.push_back({"sync_status", 0x3E2, 3, 0, 8, false, false, 1.0, 0, ""});
+    signals.push_back({"idle_target_rpm", 0x3E2, 4, 0, 8, false, false, 10.0, 0, "rpm"});
+    signals.push_back({"idle_valve_duty", 0x3E2, 5, 0, 8, false, false, 1.0, 0, "%"});
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x3E3 - Fuel/Ignition Trims @ 5Hz (Per-cylinder corrections)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0-3: Fuel trim per cylinder (raw - 100 = % correction)
+    // Byte 4-7: Ignition trim per cylinder ((raw - 128) / 2 = degrees)
+    signals.push_back({"fuel_trim_cyl1", 0x3E3, 0, 0, 8, false, false, 1.0, -100.0, "%"});
+    signals.push_back({"fuel_trim_cyl2", 0x3E3, 1, 0, 8, false, false, 1.0, -100.0, "%"});
+    signals.push_back({"fuel_trim_cyl3", 0x3E3, 2, 0, 8, false, false, 1.0, -100.0, "%"});
+    signals.push_back({"fuel_trim_cyl4", 0x3E3, 3, 0, 8, false, false, 1.0, -100.0, "%"});
+    signals.push_back({"ign_trim_cyl1", 0x3E3, 4, 0, 8, false, false, 0.5, -64.0, "deg"});
+    signals.push_back({"ign_trim_cyl2", 0x3E3, 5, 0, 8, false, false, 0.5, -64.0, "deg"});
+    signals.push_back({"ign_trim_cyl3", 0x3E3, 6, 0, 8, false, false, 0.5, -64.0, "deg"});
+    signals.push_back({"ign_trim_cyl4", 0x3E3, 7, 0, 8, false, false, 0.5, -64.0, "deg"});
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x370 - VSS @ 15Hz (Vehicle speed and odometer)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0-1: Speed × 100 (km/h, Little Endian)
+    // Byte 2-5: Odometer (km, Little Endian)
+    signals.push_back({"vehicle_speed", 0x370, 0, 0, 16, false, false, 0.01, 0, "km/h"});
+    signals.push_back({"odometer", 0x370, 2, 0, 32, false, false, 1.0, 0, "km"});
+
+    return signals;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WIDEBAND CONTROLLER (AEM X-Series) - Little Endian
+// Source: AEM X-Series CAN Protocol Documentation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+std::vector<CanSignalDef> createWidebandSignals() {
+    std::vector<CanSignalDef> signals;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0x180 - Wideband Data @ 50Hz
+    // ═══════════════════════════════════════════════════════════════════════
+    // Byte 0-1: Lambda × 10000 (Little Endian)
+    // Byte 2: O2 % × 100
+    // Byte 3: Status (0=warmup, 1=ok, 2=error)
+    // Byte 4: Heater Duty (0-100%)
+    // Byte 5: Sensor Temp (°C)
+    signals.push_back({"wideband_lambda", 0x180, 0, 0, 16, false, false, 0.0001, 0, ""});
+    signals.push_back({"wideband_o2", 0x180, 2, 0, 8, false, false, 0.01, 0, "%"});
+    signals.push_back({"wideband_status", 0x180, 3, 0, 8, false, false, 1.0, 0, ""});
+    signals.push_back({"wideband_heater", 0x180, 4, 0, 8, false, false, 1.0, 0, "%"});
+    signals.push_back({"wideband_temp", 0x180, 5, 0, 8, false, false, 1.0, 0, "C"});
+
+    return signals;
+}
+
 std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol) {
     if (protocol == "haltech") {
         return createHaltechSignals();
@@ -245,10 +391,20 @@ std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol) {
         return createBMWSignals();
     } else if (protocol == "vag") {
         return createVAGSignals();
+    } else if (protocol == "speeduino") {
+        return createSpeeduinoSignals();
+    } else if (protocol == "wideband") {
+        return createWidebandSignals();
+    } else if (protocol == "speeduino_full") {
+        // Combined Speeduino + Wideband for complete dashboard support
+        auto signals = createSpeeduinoSignals();
+        auto wideband = createWidebandSignals();
+        signals.insert(signals.end(), wideband.begin(), wideband.end());
+        return signals;
     } else {
-        LOG_WARN("Unknown protocol '" + protocol + "', defaulting to Haltech");
-        return createHaltechSignals();
+        LOG_WARN("Unknown protocol '" + protocol + "', defaulting to Speeduino");
+        return createSpeeduinoSignals();
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

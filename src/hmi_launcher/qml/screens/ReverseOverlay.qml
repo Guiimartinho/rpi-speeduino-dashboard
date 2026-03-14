@@ -1,5 +1,7 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 import "../styles" as Styles
 import "../state" as State
 
@@ -8,11 +10,12 @@ import "../state" as State
  * Full-screen reverse camera overlay with highest priority
  *
  * Features:
- * - Fullscreen camera feed
- * - Parking guide lines overlay
+ * - Fullscreen camera feed via Qt6 VideoOutput
+ * - Parking guide lines overlay (Canvas)
  * - Warning indicators
  * - Auto-dismiss when reverse disengaged
  * - Quick dismiss button for manual close
+ * - Graceful handling when camera unavailable
  */
 Item {
     id: reverseOverlay
@@ -21,8 +24,35 @@ Item {
     visible: State.AppState.currentOverlay === State.AppState.overlayReverseCamera
     z: 1000  // Highest z-index to overlay everything
 
-    // Camera status
-    property bool cameraReady: State.AppState.cameraAvailable
+    // Camera status - use cameraController directly
+    property bool cameraReady: typeof cameraController !== "undefined" && cameraController && cameraController.available
+    property bool cameraActive: typeof cameraController !== "undefined" && cameraController && cameraController.active
+    property bool cameraTestMode: typeof cameraController !== "undefined" && cameraController && cameraController.testMode
+
+    // Connect video sink when overlay becomes visible
+    onVisibleChanged: {
+        if (visible) {
+            connectVideoSink()
+            if (cameraReady && typeof cameraController !== "undefined" && cameraController) {
+                cameraController.start()
+            }
+        } else {
+            if (typeof cameraController !== "undefined" && cameraController) {
+                cameraController.stop()
+            }
+        }
+    }
+
+    // Retry connecting video sink
+    function connectVideoSink() {
+        if (typeof cameraController !== "undefined" && cameraController && cameraVideoOutput.videoSink) {
+            console.log("ReverseOverlay: Connecting video sink")
+            cameraController.setVideoSink(cameraVideoOutput.videoSink)
+        } else {
+            // Retry on next frame
+            Qt.callLater(connectVideoSink)
+        }
+    }
 
     // Fade in/out animation
     opacity: visible ? 1.0 : 0.0
@@ -45,12 +75,15 @@ Item {
         anchors.fill: parent
         color: "black"
 
-        // Placeholder for actual camera feed
-        // In production, this is replaced by GStreamer/Qt Multimedia VideoOutput
-        Item {
-            id: cameraVideoPlaceholder
+        // Qt6 VideoOutput for camera feed
+        VideoOutput {
+            id: cameraVideoOutput
             anchors.fill: parent
-            objectName: "reverseCameraVideoSurface"  // C++ looks for this
+            fillMode: VideoOutput.PreserveAspectCrop
+            visible: reverseOverlay.cameraActive
+
+            // Mirror the video horizontally for rear-view effect (optional)
+            // transform: Scale { xScale: -1; origin.x: cameraVideoOutput.width / 2 }
         }
 
         // Camera unavailable message
@@ -78,18 +111,56 @@ Item {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Check camera connection"
+                text: typeof cameraController !== "undefined" && cameraController
+                      ? cameraController.statusMessage
+                      : "Check camera connection"
                 font.pixelSize: Styles.Theme.fontMd
+                color: Styles.Theme.textSecondary
+            }
+        }
+
+        // Loading indicator when camera is starting
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: Styles.Theme.spacingMd
+            visible: reverseOverlay.cameraReady && !reverseOverlay.cameraActive
+
+            BusyIndicator {
+                Layout.alignment: Qt.AlignHCenter
+                running: parent.visible
+                palette.dark: Styles.Theme.accentPrimary
+            }
+
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Starting camera..."
+                font.pixelSize: Styles.Theme.fontLg
                 color: Styles.Theme.textSecondary
             }
         }
     }
 
+    // Parking guide line configuration from cameraController (or defaults)
+    property double guideBottomWidth: typeof cameraController !== "undefined" && cameraController ? cameraController.guideBottomWidth : 0.8
+    property double guideTopWidth: typeof cameraController !== "undefined" && cameraController ? cameraController.guideTopWidth : 0.4
+    property double guideBottomY: typeof cameraController !== "undefined" && cameraController ? cameraController.guideBottomY : 0.95
+    property double guideTopY: typeof cameraController !== "undefined" && cameraController ? cameraController.guideTopY : 0.45
+    property double guideDistance1: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance1 : 0.5
+    property double guideDistance2: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance2 : 1.0
+    property double guideDistance3: typeof cameraController !== "undefined" && cameraController ? cameraController.guideDistance3 : 1.5
+    property bool showGuides: typeof cameraController !== "undefined" && cameraController ? cameraController.showGuides : true
+
     // Parking guide lines overlay
     Canvas {
         id: parkingGuides
         anchors.fill: parent
-        visible: reverseOverlay.cameraReady
+        visible: reverseOverlay.cameraActive && reverseOverlay.showGuides
+
+        // Repaint when guide configuration changes
+        Connections {
+            target: typeof cameraController !== "undefined" && cameraController ? cameraController : null
+            function onGuideChanged() { parkingGuides.requestPaint() }
+        }
 
         onPaint: {
             var ctx = getContext("2d")
@@ -102,11 +173,11 @@ Item {
             ctx.lineWidth = 3
             ctx.lineCap = "round"
 
-            // Calculate guide positions (trapezoidal shape)
-            var bottomY = h * 0.95
-            var topY = h * 0.45
-            var bottomWidth = w * 0.8
-            var topWidth = w * 0.4
+            // Calculate guide positions from configurable values (trapezoidal shape)
+            var bottomY = h * reverseOverlay.guideBottomY
+            var topY = h * reverseOverlay.guideTopY
+            var bottomWidth = w * reverseOverlay.guideBottomWidth
+            var topWidth = w * reverseOverlay.guideTopWidth
 
             var leftBottomX = (w - bottomWidth) / 2
             var rightBottomX = leftBottomX + bottomWidth
@@ -119,14 +190,18 @@ Item {
             // Right guide line
             drawGuideLine(ctx, rightBottomX, bottomY, rightTopX, topY, false)
 
-            // Horizontal distance markers
-            drawDistanceMarker(ctx, leftBottomX, rightBottomX, h * 0.85, "0.5m", "#00ff00")
+            // Horizontal distance markers with configurable distances
+            var dist1Label = reverseOverlay.guideDistance1.toFixed(1) + "m"
+            var dist2Label = reverseOverlay.guideDistance2.toFixed(1) + "m"
+            var dist3Label = reverseOverlay.guideDistance3.toFixed(1) + "m"
+
+            drawDistanceMarker(ctx, leftBottomX, rightBottomX, h * 0.85, dist1Label, "#00ff00")
             drawDistanceMarker(ctx, leftBottomX + (leftTopX - leftBottomX) * 0.33,
                               rightBottomX + (rightTopX - rightBottomX) * 0.33,
-                              h * 0.7, "1m", "#ffaa00")
+                              h * 0.7, dist2Label, "#ffaa00")
             drawDistanceMarker(ctx, leftBottomX + (leftTopX - leftBottomX) * 0.66,
                               rightBottomX + (rightTopX - rightBottomX) * 0.66,
-                              h * 0.55, "1.5m", "#ff0000")
+                              h * 0.55, dist3Label, "#ff0000")
         }
 
         function drawGuideLine(ctx, x1, y1, x2, y2, isLeft) {
@@ -230,10 +305,11 @@ Item {
             // Camera status
             Text {
                 Layout.alignment: Qt.AlignVCenter
-                text: reverseOverlay.cameraReady ? "CAM OK" : "CAM ERR"
+                text: reverseOverlay.cameraActive ? "CAM OK" : (reverseOverlay.cameraReady ? "STARTING" : "CAM ERR")
                 font.pixelSize: Styles.Theme.fontSm
                 font.weight: Styles.Theme.fontWeightBold
-                color: reverseOverlay.cameraReady ? Styles.Theme.statusOk : Styles.Theme.statusCritical
+                color: reverseOverlay.cameraActive ? Styles.Theme.statusOk
+                     : (reverseOverlay.cameraReady ? Styles.Theme.statusWarning : Styles.Theme.statusCritical)
             }
         }
     }
@@ -261,6 +337,36 @@ Item {
             id: closeButtonMouse
             anchors.fill: parent
             onClicked: State.AppState.hideReverseCamera()
+        }
+    }
+
+    // Test mode indicator badge
+    Rectangle {
+        id: testModeBadge
+        anchors.top: topBar.bottom
+        anchors.left: parent.left
+        anchors.margins: Styles.Theme.spacingMd
+        width: testModeLabel.width + Styles.Theme.spacingMd * 2
+        height: Styles.Theme.dp(28)
+        radius: Styles.Theme.radiusSmall
+        color: "#ff9900"  // Orange for test mode
+        visible: reverseOverlay.cameraTestMode
+
+        Text {
+            id: testModeLabel
+            anchors.centerIn: parent
+            text: "TEST MODE"
+            font.pixelSize: Styles.Theme.fontSm
+            font.weight: Styles.Theme.fontWeightBold
+            color: "#000000"
+        }
+
+        // Subtle pulse animation
+        SequentialAnimation on opacity {
+            running: testModeBadge.visible
+            loops: Animation.Infinite
+            NumberAnimation { to: 0.7; duration: 800 }
+            NumberAnimation { to: 1.0; duration: 800 }
         }
     }
 
@@ -292,7 +398,7 @@ Item {
         font.pixelSize: Styles.Theme.fontSm
         color: Styles.Theme.textSecondary
         opacity: hintTimer.running ? 0 : 0.7
-        visible: reverseOverlay.cameraReady
+        visible: reverseOverlay.cameraActive
 
         Timer {
             id: hintTimer

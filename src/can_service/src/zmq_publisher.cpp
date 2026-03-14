@@ -1,6 +1,9 @@
 #include "can_service/zmq_publisher.hpp"
+
 #include "common/logger.hpp"
+
 #include <msgpack.hpp>
+
 #include <sstream>
 
 namespace speeduino {
@@ -10,11 +13,11 @@ namespace speeduino {
 // ISO 26262: Named constants improve code readability and maintainability
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// High water mark for ZMQ publisher - drops old messages if subscriber is slow
-    constexpr int ZMQ_PUBLISHER_HWM = 10;
-    /// Linger time for ZMQ sockets (0 = don't wait on close)
-    constexpr int ZMQ_LINGER_MS = 0;
-} // anonymous namespace
+/// High water mark for ZMQ publisher - drops old messages if subscriber is slow
+constexpr int ZMQ_PUBLISHER_HWM = 10;
+/// Linger time for ZMQ sockets (0 = don't wait on close)
+constexpr int ZMQ_LINGER_MS = 0;
+}  // anonymous namespace
 
 // ZmqPublisher implementation
 ZmqPublisher::ZmqPublisher() = default;
@@ -26,7 +29,7 @@ ZmqPublisher::~ZmqPublisher() {
 bool ZmqPublisher::init(const std::string& endpoint) {
     try {
         m_context = std::make_unique<zmq::context_t>(1);
-        m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::pub);
+        m_socket  = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::pub);
 
         // Set socket options (use legacy API for compatibility)
         m_socket->setsockopt(ZMQ_LINGER, &ZMQ_LINGER_MS, sizeof(ZMQ_LINGER_MS));
@@ -52,7 +55,7 @@ void ZmqPublisher::shutdown() {
     }
 }
 
-template<typename T>
+template <typename T>
 bool ZmqPublisher::publish(const char* topic, const T& data) {
     if (!m_initialized) {
         return false;
@@ -102,7 +105,7 @@ ZmqCommandServer::~ZmqCommandServer() {
 bool ZmqCommandServer::init(const std::string& endpoint) {
     try {
         m_context = std::make_unique<zmq::context_t>(1);
-        m_socket = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::rep);
+        m_socket  = std::make_unique<zmq::socket_t>(*m_context, zmq::socket_type::rep);
 
         // Set socket options (use legacy API for compatibility)
         m_socket->setsockopt(ZMQ_LINGER, &ZMQ_LINGER_MS, sizeof(ZMQ_LINGER_MS));
@@ -133,7 +136,9 @@ std::optional<CanCommand> ZmqCommandServer::receiveCommand(int timeout_ms) {
     }
 
     try {
-        zmq::pollitem_t items[] = {{*m_socket, 0, ZMQ_POLLIN, 0}};
+        zmq::pollitem_t items[] = {
+            {*m_socket, 0, ZMQ_POLLIN, 0}
+        };
         zmq::poll(items, 1, std::chrono::milliseconds(timeout_ms));
 
         if (items[0].revents & ZMQ_POLLIN) {
@@ -144,8 +149,8 @@ std::optional<CanCommand> ZmqCommandServer::receiveCommand(int timeout_ms) {
             }
 
             // Deserialize
-            msgpack::object_handle oh = msgpack::unpack(
-                static_cast<const char*>(msg.data()), msg.size());
+            msgpack::object_handle oh =
+                msgpack::unpack(static_cast<const char*>(msg.data()), msg.size());
             msgpack::object obj = oh.get();
 
             CanCommand cmd;
@@ -178,4 +183,4 @@ bool ZmqCommandServer::sendResponse(const CanCommandResponse& response) {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

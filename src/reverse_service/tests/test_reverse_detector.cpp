@@ -12,13 +12,15 @@
  * ISO 26262 ASIL-B: Comprehensive testing for safety-critical reverse detection
  */
 
-#include <gtest/gtest.h>
 #include "reverse_service/reverse_detector.hpp"
-#include <thread>
-#include <chrono>
+
+#include <gtest/gtest.h>
+
 #include <atomic>
-#include <vector>
+#include <chrono>
 #include <mutex>
+#include <thread>
+#include <vector>
 
 using namespace speeduino;
 
@@ -34,18 +36,16 @@ protected:
     void SetUp() override {
         // Default CAN-only configuration
         config.detection_mode = "can";
-        config.can_enabled = true;
-        config.gpio_enabled = false;
-        config.can_id = 0x370;
-        config.byte_index = 3;
-        config.bit_mask = 0x80;
+        config.can_enabled    = true;
+        config.gpio_enabled   = false;
+        config.can_id         = 0x370;
+        config.byte_index     = 3;
+        config.bit_mask       = 0x80;
         config.expected_value = 0x80;
-        config.debounce_ms = 50;
+        config.debounce_ms    = 50;
     }
 
-    void TearDown() override {
-        detector.shutdown();
-    }
+    void TearDown() override { detector.shutdown(); }
 
     // Helper to create a CAN frame with reverse engaged
     std::array<uint8_t, 8> createReverseEngagedFrame() {
@@ -73,8 +73,8 @@ TEST_F(ReverseDetectorTest, DefaultConstruction) {
 
 TEST_F(ReverseDetectorTest, InitWithCanConfig) {
     config.detection_mode = "can";
-    config.can_enabled = true;
-    config.gpio_enabled = false;
+    config.can_enabled    = true;
+    config.gpio_enabled   = false;
 
     bool result = detector.init(config);
 
@@ -84,10 +84,10 @@ TEST_F(ReverseDetectorTest, InitWithCanConfig) {
 
 TEST_F(ReverseDetectorTest, InitWithGpioConfig) {
     config.detection_mode = "gpio";
-    config.can_enabled = false;
-    config.gpio_enabled = true;
-    config.gpio_chip = "gpiochip0";
-    config.gpio_line = 17;
+    config.can_enabled    = false;
+    config.gpio_enabled   = true;
+    config.gpio_chip      = "gpiochip0";
+    config.gpio_line      = 17;
 
     // Init will succeed but GPIO may fail to initialize (no hardware)
     bool result = detector.init(config);
@@ -98,8 +98,8 @@ TEST_F(ReverseDetectorTest, InitWithGpioConfig) {
 
 TEST_F(ReverseDetectorTest, InitWithBothConfig) {
     config.detection_mode = "both";
-    config.can_enabled = true;
-    config.gpio_enabled = true;
+    config.can_enabled    = true;
+    config.gpio_enabled   = true;
 
     bool result = detector.init(config);
 
@@ -108,7 +108,7 @@ TEST_F(ReverseDetectorTest, InitWithBothConfig) {
 
 TEST_F(ReverseDetectorTest, InitWithSpeeduinoCanConfig) {
     config.detection_mode = "speeduino_can";
-    config.can_id = 0x370;
+    config.can_id         = 0x370;
 
     bool result = detector.init(config);
 
@@ -192,7 +192,7 @@ TEST_F(ReverseDetectorTest, IgnoreShortDlc) {
 
 TEST_F(ReverseDetectorTest, ProcessCanFrameWhenCanDisabled) {
     config.detection_mode = "gpio";
-    config.can_enabled = false;
+    config.can_enabled    = false;
     detector.init(config);
 
     auto data = createReverseEngagedFrame();
@@ -212,7 +212,7 @@ TEST_F(ReverseDetectorTest, DebounceFiltersNoise) {
     config.debounce_ms = 100;
     detector.init(config);
 
-    auto engagedData = createReverseEngagedFrame();
+    auto engagedData    = createReverseEngagedFrame();
     auto disengagedData = createReverseDisengagedFrame();
 
     // Rapid toggle should not change state (noise)
@@ -255,7 +255,7 @@ TEST_F(ReverseDetectorTest, CallbackInvokedOnStateChange) {
     detector.setCallback([&](bool engaged, uint8_t source) {
         callbackCount++;
         lastEngaged = engaged;
-        lastSource = source;
+        lastSource  = source;
     });
 
     detector.init(config);
@@ -278,9 +278,7 @@ TEST_F(ReverseDetectorTest, CallbackInvokedOnStateChange) {
 TEST_F(ReverseDetectorTest, CallbackNotInvokedWithoutStateChange) {
     std::atomic<int> callbackCount{0};
 
-    detector.setCallback([&](bool, uint8_t) {
-        callbackCount++;
-    });
+    detector.setCallback([&](bool, uint8_t) { callbackCount++; });
 
     detector.init(config);
 
@@ -356,11 +354,11 @@ TEST_F(ReverseDetectorTest, ConcurrentStateAccess) {
 
     // Writer thread
     threads.emplace_back([this]() {
-        auto engagedData = createReverseEngagedFrame();
+        auto engagedData    = createReverseEngagedFrame();
         auto disengagedData = createReverseDisengagedFrame();
         for (int i = 0; i < 100; ++i) {
             detector.procesCanFrame(config.can_id,
-                (i % 2 == 0) ? engagedData.data() : disengagedData.data(), 8);
+                                    (i % 2 == 0) ? engagedData.data() : disengagedData.data(), 8);
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
     });
@@ -511,9 +509,9 @@ TEST_F(ReverseDetectorTest, ShutdownWithoutInit) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 TEST_F(ReverseDetectorTest, SingleBitMask) {
-    config.bit_mask = 0x01;
+    config.bit_mask       = 0x01;
     config.expected_value = 0x01;
-    config.byte_index = 0;
+    config.byte_index     = 0;
     detector.init(config);
 
     std::array<uint8_t, 8> data = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -528,9 +526,9 @@ TEST_F(ReverseDetectorTest, SingleBitMask) {
 }
 
 TEST_F(ReverseDetectorTest, MultiBitMask) {
-    config.bit_mask = 0x0F;
+    config.bit_mask       = 0x0F;
     config.expected_value = 0x05;
-    config.byte_index = 2;
+    config.byte_index     = 2;
     detector.init(config);
 
     std::array<uint8_t, 8> data = {0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -545,9 +543,9 @@ TEST_F(ReverseDetectorTest, MultiBitMask) {
 }
 
 TEST_F(ReverseDetectorTest, FullByteMask) {
-    config.bit_mask = 0xFF;
+    config.bit_mask       = 0xFF;
     config.expected_value = 0xAA;
-    config.byte_index = 5;
+    config.byte_index     = 5;
     detector.init(config);
 
     std::array<uint8_t, 8> data = {0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x00, 0x00};
@@ -576,7 +574,7 @@ TEST_F(ReverseDetectorTest, CanProcessingLatency) {
         detector.procesCanFrame(config.can_id, data.data(), 8);
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end      = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
     // 10000 CAN frame processings should complete in < 100ms
@@ -593,7 +591,7 @@ TEST_F(ReverseDetectorTest, StateQueryLatency) {
         (void)state;
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end      = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
     // 100000 state queries should complete in < 50ms

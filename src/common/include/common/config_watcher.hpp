@@ -26,10 +26,10 @@ namespace speeduino {
  * @brief Type of configuration file change
  */
 enum class ConfigChangeType {
-    Modified,   ///< File content was modified
-    Created,    ///< File was created
-    Deleted,    ///< File was deleted
-    Moved       ///< File was moved/renamed
+    Modified,  ///< File content was modified
+    Created,   ///< File was created
+    Deleted,   ///< File was deleted
+    Moved      ///< File was moved/renamed
 };
 
 /**
@@ -37,11 +37,16 @@ enum class ConfigChangeType {
  */
 inline const char* configChangeTypeToString(ConfigChangeType type) {
     switch (type) {
-        case ConfigChangeType::Modified: return "Modified";
-        case ConfigChangeType::Created:  return "Created";
-        case ConfigChangeType::Deleted:  return "Deleted";
-        case ConfigChangeType::Moved:    return "Moved";
-        default:                         return "Unknown";
+        case ConfigChangeType::Modified:
+            return "Modified";
+        case ConfigChangeType::Created:
+            return "Created";
+        case ConfigChangeType::Deleted:
+            return "Deleted";
+        case ConfigChangeType::Moved:
+            return "Moved";
+        default:
+            return "Unknown";
     }
 }
 
@@ -50,9 +55,9 @@ inline const char* configChangeTypeToString(ConfigChangeType type) {
  * @brief Information about a configuration change
  */
 struct ConfigChangeEvent {
-    std::string path;                    ///< Full path to the changed file
-    ConfigChangeType type;               ///< Type of change
-    std::chrono::steady_clock::time_point timestamp; ///< When the change occurred
+    std::string path;                                 ///< Full path to the changed file
+    ConfigChangeType type;                            ///< Type of change
+    std::chrono::steady_clock::time_point timestamp;  ///< When the change occurred
 };
 
 /**
@@ -101,10 +106,10 @@ public:
     ~ConfigWatcher();
 
     // Non-copyable, non-movable
-    ConfigWatcher(const ConfigWatcher&) = delete;
+    ConfigWatcher(const ConfigWatcher&)            = delete;
     ConfigWatcher& operator=(const ConfigWatcher&) = delete;
-    ConfigWatcher(ConfigWatcher&&) = delete;
-    ConfigWatcher& operator=(ConfigWatcher&&) = delete;
+    ConfigWatcher(ConfigWatcher&&)                 = delete;
+    ConfigWatcher& operator=(ConfigWatcher&&)      = delete;
 
     /**
      * @brief Add a file or directory to watch
@@ -181,13 +186,12 @@ public:
 
 private:
     void watchLoop();
-    void processEvent(uint32_t mask, const std::string& filename,
-                      const std::string& watchPath);
+    void processEvent(uint32_t mask, const std::string& filename, const std::string& watchPath);
 
     struct WatchEntry {
         std::string path;
         int watchDescriptor = -1;
-        bool isDirectory = false;
+        bool isDirectory    = false;
     };
 
     int inotifyFd_ = -1;
@@ -198,8 +202,7 @@ private:
     std::chrono::milliseconds debounceInterval_{100};
 
     // Debounce tracking
-    std::unordered_map<std::string, std::chrono::steady_clock::time_point>
-        lastEventTime_;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> lastEventTime_;
 
     std::atomic<bool> running_{false};
     std::thread thread_;
@@ -302,6 +305,6 @@ private:
     std::atomic<uint64_t> errorCount_{0};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_CONFIG_WATCHER_HPP
+#endif  // COMMON_CONFIG_WATCHER_HPP

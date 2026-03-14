@@ -10,18 +10,19 @@
 #ifndef COMMON_EXPECTED_HPP
 #define COMMON_EXPECTED_HPP
 
-#include <variant>
-#include <string>
-#include <utility>
-#include <type_traits>
+#include <cstdint>
 #include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <variant>
 
 namespace speeduino {
 
 /**
  * @brief Tag type to indicate an unexpected (error) value
  */
-template<typename E>
+template <typename E>
 class Unexpected {
 public:
     explicit Unexpected(const E& error) : error_(error) {}
@@ -38,7 +39,7 @@ private:
 /**
  * @brief Factory function for Unexpected
  */
-template<typename E>
+template <typename E>
 [[nodiscard]] Unexpected<std::decay_t<E>> makeUnexpected(E&& error) {
     return Unexpected<std::decay_t<E>>(std::forward<E>(error));
 }
@@ -67,7 +68,7 @@ template<typename E>
  *   }
  * @endcode
  */
-template<typename T, typename E = std::string>
+template <typename T, typename E = std::string>
 class Expected {
 public:
     using value_type = T;
@@ -82,14 +83,10 @@ public:
     Expected(Unexpected<E>&& error) : data_(std::move(error).value()) {}
 
     // Check if contains a value
-    [[nodiscard]] bool hasValue() const noexcept {
-        return std::holds_alternative<T>(data_);
-    }
+    [[nodiscard]] bool hasValue() const noexcept { return std::holds_alternative<T>(data_); }
 
     // Boolean conversion
-    explicit operator bool() const noexcept {
-        return hasValue();
-    }
+    explicit operator bool() const noexcept { return hasValue(); }
 
     // ═══════════════════════════════════════════════════════════════════════
     // ISO 26262 ASIL-B: Use throw instead of assert for Release safety
@@ -150,25 +147,15 @@ public:
     }
 
     // Pointer-like access
-    [[nodiscard]] T* operator->() {
-        return &value();
-    }
+    [[nodiscard]] T* operator->() { return &value(); }
 
-    [[nodiscard]] const T* operator->() const {
-        return &value();
-    }
+    [[nodiscard]] const T* operator->() const { return &value(); }
 
-    [[nodiscard]] T& operator*() & {
-        return value();
-    }
+    [[nodiscard]] T& operator*() & { return value(); }
 
-    [[nodiscard]] const T& operator*() const& {
-        return value();
-    }
+    [[nodiscard]] const T& operator*() const& { return value(); }
 
-    [[nodiscard]] T&& operator*() && {
-        return std::move(value());
-    }
+    [[nodiscard]] T&& operator*() && { return std::move(value()); }
 
     /**
      * @brief Transform the value using a function
@@ -176,7 +163,7 @@ public:
      * @param func The transformation function
      * @return Expected<U, E> with transformed value or original error
      */
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto map(F&& func) const& -> Expected<std::invoke_result_t<F, const T&>, E> {
         using U = std::invoke_result_t<F, const T&>;
         if (hasValue()) {
@@ -185,7 +172,7 @@ public:
         return Expected<U, E>(makeUnexpected(error()));
     }
 
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto map(F&& func) && -> Expected<std::invoke_result_t<F, T&&>, E> {
         using U = std::invoke_result_t<F, T&&>;
         if (hasValue()) {
@@ -200,7 +187,7 @@ public:
      * @param func The transformation function
      * @return Expected<T, E2> with original value or transformed error
      */
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto mapError(F&& func) const& -> Expected<T, std::invoke_result_t<F, const E&>> {
         using E2 = std::invoke_result_t<F, const E&>;
         if (hasValue()) {
@@ -215,7 +202,7 @@ public:
      * @param func The chaining function
      * @return The result of func if has value, otherwise propagate error
      */
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto andThen(F&& func) const& -> std::invoke_result_t<F, const T&> {
         if (hasValue()) {
             return func(value());
@@ -223,7 +210,7 @@ public:
         return makeUnexpected(error());
     }
 
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto andThen(F&& func) && -> std::invoke_result_t<F, T&&> {
         if (hasValue()) {
             return func(std::move(value()));
@@ -237,7 +224,7 @@ public:
      * @param func The error handling function
      * @return Original value or result of error handler
      */
-    template<typename F>
+    template <typename F>
     [[nodiscard]] auto orElse(F&& func) const& -> Expected<T, E> {
         if (hasValue()) {
             return *this;
@@ -254,7 +241,7 @@ private:
  *
  * Represents an operation that either succeeds (no value) or fails with error.
  */
-template<typename E>
+template <typename E>
 class Expected<void, E> {
 public:
     using value_type = void;
@@ -264,21 +251,13 @@ public:
     Expected() : hasValue_(true) {}
 
     // Error constructor
-    Expected(const Unexpected<E>& error)
-        : error_(error.value())
-        , hasValue_(false) {}
+    Expected(const Unexpected<E>& error) : error_(error.value()), hasValue_(false) {}
 
-    Expected(Unexpected<E>&& error)
-        : error_(std::move(error).value())
-        , hasValue_(false) {}
+    Expected(Unexpected<E>&& error) : error_(std::move(error).value()), hasValue_(false) {}
 
-    [[nodiscard]] bool hasValue() const noexcept {
-        return hasValue_;
-    }
+    [[nodiscard]] bool hasValue() const noexcept { return hasValue_; }
 
-    explicit operator bool() const noexcept {
-        return hasValue_;
-    }
+    explicit operator bool() const noexcept { return hasValue_; }
 
     // ═══════════════════════════════════════════════════════════════════════
     // ISO 26262 ASIL-B: Use throw instead of assert for Release safety
@@ -337,19 +316,32 @@ enum class ErrorCode : uint8_t {
  */
 inline const char* errorCodeToString(ErrorCode code) {
     switch (code) {
-        case ErrorCode::Success:          return "Success";
-        case ErrorCode::InvalidArgument:  return "Invalid argument";
-        case ErrorCode::NotFound:         return "Not found";
-        case ErrorCode::PermissionDenied: return "Permission denied";
-        case ErrorCode::Timeout:          return "Timeout";
-        case ErrorCode::ResourceBusy:     return "Resource busy";
-        case ErrorCode::IoError:          return "I/O error";
-        case ErrorCode::OutOfMemory:      return "Out of memory";
-        case ErrorCode::NotInitialized:   return "Not initialized";
-        case ErrorCode::AlreadyExists:    return "Already exists";
-        case ErrorCode::NotSupported:     return "Not supported";
-        case ErrorCode::InternalError:    return "Internal error";
-        default:                          return "Unknown error";
+        case ErrorCode::Success:
+            return "Success";
+        case ErrorCode::InvalidArgument:
+            return "Invalid argument";
+        case ErrorCode::NotFound:
+            return "Not found";
+        case ErrorCode::PermissionDenied:
+            return "Permission denied";
+        case ErrorCode::Timeout:
+            return "Timeout";
+        case ErrorCode::ResourceBusy:
+            return "Resource busy";
+        case ErrorCode::IoError:
+            return "I/O error";
+        case ErrorCode::OutOfMemory:
+            return "Out of memory";
+        case ErrorCode::NotInitialized:
+            return "Not initialized";
+        case ErrorCode::AlreadyExists:
+            return "Already exists";
+        case ErrorCode::NotSupported:
+            return "Not supported";
+        case ErrorCode::InternalError:
+            return "Internal error";
+        default:
+            return "Unknown error";
     }
 }
 
@@ -361,11 +353,9 @@ struct Error {
     std::string message;
 
     Error() = default;
-    Error(ErrorCode c, std::string msg = "")
-        : code(c), message(std::move(msg)) {}
+    Error(ErrorCode c, std::string msg = "") : code(c), message(std::move(msg)) {}
 
-    explicit Error(const std::string& msg)
-        : code(ErrorCode::InternalError), message(msg) {}
+    explicit Error(const std::string& msg) : code(ErrorCode::InternalError), message(msg) {}
 
     [[nodiscard]] std::string toString() const {
         if (message.empty()) {
@@ -378,7 +368,7 @@ struct Error {
 /**
  * @brief Convenience type alias for Expected with Error
  */
-template<typename T>
+template <typename T>
 using Result = Expected<T, Error>;
 
 /**
@@ -386,6 +376,6 @@ using Result = Expected<T, Error>;
  */
 using VoidResult = Expected<void, Error>;
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_EXPECTED_HPP
+#endif  // COMMON_EXPECTED_HPP

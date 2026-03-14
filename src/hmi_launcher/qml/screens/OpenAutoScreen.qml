@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtMultimedia
 import "../styles" as Styles
 import "../state" as State
 
@@ -7,15 +8,14 @@ import "../state" as State
  * OpenAutoScreen.qml
  * Container for OpenAuto/Android Auto display
  *
- * ARCHITECTURE:
- * - This screen provides the container Item where Android Auto video will be displayed
- * - On Component.onCompleted, we register our container with C++ via setVideoContainer()
- * - On visibility changes, we notify C++ via setVideoVisible()
+ * ARCHITECTURE (QML-native video):
+ * - Uses native QML VideoOutput instead of QWidget overlay
+ * - QMLVideoOutput (C++) provides video sink for H.264 decoded frames
  * - Touch events are captured and forwarded via sendTouch()
- * - The actual video rendering is done by a C++ QWidget that overlays on our container
+ * - No widget parenting/positioning needed - pure QML layout
  *
  * Features:
- * - Video surface for OpenAuto (embedded in content area, NOT fullscreen)
+ * - Native QML video surface for OpenAuto (no EGLFS conflicts)
  * - Connection status overlay when not connected
  * - Touch passthrough to OpenAuto embedded library
  * - Tab bar remains accessible at bottom
@@ -26,47 +26,89 @@ Item {
     // Signals for OpenAuto control
     signal requestStart()
     signal requestStop()
+    signal requestRestart()
     signal touchEvent(int x, int y, int type)
 
     // Reference to embedded controller (set by parent)
     property var embeddedController: null
 
-    // Use embedded OpenAuto if available (default mode)
+    // ALWAYS use embedded mode (process-based OpenAutoController was removed)
     property bool useEmbedded: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
 
     // ═══════════════════════════════════════════════════════════════
-    // LIFECYCLE - Register container with C++
+    // LIFECYCLE - Connect video sink and start OpenAuto
     // ═══════════════════════════════════════════════════════════════
 
     Component.onCompleted: {
         console.log("OpenAutoScreen: initialized, useEmbedded =", useEmbedded)
         console.log("OpenAutoScreen: size =", width, "x", height)
 
-        // CRITICAL: Register our video container with C++
-        // This allows C++ to parent its video widget to our window and position it correctly
         if (useEmbedded && openAutoEmbedded) {
-            console.log("OpenAutoScreen: Registering video container with C++")
-            openAutoEmbedded.setVideoContainer(openAutoVideoPlaceholder)
+            // Connect video sink from QML VideoOutput to C++ QMLVideoOutput
+            // This allows H.264 decoded frames to display in our native QML surface
+            connectVideoSink()
 
-            // Also notify C++ that we're visible (screen just loaded)
+            // Notify C++ that we're visible
             openAutoEmbedded.setVideoVisible(true)
 
-            // Auto-start if not already running
+            // Auto-start using Qt.callLater() to avoid blocking UI thread
             if (!openAutoEmbedded.running) {
-                console.log("OpenAutoScreen: Auto-starting embedded OpenAuto")
-                openAutoEmbedded.start()
+                console.log("OpenAutoScreen: Scheduling embedded OpenAuto start (deferred)")
+                Qt.callLater(function() {
+                    if (openAutoEmbedded && !openAutoEmbedded.running) {
+                        console.log("OpenAutoScreen: Starting embedded OpenAuto")
+                        openAutoEmbedded.start()
+                    }
+                })
             }
         }
     }
 
-    Component.onDestruction: {
-        // Notify C++ that screen is being destroyed
-        if (useEmbedded && openAutoEmbedded) {
-            openAutoEmbedded.setVideoVisible(false)
+    // Track video sink connection retries
+    property int _videoSinkRetryCount: 0
+    readonly property int _maxVideoSinkRetries: 20  // Increased for reliability
+
+    // Timer for delayed video sink connection (more reliable than Qt.callLater)
+    Timer {
+        id: videoSinkRetryTimer
+        interval: 50  // 50ms between retries
+        repeat: false
+        onTriggered: connectVideoSink()
+    }
+
+    // Helper function to connect video sink with retry limit
+    function connectVideoSink() {
+        if (openAutoEmbedded && openAutoEmbedded.qmlVideoOutput && openAutoVideoOutput.videoSink) {
+            console.log("OpenAutoScreen: Connecting video sink to QMLVideoOutput")
+            openAutoEmbedded.qmlVideoOutput.setVideoSink(openAutoVideoOutput.videoSink)
+            _videoSinkRetryCount = 0  // Reset on success
+        } else {
+            // Limit retry attempts to prevent infinite loop
+            _videoSinkRetryCount++
+            if (_videoSinkRetryCount >= _maxVideoSinkRetries) {
+                console.error("OpenAutoScreen: Failed to connect video sink after",
+                             _maxVideoSinkRetries, "attempts - giving up")
+                _videoSinkRetryCount = 0
+                return
+            }
+            console.log("OpenAutoScreen: Video sink not ready, retry", _videoSinkRetryCount, "of", _maxVideoSinkRetries)
+            // Use Timer for more reliable timing than Qt.callLater
+            videoSinkRetryTimer.start()
         }
     }
 
-    // CRITICAL: Track visibility changes to show/hide video widget
+    Component.onDestruction: {
+        if (useEmbedded && openAutoEmbedded) {
+            openAutoEmbedded.setVideoVisible(false)
+            // NOTE: Do NOT set videoSink to null here!
+            // The C++ side uses QPointer<QVideoSink> which auto-nullifies when
+            // the QML VideoOutput is destroyed. Setting to null manually caused
+            // the video to stay black when navigating back to this screen.
+        }
+        // Reset retry counter on destruction
+        _videoSinkRetryCount = 0
+    }
+
     onVisibleChanged: {
         console.log("OpenAutoScreen: visibility changed to", visible)
         if (useEmbedded && openAutoEmbedded) {
@@ -96,94 +138,158 @@ Item {
         }
 
         function onErrorChanged() {
-            if (openAutoEmbedded.errorMessage !== "") {
+            // HIGH FIX: Null check before accessing errorMessage
+            if (openAutoEmbedded && openAutoEmbedded.errorMessage !== "") {
                 console.log("OpenAutoScreen: Error -", openAutoEmbedded.errorMessage)
             }
+        }
+
+        // FIX: qmlVideoOutput is created AFTER start() completes, so we must
+        // listen for the signal and reconnect video sink when it becomes available.
+        // The Q_PROPERTY was changed from CONSTANT to NOTIFY to enable this.
+        function onQmlVideoOutputChanged() {
+            console.log("OpenAutoScreen: qmlVideoOutput changed, reconnecting video sink")
+            _videoSinkRetryCount = 0  // Reset retry counter
+            connectVideoSink()
         }
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // VIDEO SURFACE CONTAINER
+    // VIDEO SURFACE - Native QML VideoOutput
     // ═══════════════════════════════════════════════════════════════
 
-    // OpenAuto video surface (C++ widget renders as overlay on this Item)
     Rectangle {
         id: videoSurface
         anchors.fill: parent
         color: Styles.Theme.backgroundPrimary
 
-        // CRITICAL: This Item is the video container
-        // C++ will parent its QWidget to our window and position it over this Item
-        Item {
-            id: openAutoVideoPlaceholder
+        // Native QML VideoOutput - displays H.264 decoded frames from QMLVideoOutput
+        // No widget overlay needed - this is pure QML rendering
+        VideoOutput {
+            id: openAutoVideoOutput
             anchors.fill: parent
-            objectName: "openAutoVideoSurface"  // For debugging/identification
+            fillMode: VideoOutput.PreserveAspectFit
 
-            // Notify C++ when geometry changes (debounced to avoid excessive calls)
-            onWidthChanged: geometryUpdateTimer.restart()
-            onHeightChanged: geometryUpdateTimer.restart()
-            onXChanged: geometryUpdateTimer.restart()
-            onYChanged: geometryUpdateTimer.restart()
-
-            // Debounce timer to batch rapid geometry changes (e.g., during animations)
-            Timer {
-                id: geometryUpdateTimer
-                interval: 16  // ~60fps, batches rapid changes
-                onTriggered: openAutoVideoPlaceholder.updateGeometryNow()
-            }
-
-            function updateGeometryNow() {
-                if (useEmbedded && openAutoEmbedded && visible) {
-                    var scenePos = mapToItem(null, 0, 0)
-                    openAutoEmbedded.updateVideoGeometry(
-                        Math.round(scenePos.x),
-                        Math.round(scenePos.y),
-                        Math.round(width),
-                        Math.round(height)
-                    )
-                }
-            }
-
-            // Debug border when connected (shows container bounds)
-            Rectangle {
-                anchors.fill: parent
-                color: "transparent"
-                border.color: State.AppState.openAutoConnected ? Styles.Theme.accentAndroidAuto : "transparent"
-                border.width: State.AppState.openAutoConnected ? 2 : 0
-                visible: State.AppState.openAutoConnected
-            }
+            // Debug: show when video is actually playing
+            visible: State.AppState.openAutoConnected
         }
 
-        // Touch passthrough area - forwards touch DIRECTLY to embedded OpenAuto
-        // CRITICAL: Call openAutoEmbedded.sendTouch() directly, not through signal
-        // ISO 26262: Validate touch coordinates before forwarding
+        // Debug border when connected (shows video bounds)
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.color: State.AppState.openAutoConnected ? Styles.Theme.accentAndroidAuto : "transparent"
+            border.width: State.AppState.openAutoConnected ? 2 : 0
+            visible: State.AppState.openAutoConnected
+            z: 1
+        }
+
+        // Touch passthrough area - forwards touch to embedded OpenAuto
+        // Handles coordinate transformation for PreserveAspectFit video scaling
         MouseArea {
             id: touchArea
             anchors.fill: parent
             enabled: State.AppState.openAutoRunning && State.AppState.openAutoConnected
+            z: 2  // Above video output
 
-            // Helper function to validate and clamp touch coordinates
+            /**
+             * Transform touch coordinates from container space to video space
+             * When VideoOutput uses PreserveAspectFit, the actual video may be
+             * smaller than the container with letterboxing/pillarboxing
+             *
+             * @param touchX - X coordinate in container space (MouseArea)
+             * @param touchY - Y coordinate in container space (MouseArea)
+             * @returns {x, y} - Coordinates in video space, or null if outside video
+             */
+            function transformCoordinates(touchX, touchY) {
+                // Get video dimensions from C++ QMLVideoOutput
+                var videoWidth = 800   // Default fallback
+                var videoHeight = 480  // Default fallback
+
+                if (openAutoEmbedded && openAutoEmbedded.qmlVideoOutput) {
+                    videoWidth = openAutoEmbedded.qmlVideoOutput.videoWidth
+                    videoHeight = openAutoEmbedded.qmlVideoOutput.videoHeight
+                }
+
+                // Container dimensions
+                var containerWidth = touchArea.width
+                var containerHeight = touchArea.height
+
+                if (containerWidth <= 0 || containerHeight <= 0 ||
+                    videoWidth <= 0 || videoHeight <= 0) {
+                    return null
+                }
+
+                // Calculate aspect ratios
+                var containerAspect = containerWidth / containerHeight
+                var videoAspect = videoWidth / videoHeight
+
+                // Calculate rendered video dimensions (PreserveAspectFit logic)
+                var renderedWidth, renderedHeight, offsetX, offsetY
+
+                if (containerAspect > videoAspect) {
+                    // Container is wider than video - pillarboxing (black bars on sides)
+                    renderedHeight = containerHeight
+                    renderedWidth = containerHeight * videoAspect
+                    offsetX = (containerWidth - renderedWidth) / 2
+                    offsetY = 0
+                } else {
+                    // Container is taller than video - letterboxing (black bars on top/bottom)
+                    renderedWidth = containerWidth
+                    renderedHeight = containerWidth / videoAspect
+                    offsetX = 0
+                    offsetY = (containerHeight - renderedHeight) / 2
+                }
+
+                // Check if touch is within the rendered video bounds
+                if (touchX < offsetX || touchX > offsetX + renderedWidth ||
+                    touchY < offsetY || touchY > offsetY + renderedHeight) {
+                    // Touch is in the letterbox/pillarbox area - reject
+                    return null
+                }
+
+                // Transform from container space to video space
+                var videoX = (touchX - offsetX) * videoWidth / renderedWidth
+                var videoY = (touchY - offsetY) * videoHeight / renderedHeight
+
+                // Clamp to video bounds
+                videoX = Math.max(0, Math.min(Math.round(videoX), videoWidth))
+                videoY = Math.max(0, Math.min(Math.round(videoY), videoHeight))
+
+                return { x: videoX, y: videoY }
+            }
+
             function validateAndSendTouch(mouseX, mouseY, action) {
-                // Bounds validation - prevent negative or excessive coordinates
                 if (!isFinite(mouseX) || !isFinite(mouseY)) {
-                    console.warn("OpenAutoScreen: Invalid touch coordinates (non-finite)")
                     return
                 }
 
-                // Clamp coordinates to valid range
-                var safeX = Math.max(0, Math.min(Math.round(mouseX), width))
-                var safeY = Math.max(0, Math.min(Math.round(mouseY), height))
-
-                if (useEmbedded && openAutoEmbedded) {
-                    openAutoEmbedded.sendTouch(safeX, safeY, action)
+                // Transform coordinates from container to video space
+                var coords = transformCoordinates(mouseX, mouseY)
+                if (!coords) {
+                    return
                 }
-                openAutoScreen.touchEvent(safeX, safeY, action)
+
+                // Log touch details for debugging
+                if (action === 0) {  // Only log press, not move/release
+                    console.log("OpenAutoScreen: touch PRESS at container(" +
+                               Math.round(mouseX) + "," + Math.round(mouseY) +
+                               ") -> video(" + coords.x + "," + coords.y +
+                               ") container:" + touchArea.width + "x" + touchArea.height)
+                }
+
+                // Send touch directly to embedded OpenAuto
+                if (useEmbedded && openAutoEmbedded) {
+                    openAutoEmbedded.sendTouch(coords.x, coords.y, action)
+                }
             }
 
             onPressed: function(mouse) {
+                mouse.accepted = true  // Consume event - don't propagate
                 validateAndSendTouch(mouse.x, mouse.y, 0)  // 0 = press
             }
             onReleased: function(mouse) {
+                mouse.accepted = true
                 validateAndSendTouch(mouse.x, mouse.y, 1)  // 1 = release
             }
             onPositionChanged: function(mouse) {
@@ -290,21 +396,13 @@ Item {
                     hoverEnabled: true
                     onClicked: {
                         if (State.AppState.openAutoRunning) {
-                            openAutoScreen.requestStop()
-                            // Small delay then restart
-                            restartTimer.start()
+                            // Use restart() which handles stop + delayed start safely
+                            openAutoScreen.requestRestart()
                         } else {
                             openAutoScreen.requestStart()
                         }
                     }
                 }
-            }
-
-            // Restart delay timer
-            Timer {
-                id: restartTimer
-                interval: 500
-                onTriggered: openAutoScreen.requestStart()
             }
 
             // Connection animation

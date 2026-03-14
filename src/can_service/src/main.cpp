@@ -6,12 +6,12 @@
 #include "common/logger.hpp"
 #include "common/zmq_messages.hpp"
 
-#include <csignal>
-#include <chrono>
-#include <thread>
 #include <atomic>
-#include <iostream>
+#include <chrono>
+#include <csignal>
 #include <getopt.h>
+#include <iostream>
+#include <thread>
 
 // Forward declaration from signal_database.cpp
 namespace speeduino {
@@ -23,9 +23,9 @@ std::vector<CanSignalDef> getSignalsForProtocol(const std::string& protocol);
 // ISO 26262: Named constants for timing and rate configuration
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace {
-    /// CAN frame receive timeout in milliseconds
-    constexpr uint32_t CAN_RECEIVE_TIMEOUT_MS = 10;
-} // anonymous namespace
+/// CAN frame receive timeout in milliseconds
+constexpr uint32_t CAN_RECEIVE_TIMEOUT_MS = 10;
+}  // anonymous namespace
 
 namespace {
 
@@ -47,23 +47,23 @@ void printUsage(const char* progname) {
               << "  -h, --help               Show this help\n";
 }
 
-} // anonymous namespace
+}  // anonymous namespace
 
 int main(int argc, char* argv[]) {
     using namespace speeduino;
 
     // Default options
     std::string interfaceName = "can0";
-    std::string configDir = "/etc/speeduino-ui";
-    bool verbose = false;
+    std::string configDir     = "/etc/speeduino-ui";
+    bool verbose              = false;
 
     // Parse command line
     static struct option long_options[] = {
         {"interface", required_argument, nullptr, 'i'},
-        {"config",    required_argument, nullptr, 'c'},
-        {"verbose",   no_argument,       nullptr, 'v'},
-        {"help",      no_argument,       nullptr, 'h'},
-        {nullptr,     0,                 nullptr, 0}
+        {   "config", required_argument, nullptr, 'c'},
+        {  "verbose",       no_argument, nullptr, 'v'},
+        {     "help",       no_argument, nullptr, 'h'},
+        {    nullptr,                 0, nullptr,   0}
     };
 
     int opt;
@@ -145,12 +145,12 @@ int main(int argc, char* argv[]) {
     // MISRA C++:2008 Rule 5-0-5: Division by zero shall be prevented
     // ═══════════════════════════════════════════════════════════════════════
     constexpr uint32_t DEFAULT_PUBLISH_RATE_HZ = 50;
-    constexpr uint32_t MAX_PUBLISH_RATE_HZ = 1000;
+    constexpr uint32_t MAX_PUBLISH_RATE_HZ     = 1000;
 
     uint32_t safePublishRate = sysConfig.zmq_publish_rate_hz;
     if (safePublishRate == 0) {
-        LOG_WARN("ZMQ publish rate is 0, using default " +
-                 std::to_string(DEFAULT_PUBLISH_RATE_HZ) + " Hz");
+        LOG_WARN("ZMQ publish rate is 0, using default " + std::to_string(DEFAULT_PUBLISH_RATE_HZ) +
+                 " Hz");
         safePublishRate = DEFAULT_PUBLISH_RATE_HZ;
     } else if (safePublishRate > MAX_PUBLISH_RATE_HZ) {
         LOG_WARN("ZMQ publish rate " + std::to_string(safePublishRate) +
@@ -159,13 +159,12 @@ int main(int argc, char* argv[]) {
     }
 
     // Calculate publish interval (safe - safePublishRate guaranteed > 0)
-    const auto publishInterval = std::chrono::microseconds(
-        1000000 / safePublishRate);
-    auto lastPublish = std::chrono::steady_clock::now();
+    const auto publishInterval = std::chrono::microseconds(1000000 / safePublishRate);
+    auto lastPublish           = std::chrono::steady_clock::now();
 
     // Timeout tracking
     uint32_t canTimeoutMs = sysConfig.can_timeout_ms;
-    bool wasConnected = true;
+    bool wasConnected     = true;
 
     // Main loop
     while (g_running) {
@@ -183,7 +182,7 @@ int main(int argc, char* argv[]) {
             auto result = writer.send(cmd->can_id, cmd->data.data(), cmd->dlc);
 
             CanCommandResponse response;
-            response.success = (result == CanWriter::SendResult::OK);
+            response.success    = (result == CanWriter::SendResult::OK);
             response.error_code = static_cast<uint8_t>(result);
 
             switch (result) {

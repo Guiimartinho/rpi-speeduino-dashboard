@@ -4,6 +4,7 @@
  */
 
 #include "common/system_health.hpp"
+
 #include "common/logger.hpp"
 
 namespace speeduino {
@@ -16,11 +17,11 @@ SystemHealth& SystemHealth::instance() {
 SystemHealth::SystemHealth() {
     // Initialize all subsystems
     for (size_t i = 0; i < kNumSubsystems; ++i) {
-        subsystems_[i].id = static_cast<SubsystemId>(i);
-        subsystems_[i].healthy = true;  // Assume healthy until proven otherwise
+        subsystems_[i].id            = static_cast<SubsystemId>(i);
+        subsystems_[i].healthy       = true;  // Assume healthy until proven otherwise
         subsystems_[i].lastHeartbeat = std::chrono::steady_clock::now();
-        subsystems_[i].timeout = std::chrono::milliseconds(500);
-        subsystems_[i].errorCount = 0;
+        subsystems_[i].timeout       = std::chrono::milliseconds(500);
+        subsystems_[i].errorCount    = 0;
     }
 }
 
@@ -32,21 +33,19 @@ void SystemHealth::reportHeartbeat(SubsystemId id) {
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    bool wasHealthy = subsystems_[idx].healthy;
+    bool wasHealthy                = subsystems_[idx].healthy;
     subsystems_[idx].lastHeartbeat = std::chrono::steady_clock::now();
-    subsystems_[idx].healthy = true;
+    subsystems_[idx].healthy       = true;
 
     if (!wasHealthy) {
         // Subsystem recovered
-        Logger::info(std::string("Subsystem recovered: ") +
-                    subsystemIdToString(id));
+        Logger::info(std::string("Subsystem recovered: ") + subsystemIdToString(id));
         notifyHealthChange(id, true);
         updateSystemMode();
     }
 }
 
-void SystemHealth::reportError(SubsystemId id, const std::string& errorMessage,
-                               bool isFatal) {
+void SystemHealth::reportError(SubsystemId id, const std::string& errorMessage, bool isFatal) {
     auto idx = static_cast<size_t>(id);
     if (idx >= kNumSubsystems) {
         return;
@@ -57,11 +56,10 @@ void SystemHealth::reportError(SubsystemId id, const std::string& errorMessage,
     subsystems_[idx].errorCount++;
     subsystems_[idx].lastError = errorMessage;
 
-    Logger::warn(std::string("Subsystem error [") + subsystemIdToString(id) +
-                "]: " + errorMessage);
+    Logger::warn(std::string("Subsystem error [") + subsystemIdToString(id) + "]: " + errorMessage);
 
     if (isFatal) {
-        bool wasHealthy = subsystems_[idx].healthy;
+        bool wasHealthy          = subsystems_[idx].healthy;
         subsystems_[idx].healthy = false;
 
         if (wasHealthy) {
@@ -79,13 +77,12 @@ void SystemHealth::reportRecovery(SubsystemId id) {
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    bool wasHealthy = subsystems_[idx].healthy;
-    subsystems_[idx].healthy = true;
+    bool wasHealthy                = subsystems_[idx].healthy;
+    subsystems_[idx].healthy       = true;
     subsystems_[idx].lastHeartbeat = std::chrono::steady_clock::now();
 
     if (!wasHealthy) {
-        Logger::info(std::string("Subsystem recovered: ") +
-                    subsystemIdToString(id));
+        Logger::info(std::string("Subsystem recovered: ") + subsystemIdToString(id));
         notifyHealthChange(id, true);
         updateSystemMode();
     }
@@ -99,7 +96,7 @@ void SystemHealth::setSubsystemHealth(SubsystemId id, bool healthy) {
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    bool wasHealthy = subsystems_[idx].healthy;
+    bool wasHealthy          = subsystems_[idx].healthy;
     subsystems_[idx].healthy = healthy;
 
     if (healthy) {
@@ -112,8 +109,7 @@ void SystemHealth::setSubsystemHealth(SubsystemId id, bool healthy) {
     }
 }
 
-void SystemHealth::setSubsystemTimeout(SubsystemId id,
-                                       std::chrono::milliseconds timeout) {
+void SystemHealth::setSubsystemTimeout(SubsystemId id, std::chrono::milliseconds timeout) {
     auto idx = static_cast<size_t>(id);
     if (idx >= kNumSubsystems) {
         return;
@@ -126,22 +122,20 @@ void SystemHealth::setSubsystemTimeout(SubsystemId id,
 void SystemHealth::checkTimeouts() {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    auto now = std::chrono::steady_clock::now();
+    auto now        = std::chrono::steady_clock::now();
     bool anyChanged = false;
 
     for (size_t i = 0; i < kNumSubsystems; ++i) {
         auto& sub = subsystems_[i];
 
         if (sub.healthy) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - sub.lastHeartbeat);
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - sub.lastHeartbeat);
 
             if (elapsed > sub.timeout) {
                 sub.healthy = false;
-                Logger::warn(std::string("Subsystem timeout: ") +
-                            subsystemIdToString(sub.id) +
-                            " (no heartbeat for " +
-                            std::to_string(elapsed.count()) + "ms)");
+                Logger::warn(std::string("Subsystem timeout: ") + subsystemIdToString(sub.id) +
+                             " (no heartbeat for " + std::to_string(elapsed.count()) + "ms)");
                 notifyHealthChange(sub.id, false);
                 anyChanged = true;
             }
@@ -228,7 +222,7 @@ void SystemHealth::requestShutdown() {
 
     if (!shutdownRequested_) {
         shutdownRequested_ = true;
-        auto oldMode = currentMode_.exchange(SystemMode::SafeShutdown);
+        auto oldMode       = currentMode_.exchange(SystemMode::SafeShutdown);
         notifyModeChange(oldMode, SystemMode::SafeShutdown);
         Logger::info("Safe shutdown requested");
     }
@@ -239,14 +233,14 @@ void SystemHealth::reset() {
 
     auto now = std::chrono::steady_clock::now();
     for (size_t i = 0; i < kNumSubsystems; ++i) {
-        subsystems_[i].healthy = true;
+        subsystems_[i].healthy       = true;
         subsystems_[i].lastHeartbeat = now;
-        subsystems_[i].errorCount = 0;
+        subsystems_[i].errorCount    = 0;
         subsystems_[i].lastError.clear();
     }
 
     shutdownRequested_ = false;
-    auto oldMode = currentMode_.exchange(SystemMode::Normal);
+    auto oldMode       = currentMode_.exchange(SystemMode::Normal);
 
     if (oldMode != SystemMode::Normal) {
         notifyModeChange(oldMode, SystemMode::Normal);
@@ -265,7 +259,7 @@ void SystemHealth::updateSystemMode() {
     SystemMode newMode = SystemMode::Normal;
 
     // Check individual critical subsystems
-    bool canHealthy = subsystems_[static_cast<size_t>(SubsystemId::CAN)].healthy;
+    bool canHealthy    = subsystems_[static_cast<size_t>(SubsystemId::CAN)].healthy;
     bool cameraHealthy = subsystems_[static_cast<size_t>(SubsystemId::Camera)].healthy;
 
     // Count total unhealthy subsystems
@@ -306,9 +300,8 @@ void SystemHealth::notifyModeChange(SystemMode oldMode, SystemMode newMode) {
     // We copy the callback and release the mutex BEFORE calling it
     // to prevent deadlock if callback tries to access SystemHealth
 
-    Logger::info(std::string("System mode changed: ") +
-                systemModeToString(oldMode) + " -> " +
-                systemModeToString(newMode));
+    Logger::info(std::string("System mode changed: ") + systemModeToString(oldMode) + " -> " +
+                 systemModeToString(newMode));
 
     // Copy callback while holding lock
     ModeChangeCallback callbackCopy;
@@ -358,4 +351,4 @@ void SystemHealth::notifyHealthChange(SubsystemId id, bool healthy) {
     }
 }
 
-} // namespace speeduino
+}  // namespace speeduino

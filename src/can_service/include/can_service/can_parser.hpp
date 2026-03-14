@@ -2,20 +2,22 @@
 #define CAN_SERVICE_CAN_PARSER_HPP
 
 #include "can_interface.hpp"
+
 #include "common/config_loader.hpp"
 #include "common/zmq_messages.hpp"
+
 #include <cstdint>
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
 
 namespace speeduino {
 
 // Parsed signal value
 struct ParsedSignal {
     std::string name;
-    double value = 0.0;
+    double value          = 0.0;
     uint32_t timestamp_us = 0;
-    bool valid = false;
+    bool valid            = false;
 };
 
 class CanParser {
@@ -64,6 +66,6 @@ private:
     uint32_t m_lastUpdateTimestamp = 0;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_CAN_PARSER_HPP
+#endif  // CAN_SERVICE_CAN_PARSER_HPP

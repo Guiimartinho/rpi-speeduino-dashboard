@@ -133,17 +133,24 @@ Item {
                 ColumnLayout {
                     spacing: 10
 
+                    property bool aaRunning: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded ? openAutoEmbedded.running : false
+                    property string aaError: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded ? openAutoEmbedded.errorMessage : ""
+
                     RowLayout {
                         Text { text: "Status:"; color: "#888888" }
                         Text {
-                            text: openAutoController.running ? "Running" : "Stopped"
-                            color: openAutoController.running ? "#00ff00" : "#888888"
+                            text: parent.parent.aaRunning ? "Running" : "Stopped"
+                            color: parent.parent.aaRunning ? "#00ff00" : "#888888"
                         }
                     }
 
                     Button {
-                        text: openAutoController.running ? "Stop Android Auto" : "Start Android Auto"
-                        onClicked: openAutoController.toggle()
+                        text: parent.aaRunning ? "Stop Android Auto" : "Start Android Auto"
+                        onClicked: {
+                            if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                                openAutoEmbedded.toggle()
+                            }
+                        }
 
                         background: Rectangle {
                             color: parent.pressed ? "#444444" : "#333333"
@@ -158,8 +165,8 @@ Item {
                     }
 
                     Text {
-                        visible: openAutoController.errorMessage !== ""
-                        text: openAutoController.errorMessage
+                        visible: parent.aaError !== ""
+                        text: parent.aaError
                         color: "#ff6600"
                         wrapMode: Text.WordWrap
                     }

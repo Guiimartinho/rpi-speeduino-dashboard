@@ -25,10 +25,7 @@ class TestCanService:
     @pytest.fixture
     def vcan_setup(self):
         """Ensure vcan0 is available"""
-        result = subprocess.run(
-            ["ip", "link", "show", "vcan0"],
-            capture_output=True
-        )
+        result = subprocess.run(["ip", "link", "show", "vcan0"], capture_output=True)
         if result.returncode != 0:
             pytest.skip("vcan0 not available - run setup first")
 
@@ -41,10 +38,13 @@ class TestCanService:
     def test_can_service_starts(self, vcan_setup):
         """Test that can_service starts without errors"""
         proc = subprocess.Popen(
-            ["./build/src/can_service/can_service",
-             "--interface=vcan0", "--config=./configs"],
+            [
+                "./build/src/can_service/can_service",
+                "--interface=vcan0",
+                "--config=./configs",
+            ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
         time.sleep(1)
         assert proc.poll() is None, "can_service crashed on start"
@@ -55,10 +55,13 @@ class TestCanService:
         """Test that can_service publishes data via ZMQ"""
         # Start can_service
         proc = subprocess.Popen(
-            ["./build/src/can_service/can_service",
-             "--interface=vcan0", "--config=./configs"],
+            [
+                "./build/src/can_service/can_service",
+                "--interface=vcan0",
+                "--config=./configs",
+            ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
         time.sleep(1)
 
@@ -71,10 +74,7 @@ class TestCanService:
 
             # Send a test CAN frame (Haltech DATA1)
             # RPM=3000 (0x0BB8), MAP=80 (0x0320), TPS=50 (0x01F4)
-            subprocess.run([
-                "cansend", "vcan0",
-                "360#0BB803200001F4000"
-            ])
+            subprocess.run(["cansend", "vcan0", "360#0BB803200001F4000"])
 
             # Should receive data
             try:
@@ -95,20 +95,20 @@ class TestReverseService:
 
     @pytest.fixture
     def vcan_setup(self):
-        result = subprocess.run(
-            ["ip", "link", "show", "vcan0"],
-            capture_output=True
-        )
+        result = subprocess.run(["ip", "link", "show", "vcan0"], capture_output=True)
         if result.returncode != 0:
             pytest.skip("vcan0 not available")
 
     def test_reverse_service_starts(self, vcan_setup):
         """Test that reverse_service starts without errors"""
         proc = subprocess.Popen(
-            ["./build/src/reverse_service/reverse_service",
-             "--interface=vcan0", "--config=./configs"],
+            [
+                "./build/src/reverse_service/reverse_service",
+                "--interface=vcan0",
+                "--config=./configs",
+            ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
         )
         time.sleep(1)
         assert proc.poll() is None, "reverse_service crashed on start"

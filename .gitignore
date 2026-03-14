@@ -150,3 +150,11 @@ nul
 
 # Claude AI session data
 .claude/
+CLAUDE.local.md
+tmpclaude-*
+
+# Temporary patch/dev files
+temp_*/
+temp_*.cpp
+scripts/setup_vnc_dev.sh
+systemd/*_dev.service

@@ -1,4 +1,5 @@
 #include "can_service/can_writer.hpp"
+
 #include "common/logger.hpp"
 
 #include <cstring>
@@ -7,21 +8,17 @@ namespace speeduino {
 
 // TokenBucket implementation
 TokenBucket::TokenBucket(uint32_t rate_hz)
-    : m_rateHz(rate_hz)
-    , m_tokens(static_cast<double>(rate_hz))
-    , m_maxTokens(static_cast<double>(rate_hz))
-    , m_lastRefill(std::chrono::steady_clock::now())
-{
-}
+    : m_rateHz(rate_hz), m_tokens(static_cast<double>(rate_hz)),
+      m_maxTokens(static_cast<double>(rate_hz)), m_lastRefill(std::chrono::steady_clock::now()) {}
 
 bool TokenBucket::tryConsume() {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    auto now = std::chrono::steady_clock::now();
+    auto now     = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration<double>(now - m_lastRefill).count();
 
     // Refill tokens based on elapsed time
-    m_tokens = std::min(m_maxTokens, m_tokens + elapsed * m_rateHz);
+    m_tokens     = std::min(m_maxTokens, m_tokens + elapsed * m_rateHz);
     m_lastRefill = now;
 
     // Try to consume one token
@@ -35,15 +32,12 @@ bool TokenBucket::tryConsume() {
 
 void TokenBucket::reset() {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_tokens = m_maxTokens;
+    m_tokens     = m_maxTokens;
     m_lastRefill = std::chrono::steady_clock::now();
 }
 
 // CanWriter implementation
-CanWriter::CanWriter(CanInterface& interface)
-    : m_interface(interface)
-{
-}
+CanWriter::CanWriter(CanInterface& interface) : m_interface(interface) {}
 
 void CanWriter::loadAllowedCommands(const std::vector<CanCommandDef>& commands) {
     m_whitelist.clear();
@@ -51,13 +45,10 @@ void CanWriter::loadAllowedCommands(const std::vector<CanCommandDef>& commands) 
 
     for (const auto& cmd : commands) {
         m_whitelist[cmd.can_id] = cmd.rate_limit_hz;
-        m_rateLimiters.emplace(
-            std::piecewise_construct,
-            std::forward_as_tuple(cmd.can_id),
-            std::forward_as_tuple(cmd.rate_limit_hz)
-        );
-        LOG_DEBUG("Whitelisted CAN ID 0x" + std::to_string(cmd.can_id) +
-                  " with rate limit " + std::to_string(cmd.rate_limit_hz) + " Hz");
+        m_rateLimiters.emplace(std::piecewise_construct, std::forward_as_tuple(cmd.can_id),
+                               std::forward_as_tuple(cmd.rate_limit_hz));
+        LOG_DEBUG("Whitelisted CAN ID 0x" + std::to_string(cmd.can_id) + " with rate limit " +
+                  std::to_string(cmd.rate_limit_hz) + " Hz");
     }
 
     LOG_INFO("Loaded " + std::to_string(commands.size()) + " allowed CAN commands");
@@ -101,7 +92,7 @@ CanWriter::SendResult CanWriter::send(uint32_t can_id, const uint8_t* data, uint
 
     // Build and send frame
     CanFrame frame;
-    frame.id = can_id;
+    frame.id  = can_id;
     frame.dlc = dlc;
     std::memcpy(frame.data.data(), data, dlc);
 
@@ -116,4 +107,4 @@ CanWriter::SendResult CanWriter::send(uint32_t can_id, const uint8_t* data, uint
     return SendResult::OK;
 }
 
-} // namespace speeduino
+}  // namespace speeduino

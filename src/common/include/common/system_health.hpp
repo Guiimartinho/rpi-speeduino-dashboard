@@ -12,11 +12,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 namespace speeduino {
 
@@ -27,13 +27,13 @@ namespace speeduino {
  * States are ordered by severity - higher values indicate more degraded operation.
  */
 enum class SystemMode : uint8_t {
-    Normal = 0,       ///< All systems operational
-    DegradedCAN,      ///< CAN bus offline, UI shows last values + warning
-    DegradedCamera,   ///< Camera failed, using placeholder
-    DegradedHMI,      ///< HMI issues, reduced functionality
-    DegradedMultiple, ///< Multiple subsystems degraded
-    SafeMode,         ///< Minimal operation mode
-    SafeShutdown      ///< Controlled shutdown in progress
+    Normal = 0,        ///< All systems operational
+    DegradedCAN,       ///< CAN bus offline, UI shows last values + warning
+    DegradedCamera,    ///< Camera failed, using placeholder
+    DegradedHMI,       ///< HMI issues, reduced functionality
+    DegradedMultiple,  ///< Multiple subsystems degraded
+    SafeMode,          ///< Minimal operation mode
+    SafeShutdown       ///< Controlled shutdown in progress
 };
 
 /**
@@ -41,14 +41,22 @@ enum class SystemMode : uint8_t {
  */
 inline const char* systemModeToString(SystemMode mode) {
     switch (mode) {
-        case SystemMode::Normal:           return "Normal";
-        case SystemMode::DegradedCAN:      return "DegradedCAN";
-        case SystemMode::DegradedCamera:   return "DegradedCamera";
-        case SystemMode::DegradedHMI:      return "DegradedHMI";
-        case SystemMode::DegradedMultiple: return "DegradedMultiple";
-        case SystemMode::SafeMode:         return "SafeMode";
-        case SystemMode::SafeShutdown:     return "SafeShutdown";
-        default:                           return "Unknown";
+        case SystemMode::Normal:
+            return "Normal";
+        case SystemMode::DegradedCAN:
+            return "DegradedCAN";
+        case SystemMode::DegradedCamera:
+            return "DegradedCamera";
+        case SystemMode::DegradedHMI:
+            return "DegradedHMI";
+        case SystemMode::DegradedMultiple:
+            return "DegradedMultiple";
+        case SystemMode::SafeMode:
+            return "SafeMode";
+        case SystemMode::SafeShutdown:
+            return "SafeShutdown";
+        default:
+            return "Unknown";
     }
 }
 
@@ -71,13 +79,20 @@ enum class SubsystemId : uint8_t {
  */
 inline const char* subsystemIdToString(SubsystemId id) {
     switch (id) {
-        case SubsystemId::CAN:      return "CAN";
-        case SubsystemId::Camera:   return "Camera";
-        case SubsystemId::OpenAuto: return "OpenAuto";
-        case SubsystemId::GPIO:     return "GPIO";
-        case SubsystemId::ZMQ:      return "ZMQ";
-        case SubsystemId::Config:   return "Config";
-        default:                    return "Unknown";
+        case SubsystemId::CAN:
+            return "CAN";
+        case SubsystemId::Camera:
+            return "Camera";
+        case SubsystemId::OpenAuto:
+            return "OpenAuto";
+        case SubsystemId::GPIO:
+            return "GPIO";
+        case SubsystemId::ZMQ:
+            return "ZMQ";
+        case SubsystemId::Config:
+            return "Config";
+        default:
+            return "Unknown";
     }
 }
 
@@ -87,7 +102,7 @@ inline const char* subsystemIdToString(SubsystemId id) {
  */
 struct SubsystemStatus {
     SubsystemId id = SubsystemId::CAN;
-    bool healthy = false;
+    bool healthy   = false;
     std::chrono::steady_clock::time_point lastHeartbeat;
     std::chrono::milliseconds timeout{500};
     uint32_t errorCount = 0;
@@ -137,10 +152,10 @@ public:
     static SystemHealth& instance();
 
     // Delete copy/move operations for singleton
-    SystemHealth(const SystemHealth&) = delete;
+    SystemHealth(const SystemHealth&)            = delete;
     SystemHealth& operator=(const SystemHealth&) = delete;
-    SystemHealth(SystemHealth&&) = delete;
-    SystemHealth& operator=(SystemHealth&&) = delete;
+    SystemHealth(SystemHealth&&)                 = delete;
+    SystemHealth& operator=(SystemHealth&&)      = delete;
 
     /**
      * @brief Report a heartbeat from a subsystem
@@ -262,8 +277,7 @@ private:
     void notifyModeChange(SystemMode oldMode, SystemMode newMode);
     void notifyHealthChange(SubsystemId id, bool healthy);
 
-    static constexpr size_t kNumSubsystems =
-        static_cast<size_t>(SubsystemId::NumSubsystems);
+    static constexpr size_t kNumSubsystems = static_cast<size_t>(SubsystemId::NumSubsystems);
 
     mutable std::mutex mutex_;
     std::atomic<SystemMode> currentMode_{SystemMode::Normal};
@@ -290,8 +304,7 @@ private:
 class SubsystemGuard {
 public:
     explicit SubsystemGuard(SubsystemId id, bool reportOnDestroy = false)
-        : id_(id)
-        , reportOnDestroy_(reportOnDestroy) {
+        : id_(id), reportOnDestroy_(reportOnDestroy) {
         SystemHealth::instance().reportHeartbeat(id_);
     }
 
@@ -302,7 +315,7 @@ public:
         }
     }
 
-    SubsystemGuard(const SubsystemGuard&) = delete;
+    SubsystemGuard(const SubsystemGuard&)            = delete;
     SubsystemGuard& operator=(const SubsystemGuard&) = delete;
 
 private:
@@ -310,6 +323,6 @@ private:
     bool reportOnDestroy_;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_SYSTEM_HEALTH_HPP
+#endif  // COMMON_SYSTEM_HEALTH_HPP

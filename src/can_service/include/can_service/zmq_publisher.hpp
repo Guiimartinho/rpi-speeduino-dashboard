@@ -2,10 +2,12 @@
 #define CAN_SERVICE_ZMQ_PUBLISHER_HPP
 
 #include "common/zmq_messages.hpp"
+
 #include <zmq.hpp>
+
+#include <atomic>
 #include <memory>
 #include <string>
-#include <atomic>
 
 namespace speeduino {
 
@@ -34,7 +36,7 @@ public:
 
 private:
     // Serialize and send with topic
-    template<typename T>
+    template <typename T>
     bool publish(const char* topic, const T& data);
 
     std::unique_ptr<zmq::context_t> m_context;
@@ -68,6 +70,6 @@ private:
     std::atomic<bool> m_initialized{false};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_ZMQ_PUBLISHER_HPP
+#endif  // CAN_SERVICE_ZMQ_PUBLISHER_HPP

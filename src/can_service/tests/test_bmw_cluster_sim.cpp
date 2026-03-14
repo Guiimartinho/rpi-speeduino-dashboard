@@ -1,46 +1,11 @@
-#include <gtest/gtest.h>
 #include "can_service/bmw_cluster_sim.hpp"
 
+#include "mock_can_interface.hpp"
+
+#include <gtest/gtest.h>
+
 using namespace speeduino;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Mock CAN Interface for BMW Cluster Sim Testing
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class MockCanInterface : public CanInterface {
-public:
-    MockCanInterface() : CanInterface() {}
-
-    bool open(const std::string& interface_name) override {
-        (void)interface_name;
-        return true;
-    }
-    void close() override {}
-    bool isConnected() const override { return true; }
-    std::optional<CanFrame> receive(int timeout_ms) override {
-        (void)timeout_ms;
-        return std::nullopt;
-    }
-    bool send(const CanFrame& frame) override {
-        m_sentFrames.push_back(frame);
-        return true;
-    }
-
-    const std::vector<CanFrame>& getSentFrames() const { return m_sentFrames; }
-    void clearSentFrames() { m_sentFrames.clear(); }
-    std::vector<CanFrame> getFramesById(uint32_t id) const {
-        std::vector<CanFrame> result;
-        for (const auto& frame : m_sentFrames) {
-            if (frame.id == id) {
-                result.push_back(frame);
-            }
-        }
-        return result;
-    }
-
-private:
-    std::vector<CanFrame> m_sentFrames;
-};
+using speeduino::testing::MockCanInterface;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BMW Cluster Simulator Tests
@@ -50,7 +15,7 @@ class BMWClusterSimTest : public ::testing::Test {
 protected:
     void SetUp() override {
         interface = std::make_unique<MockCanInterface>();
-        sim = std::make_unique<BMWClusterSim>(*interface);
+        sim       = std::make_unique<BMWClusterSim>(*interface);
     }
 
     std::unique_ptr<MockCanInterface> interface;
@@ -89,7 +54,8 @@ TEST_F(BMWClusterSimTest, ASC1_FrameFormat) {
     sim->setABSActive(false);
 
     // ASC sends when tickCounter % 5 == 0, need 5 ticks
-    for (int i = 0; i < 5; i++) sim->tick();
+    for (int i = 0; i < 5; i++)
+        sim->tick();
 
     auto frames = interface->getFramesById(bmw::ASC1_ID);
     ASSERT_EQ(frames.size(), 1);
@@ -108,7 +74,8 @@ TEST_F(BMWClusterSimTest, ASC1_DSCOff) {
 
     sim->setDSCOff(true);
     // ASC sends when tickCounter % 5 == 0, need 5 ticks
-    for (int i = 0; i < 5; i++) sim->tick();
+    for (int i = 0; i < 5; i++)
+        sim->tick();
 
     auto frames = interface->getFramesById(bmw::ASC1_ID);
     ASSERT_EQ(frames.size(), 1);
@@ -128,7 +95,8 @@ TEST_F(BMWClusterSimTest, ASC1_AllFlags) {
     sim->setABSActive(true);
 
     // ASC sends when tickCounter % 5 == 0, need 5 ticks
-    for (int i = 0; i < 5; i++) sim->tick();
+    for (int i = 0; i < 5; i++)
+        sim->tick();
 
     auto frames = interface->getFramesById(bmw::ASC1_ID);
     ASSERT_EQ(frames.size(), 1);
@@ -154,7 +122,7 @@ TEST_F(BMWClusterSimTest, EGS_FrameFormat) {
     EXPECT_EQ(frame.id, 0x43F);
     EXPECT_EQ(frame.dlc, 8);
     EXPECT_EQ(frame.data[0], static_cast<uint8_t>(BMWGear::NEUTRAL));  // 'N' = 0x4E
-    EXPECT_EQ(frame.data[1], 0x00);  // Sport mode off
+    EXPECT_EQ(frame.data[1], 0x00);                                    // Sport mode off
 }
 
 TEST_F(BMWClusterSimTest, EGS_Gears) {
@@ -171,12 +139,12 @@ TEST_F(BMWClusterSimTest, EGS_Gears) {
 
     std::vector<GearTest> tests = {
         {0, BMWGear::NEUTRAL},
-        {1, BMWGear::GEAR_1},
-        {2, BMWGear::GEAR_2},
-        {3, BMWGear::GEAR_3},
-        {4, BMWGear::GEAR_4},
-        {5, BMWGear::GEAR_5},
-        {6, BMWGear::GEAR_6},
+        {1,  BMWGear::GEAR_1},
+        {2,  BMWGear::GEAR_2},
+        {3,  BMWGear::GEAR_3},
+        {4,  BMWGear::GEAR_4},
+        {5,  BMWGear::GEAR_5},
+        {6,  BMWGear::GEAR_6},
         {7, BMWGear::REVERSE},
     };
 
@@ -184,7 +152,8 @@ TEST_F(BMWClusterSimTest, EGS_Gears) {
         interface->clearSentFrames();
         sim->setGear(test.input);
         // EGS sends when tickCounter % 5 == 1, tick 5 times to guarantee a send
-        for (int i = 0; i < 5; i++) sim->tick();
+        for (int i = 0; i < 5; i++)
+            sim->tick();
 
         auto frames = interface->getFramesById(bmw::EGS_ID);
         ASSERT_GE(frames.size(), 1);  // At least one frame sent in 5 ticks
@@ -280,7 +249,7 @@ TEST_F(BMWClusterSimTest, SAS_AngleClamping) {
     sim->setSteeringAngle(1000);  // Should clamp to 720
     sim->tick();
 
-    auto frames = interface->getFramesById(bmw::SAS_ID);
+    auto frames   = interface->getFramesById(bmw::SAS_ID);
     int16_t angle = static_cast<int16_t>(frames[0].data[0] | (frames[0].data[1] << 8));
     EXPECT_EQ(angle, 7200);  // 720 × 10
 }
@@ -299,7 +268,7 @@ TEST_F(BMWClusterSimTest, ABS_FrameFormat) {
 
     // Should have both front and rear frames
     auto frontFrames = interface->getFramesById(bmw::ABS1_ID);
-    auto rearFrames = interface->getFramesById(bmw::ABS2_ID);
+    auto rearFrames  = interface->getFramesById(bmw::ABS2_ID);
 
     ASSERT_EQ(frontFrames.size(), 1);
     ASSERT_EQ(rearFrames.size(), 1);
@@ -348,7 +317,8 @@ TEST_F(BMWClusterSimTest, Statistics) {
     // - SAS sends every tick: 5 frames
     // - ABS sends at ticks 2,4 (counter % 2 == 0): 2 calls × 2 frames = 4 frames
     // Total: 1 + 1 + 5 + 4 = 11 frames
-    for (int i = 0; i < 5; i++) sim->tick();
+    for (int i = 0; i < 5; i++)
+        sim->tick();
 
     EXPECT_EQ(sim->getFramesSent(), 11);
     EXPECT_EQ(sim->getFramesFailed(), 0);

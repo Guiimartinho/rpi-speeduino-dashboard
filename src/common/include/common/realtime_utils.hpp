@@ -11,9 +11,9 @@
 #define COMMON_REALTIME_UTILS_HPP
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 
 namespace speeduino {
 
@@ -22,12 +22,12 @@ namespace speeduino {
  * @brief Linux scheduling policies
  */
 enum class SchedulingPolicy {
-    Normal,    ///< SCHED_OTHER - default time-sharing
-    Fifo,      ///< SCHED_FIFO - first-in-first-out real-time
-    RoundRobin,///< SCHED_RR - round-robin real-time
-    Batch,     ///< SCHED_BATCH - batch processing
-    Idle,      ///< SCHED_IDLE - very low priority
-    Deadline   ///< SCHED_DEADLINE - deadline scheduling
+    Normal,      ///< SCHED_OTHER - default time-sharing
+    Fifo,        ///< SCHED_FIFO - first-in-first-out real-time
+    RoundRobin,  ///< SCHED_RR - round-robin real-time
+    Batch,       ///< SCHED_BATCH - batch processing
+    Idle,        ///< SCHED_IDLE - very low priority
+    Deadline     ///< SCHED_DEADLINE - deadline scheduling
 };
 
 /**
@@ -35,13 +35,20 @@ enum class SchedulingPolicy {
  */
 inline const char* schedulingPolicyToString(SchedulingPolicy policy) {
     switch (policy) {
-        case SchedulingPolicy::Normal:     return "SCHED_OTHER";
-        case SchedulingPolicy::Fifo:       return "SCHED_FIFO";
-        case SchedulingPolicy::RoundRobin: return "SCHED_RR";
-        case SchedulingPolicy::Batch:      return "SCHED_BATCH";
-        case SchedulingPolicy::Idle:       return "SCHED_IDLE";
-        case SchedulingPolicy::Deadline:   return "SCHED_DEADLINE";
-        default:                           return "Unknown";
+        case SchedulingPolicy::Normal:
+            return "SCHED_OTHER";
+        case SchedulingPolicy::Fifo:
+            return "SCHED_FIFO";
+        case SchedulingPolicy::RoundRobin:
+            return "SCHED_RR";
+        case SchedulingPolicy::Batch:
+            return "SCHED_BATCH";
+        case SchedulingPolicy::Idle:
+            return "SCHED_IDLE";
+        case SchedulingPolicy::Deadline:
+            return "SCHED_DEADLINE";
+        default:
+            return "Unknown";
     }
 }
 
@@ -78,9 +85,9 @@ struct RealtimeConfig {
 inline RealtimeConfig canServiceConfig() {
     RealtimeConfig config;
     config.cpuAffinity = {2};
-    config.policy = SchedulingPolicy::Fifo;
-    config.priority = 80;
-    config.lockMemory = true;
+    config.policy      = SchedulingPolicy::Fifo;
+    config.priority    = 80;
+    config.lockMemory  = true;
     return config;
 }
 
@@ -92,9 +99,9 @@ inline RealtimeConfig canServiceConfig() {
 inline RealtimeConfig reverseServiceConfig() {
     RealtimeConfig config;
     config.cpuAffinity = {2};
-    config.policy = SchedulingPolicy::Fifo;
-    config.priority = 70;
-    config.lockMemory = true;
+    config.policy      = SchedulingPolicy::Fifo;
+    config.priority    = 70;
+    config.lockMemory  = true;
     return config;
 }
 
@@ -106,8 +113,8 @@ inline RealtimeConfig reverseServiceConfig() {
 inline RealtimeConfig hmiServiceConfig() {
     RealtimeConfig config;
     config.cpuAffinity = {0, 1};
-    config.policy = SchedulingPolicy::Normal;
-    config.nice = 0;
+    config.policy      = SchedulingPolicy::Normal;
+    config.nice        = 0;
     return config;
 }
 
@@ -268,7 +275,7 @@ public:
     explicit ScopedRealtimeConfig(const RealtimeConfig& config);
     ~ScopedRealtimeConfig();
 
-    ScopedRealtimeConfig(const ScopedRealtimeConfig&) = delete;
+    ScopedRealtimeConfig(const ScopedRealtimeConfig&)            = delete;
     ScopedRealtimeConfig& operator=(const ScopedRealtimeConfig&) = delete;
 
     [[nodiscard]] bool wasApplied() const noexcept { return applied_; }
@@ -330,12 +337,12 @@ public:
     [[nodiscard]] std::string summary() const;
 
 private:
-    uint64_t min_ = UINT64_MAX;
-    uint64_t max_ = 0;
-    uint64_t sum_ = 0;
+    uint64_t min_   = UINT64_MAX;
+    uint64_t max_   = 0;
+    uint64_t sum_   = 0;
     uint64_t count_ = 0;
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // COMMON_REALTIME_UTILS_HPP
+#endif  // COMMON_REALTIME_UTILS_HPP

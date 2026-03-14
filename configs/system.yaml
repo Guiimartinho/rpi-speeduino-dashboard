@@ -78,13 +78,40 @@ zmq:
   steering_events: "ipc:///tmp/steering_events.ipc"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CAMERA SETTINGS
+# CAMERA SETTINGS (Reverse Camera / USB Capture Card)
+#
+# Supported devices:
+#   - EasyCap USB (em28xx/stk1160 chipset)
+#   - Adafruit 4715 USB Video Capture
+#   - Generic V4L2 cameras
+#
+# Video standards:
+#   PAL:  720x576 @ 25fps (Europe, Asia, Australia)
+#   NTSC: 720x480 @ 30fps (Americas, Japan)
+#
+# Composite input: Usually 0 (default), some cards have 1 or 2 for S-Video
 # ═══════════════════════════════════════════════════════════════════════════════
 camera:
+  enabled: true
   device: /dev/video0
-  width: 640
-  height: 480
-  fps: 30
+  # Video standard and resolution
+  standard: PAL              # PAL or NTSC
+  width: 720                 # 720 for PAL/NTSC (auto-set by standard)
+  height: 576                # 576 for PAL, 480 for NTSC
+  fps: 25                    # 25 for PAL, 30 for NTSC
+  # Composite video input selection
+  input: 0                   # 0 = Composite, 1 = S-Video (device dependent)
+  # Parking guide overlays (drawn by QML Canvas)
+  show_guides: true
+  guide_distances_m: [0.5, 1.0, 1.5]  # Distance markers in meters
+  # ─────────────────────────────────────────────────────────────────────────────
+  # TEST MODE: Use simulated video when no camera hardware is available
+  # Set test_mode: true to generate test patterns instead of real camera feed
+  # Patterns: ball, smpte, snow, checkers, gradient, circular, black, white, red, green, blue
+  # Can also be enabled via environment variable: HMI_CAMERA_TEST_MODE=1
+  # ─────────────────────────────────────────────────────────────────────────────
+  test_mode: true            # Enable test mode (no hardware required)
+  test_pattern: ball         # "ball" = moving ball animation (best for testing)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # OPENAUTO SETTINGS
@@ -180,6 +207,26 @@ display:
   height: 480
   fullscreen: true
   hide_cursor: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BRANDING & SPLASH SCREEN
+# Customizable boot splash screen with manufacturer logo
+#
+# Examples:
+#   Volkswagen: brand_name: "Volkswagen", brand_color: "#00438f"
+#   BMW:        brand_name: "BMW", brand_color: "#0066b1"
+#   Porsche:    brand_name: "Porsche", brand_color: "#d5001c"
+#   Subaru:     brand_name: "Subaru", brand_color: "#013c74"
+#   Generic:    brand_name: "Speeduino", brand_color: "#00ff00"
+# ═══════════════════════════════════════════════════════════════════════════════
+branding:
+  show_splash: true
+  splash_duration_ms: 2500
+  splash_logo: "/etc/speeduino-ui/assets/logo_vw_white.png"
+  splash_logo_scale: 1.0
+  brand_name: "Volkswagen"
+  brand_color: "#00438f"
+  manufacturer: "volkswagen"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LOGGING

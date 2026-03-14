@@ -4,22 +4,23 @@
  */
 
 #include "common/realtime_utils.hpp"
+
 #include "common/logger.hpp"
 
 #ifdef __linux__
-#include <sched.h>
-#include <pthread.h>
-#include <sys/mman.h>
-#include <sys/resource.h>
-#include <sys/utsname.h>
-#include <unistd.h>
-#include <fstream>
-#include <cstring>
+    #include <cstring>
+    #include <fstream>
+    #include <pthread.h>
+    #include <sched.h>
+    #include <sys/mman.h>
+    #include <sys/resource.h>
+    #include <sys/utsname.h>
+    #include <unistd.h>
 #endif
 
 #include <algorithm>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
 namespace speeduino {
 
@@ -28,34 +29,48 @@ namespace {
 #ifdef __linux__
 int toLinuxPolicy(SchedulingPolicy policy) {
     switch (policy) {
-        case SchedulingPolicy::Normal:     return SCHED_OTHER;
-        case SchedulingPolicy::Fifo:       return SCHED_FIFO;
-        case SchedulingPolicy::RoundRobin: return SCHED_RR;
-        case SchedulingPolicy::Batch:      return SCHED_BATCH;
-        case SchedulingPolicy::Idle:       return SCHED_IDLE;
-#ifdef SCHED_DEADLINE
-        case SchedulingPolicy::Deadline:   return SCHED_DEADLINE;
-#endif
-        default:                           return SCHED_OTHER;
+        case SchedulingPolicy::Normal:
+            return SCHED_OTHER;
+        case SchedulingPolicy::Fifo:
+            return SCHED_FIFO;
+        case SchedulingPolicy::RoundRobin:
+            return SCHED_RR;
+        case SchedulingPolicy::Batch:
+            return SCHED_BATCH;
+        case SchedulingPolicy::Idle:
+            return SCHED_IDLE;
+    #ifdef SCHED_DEADLINE
+        case SchedulingPolicy::Deadline:
+            return SCHED_DEADLINE;
+    #endif
+        default:
+            return SCHED_OTHER;
     }
 }
 
 SchedulingPolicy fromLinuxPolicy(int policy) {
     switch (policy) {
-        case SCHED_OTHER: return SchedulingPolicy::Normal;
-        case SCHED_FIFO:  return SchedulingPolicy::Fifo;
-        case SCHED_RR:    return SchedulingPolicy::RoundRobin;
-        case SCHED_BATCH: return SchedulingPolicy::Batch;
-        case SCHED_IDLE:  return SchedulingPolicy::Idle;
-#ifdef SCHED_DEADLINE
-        case SCHED_DEADLINE: return SchedulingPolicy::Deadline;
-#endif
-        default:          return SchedulingPolicy::Normal;
+        case SCHED_OTHER:
+            return SchedulingPolicy::Normal;
+        case SCHED_FIFO:
+            return SchedulingPolicy::Fifo;
+        case SCHED_RR:
+            return SchedulingPolicy::RoundRobin;
+        case SCHED_BATCH:
+            return SchedulingPolicy::Batch;
+        case SCHED_IDLE:
+            return SchedulingPolicy::Idle;
+    #ifdef SCHED_DEADLINE
+        case SCHED_DEADLINE:
+            return SchedulingPolicy::Deadline;
+    #endif
+        default:
+            return SchedulingPolicy::Normal;
     }
 }
 #endif
 
-} // anonymous namespace
+}  // anonymous namespace
 
 bool RealtimeUtils::applyConfig(const RealtimeConfig& config) {
     bool success = true;
@@ -122,14 +137,14 @@ bool RealtimeUtils::setThreadAffinity(const std::vector<int>& cpus) {
 
     int ret = pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
     if (ret != 0) {
-        Logger::error("pthread_setaffinity_np failed: " +
-                     std::string(strerror(ret)));
+        Logger::error("pthread_setaffinity_np failed: " + std::string(strerror(ret)));
         return false;
     }
 
     std::string cpuStr;
     for (size_t i = 0; i < cpus.size(); ++i) {
-        if (i > 0) cpuStr += ",";
+        if (i > 0)
+            cpuStr += ",";
         cpuStr += std::to_string(cpus[i]);
     }
     Logger::debug("Set CPU affinity to: " + cpuStr);
@@ -153,23 +168,21 @@ bool RealtimeUtils::setThreadScheduling(SchedulingPolicy policy, int priority) {
     int maxPrio = sched_get_priority_max(linuxPolicy);
 
     if (priority < minPrio || priority > maxPrio) {
-        if (policy == SchedulingPolicy::Fifo ||
-            policy == SchedulingPolicy::RoundRobin) {
+        if (policy == SchedulingPolicy::Fifo || policy == SchedulingPolicy::RoundRobin) {
             param.sched_priority = std::clamp(priority, minPrio, maxPrio);
-            Logger::warn("Priority " + std::to_string(priority) +
-                        " clamped to " + std::to_string(param.sched_priority));
+            Logger::warn("Priority " + std::to_string(priority) + " clamped to " +
+                         std::to_string(param.sched_priority));
         }
     }
 
     int ret = pthread_setschedparam(pthread_self(), linuxPolicy, &param);
     if (ret != 0) {
-        Logger::error("pthread_setschedparam failed: " +
-                     std::string(strerror(ret)));
+        Logger::error("pthread_setschedparam failed: " + std::string(strerror(ret)));
         return false;
     }
 
     Logger::debug("Set scheduling: " + std::string(schedulingPolicyToString(policy)) +
-                 " priority " + std::to_string(param.sched_priority));
+                  " priority " + std::to_string(param.sched_priority));
     return true;
 #else
     (void)policy;
@@ -183,8 +196,7 @@ bool RealtimeUtils::setThreadNice(int nice) {
     nice = std::clamp(nice, -20, 19);
 
     if (setpriority(PRIO_PROCESS, 0, nice) != 0) {
-        Logger::error("setpriority failed: " +
-                     std::string(strerror(errno)));
+        Logger::error("setpriority failed: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -199,8 +211,7 @@ bool RealtimeUtils::setThreadNice(int nice) {
 bool RealtimeUtils::lockMemory() {
 #ifdef __linux__
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-        Logger::error("mlockall failed: " +
-                     std::string(strerror(errno)));
+        Logger::error("mlockall failed: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -214,8 +225,7 @@ bool RealtimeUtils::lockMemory() {
 bool RealtimeUtils::unlockMemory() {
 #ifdef __linux__
     if (munlockall() != 0) {
-        Logger::error("munlockall failed: " +
-                     std::string(strerror(errno)));
+        Logger::error("munlockall failed: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -229,7 +239,7 @@ bool RealtimeUtils::unlockMemory() {
 void RealtimeUtils::prefaultStack(size_t size) {
     // Allocate array on stack and touch each page
     volatile char* stack = static_cast<volatile char*>(alloca(size));
-    size_t pageSize = 4096;  // Typical page size
+    size_t pageSize      = 4096;  // Typical page size
 
     for (size_t i = 0; i < size; i += pageSize) {
         stack[i] = 0;
@@ -359,8 +369,8 @@ std::string RealtimeUtils::getKernelVersion() {
 
 void RealtimeUtils::logThreadConfig() {
     auto affinity = getThreadAffinity();
-    auto policy = getThreadSchedulingPolicy();
-    int priority = getThreadPriority();
+    auto policy   = getThreadSchedulingPolicy();
+    int priority  = getThreadPriority();
 
     std::stringstream ss;
     ss << "Thread config: ";
@@ -368,7 +378,8 @@ void RealtimeUtils::logThreadConfig() {
     // CPU affinity
     ss << "CPUs=[";
     for (size_t i = 0; i < affinity.size(); ++i) {
-        if (i > 0) ss << ",";
+        if (i > 0)
+            ss << ",";
         ss << affinity[i];
     }
     ss << "] ";
@@ -390,7 +401,7 @@ void RealtimeUtils::logThreadConfig() {
 ScopedRealtimeConfig::ScopedRealtimeConfig(const RealtimeConfig& config) {
     // Save current config
     originalAffinity_ = RealtimeUtils::getThreadAffinity();
-    originalPolicy_ = RealtimeUtils::getThreadSchedulingPolicy();
+    originalPolicy_   = RealtimeUtils::getThreadSchedulingPolicy();
     originalPriority_ = RealtimeUtils::getThreadPriority();
 
     // Apply new config
@@ -415,14 +426,15 @@ void LatencyTracker::record(uint64_t microseconds) {
 }
 
 double LatencyTracker::average() const noexcept {
-    if (count_ == 0) return 0.0;
+    if (count_ == 0)
+        return 0.0;
     return static_cast<double>(sum_) / static_cast<double>(count_);
 }
 
 void LatencyTracker::reset() {
-    min_ = UINT64_MAX;
-    max_ = 0;
-    sum_ = 0;
+    min_   = UINT64_MAX;
+    max_   = 0;
+    sum_   = 0;
     count_ = 0;
 }
 
@@ -433,13 +445,11 @@ std::string LatencyTracker::summary() const {
     if (count_ == 0) {
         ss << "No samples";
     } else {
-        ss << "Latency (us): min=" << min_
-           << " max=" << max_
-           << " avg=" << average()
+        ss << "Latency (us): min=" << min_ << " max=" << max_ << " avg=" << average()
            << " samples=" << count_;
     }
 
     return ss.str();
 }
 
-} // namespace speeduino
+}  // namespace speeduino

@@ -1,9 +1,12 @@
 #include "hmi/openauto_embedded.hpp"
-#include <QDebug>
-#include <QApplication>
+
+#include "hmi/qml_video_output.hpp"
+
 #include <QTimer>
+
+#include <QApplication>
+#include <QDebug>
 #include <QMouseEvent>
-#include <QWindow>
 
 // libusb
 #include <libusb-1.0/libusb.h>
@@ -11,73 +14,75 @@
 // boost
 #include <boost/asio.hpp>
 
+// std
+#include <future>
+
 // Temporarily undefine Qt's emit macro to avoid conflict with std::syncstream
 #ifdef emit
-#undef emit
-#define SPEEDUINO_EMIT_WAS_DEFINED
+    #undef emit
+    #define SPEEDUINO_EMIT_WAS_DEFINED
 #endif
 
 // aasdk
-#include <aasdk/USB/USBWrapper.hpp>
-#include <aasdk/USB/USBHub.hpp>
-#include <aasdk/USB/ConnectedAccessoriesEnumerator.hpp>
-#include <aasdk/USB/AccessoryModeQueryFactory.hpp>
-#include <aasdk/USB/AccessoryModeQueryChainFactory.hpp>
 #include <aasdk/TCP/TCPWrapper.hpp>
+#include <aasdk/USB/AccessoryModeQueryChainFactory.hpp>
+#include <aasdk/USB/AccessoryModeQueryFactory.hpp>
+#include <aasdk/USB/ConnectedAccessoriesEnumerator.hpp>
+#include <aasdk/USB/USBHub.hpp>
+#include <aasdk/USB/USBWrapper.hpp>
 
 // openauto
 #include <openauto/App.hpp>
 #include <openauto/Configuration/Configuration.hpp>
-#include <openauto/Service/ServiceFactory.hpp>
 #include <openauto/Service/AndroidAutoEntityFactory.hpp>
+#include <openauto/Service/ServiceFactory.hpp>
 
 // Restore emit macro if it was defined
 #ifdef SPEEDUINO_EMIT_WAS_DEFINED
-#define emit
-#undef SPEEDUINO_EMIT_WAS_DEFINED
+    #define emit
+    #undef SPEEDUINO_EMIT_WAS_DEFINED
 #endif
 
 namespace speeduino {
 
 // Touch action constants (matching QML touchEvent signal)
-constexpr int TOUCH_ACTION_PRESS = 0;
+constexpr int TOUCH_ACTION_PRESS   = 0;
 constexpr int TOUCH_ACTION_RELEASE = 1;
-constexpr int TOUCH_ACTION_MOVE = 2;
+constexpr int TOUCH_ACTION_MOVE    = 2;
 
 // ═══════════════════════════════════════════════════════════════
 // OpenAutoIOWorker implementation
 // ═══════════════════════════════════════════════════════════════
 
-OpenAutoIOWorker::OpenAutoIOWorker(boost::asio::io_service& ioService)
-    : m_ioService(ioService)
-{
-}
+OpenAutoIOWorker::OpenAutoIOWorker(boost::asio::io_service& ioService) : m_ioService(ioService) {}
 
-OpenAutoIOWorker::~OpenAutoIOWorker()
-{
+OpenAutoIOWorker::~OpenAutoIOWorker() {
     stop();
 }
 
-void OpenAutoIOWorker::run()
-{
+void OpenAutoIOWorker::run() {
     m_running.store(true, std::memory_order_release);
     qInfo() << "[OpenAutoEmbedded] IO worker thread started";
 
     // FIX #10: Exception loop prevention with exponential backoff (ISO 26262)
     int consecutiveExceptions = 0;
-    int currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
+    int currentRetryDelayMs   = INITIAL_RETRY_DELAY_MS;
 
     while (m_running.load(std::memory_order_acquire)) {
         try {
+            // FIX #4: Call reset() BEFORE run() on each iteration
+            // ISO 26262: io_service must be reset before run() can process new handlers
+            // After run() returns (no more work), reset() must be called before next run()
+            // After exception, reset() is required before run() can resume
+            m_ioService.reset();
+
             m_ioService.run();
 
             // Successful run resets the exception counter
             consecutiveExceptions = 0;
-            currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
+            currentRetryDelayMs   = INITIAL_RETRY_DELAY_MS;
 
-            if (m_running.load(std::memory_order_acquire)) {
-                m_ioService.reset();
-            }
+            // NOTE: reset() moved to start of loop - it's needed BEFORE run(), not after
         } catch (const std::exception& e) {
             consecutiveExceptions++;
             qWarning() << "[OpenAutoEmbedded] IO service exception (" << consecutiveExceptions
@@ -85,10 +90,11 @@ void OpenAutoIOWorker::run()
 
             // FIX #10: Check if we've exceeded maximum consecutive exceptions
             if (consecutiveExceptions >= MAX_CONSECUTIVE_EXCEPTIONS) {
-                QString fatalMsg = QString("IO service fatal error: %1 consecutive exceptions. "
-                                          "Last error: %2")
-                                          .arg(consecutiveExceptions)
-                                          .arg(e.what());
+                QString fatalMsg = QString(
+                                       "IO service fatal error: %1 consecutive exceptions. "
+                                       "Last error: %2")
+                                       .arg(consecutiveExceptions)
+                                       .arg(e.what());
                 qCritical() << "[OpenAutoEmbedded]" << fatalMsg;
                 emit fatalError(fatalMsg);
                 m_running.store(false, std::memory_order_release);
@@ -107,8 +113,7 @@ void OpenAutoIOWorker::run()
     qInfo() << "[OpenAutoEmbedded] IO worker thread stopped";
 }
 
-void OpenAutoIOWorker::stop()
-{
+void OpenAutoIOWorker::stop() {
     m_running.store(false, std::memory_order_release);
     m_ioService.stop();
 }
@@ -117,331 +122,104 @@ void OpenAutoIOWorker::stop()
 // OpenAutoEmbedded implementation
 // ═══════════════════════════════════════════════════════════════
 
-OpenAutoEmbedded::OpenAutoEmbedded(QObject* parent)
-    : QObject(parent)
-{
-    // Create geometry update debounce timer
-    m_geometryUpdateTimer = std::make_unique<QTimer>();
-    m_geometryUpdateTimer->setSingleShot(true);
-    m_geometryUpdateTimer->setInterval(16);  // ~60fps debounce
-    connect(m_geometryUpdateTimer.get(), &QTimer::timeout,
-            this, &OpenAutoEmbedded::onGeometryUpdateTimeout);
-
-    // Create the video widget that will be used for Android Auto video output
-    // This widget will be parented to the QML window when setVideoContainer() is called
-    m_videoWidget = std::make_unique<QWidget>();
-    m_videoWidget->setMinimumSize(m_width, m_height);
-    m_videoWidget->resize(m_width, m_height);
-    m_videoWidget->setAttribute(Qt::WA_AcceptTouchEvents);
-    m_videoWidget->setFocusPolicy(Qt::StrongFocus);
-
-    // Initially hidden until container is registered and projection starts
-    m_videoWidget->hide();
-
-    qInfo() << "[OpenAutoEmbedded] Created with video widget" << m_width << "x" << m_height;
+OpenAutoEmbedded::OpenAutoEmbedded(QObject* parent) : QObject(parent) {
+    // QMLVideoOutput will be created in initializeOpenauto() when we have the configuration
+    qInfo() << "[OpenAutoEmbedded] Created (QML-native video output mode)";
 }
 
 // ═══════════════════════════════════════════════════════════════
 // THREAD-SAFE PROPERTY GETTERS
 // ═══════════════════════════════════════════════════════════════
 
-bool OpenAutoEmbedded::isRunning() const
-{
+bool OpenAutoEmbedded::isRunning() const {
     QMutexLocker locker(&m_stateMutex);
     return m_running;
 }
 
-bool OpenAutoEmbedded::isConnected() const
-{
+bool OpenAutoEmbedded::isConnected() const {
     QMutexLocker locker(&m_stateMutex);
     return m_connected;
 }
 
-QString OpenAutoEmbedded::errorMessage() const
-{
+QString OpenAutoEmbedded::errorMessage() const {
     QMutexLocker locker(&m_stateMutex);
     return m_errorMessage;
 }
 
-QString OpenAutoEmbedded::phoneName() const
-{
+QString OpenAutoEmbedded::phoneName() const {
     QMutexLocker locker(&m_stateMutex);
     return m_phoneName;
 }
 
-bool OpenAutoEmbedded::isVideoVisible() const
-{
+bool OpenAutoEmbedded::isVideoVisible() const {
     QMutexLocker locker(&m_stateMutex);
     return m_videoVisible;
 }
 
-OpenAutoEmbedded::~OpenAutoEmbedded()
-{
-    // Hide video widget first to avoid visual glitches during destruction
-    if (m_videoWidget) {
-        m_videoWidget->hide();
-    }
+OpenAutoEmbedded::~OpenAutoEmbedded() {
     stop();
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VIDEO CONTAINER INTEGRATION
+// VIDEO OUTPUT (QML-native approach)
 // ═══════════════════════════════════════════════════════════════
 
-void OpenAutoEmbedded::setVideoContainer(QQuickItem* container)
-{
-    if (!container) {
-        qWarning() << "[OpenAutoEmbedded] setVideoContainer called with null container";
-        return;
-    }
-
-    QQuickWindow* window = container->window();
-    if (!window) {
-        qWarning() << "[OpenAutoEmbedded] Container has no window, deferring...";
-        // FIX #6: Use QPointer for BOTH container AND this to prevent use-after-free
-        // ISO 26262: Lambda captures must be safe even if objects are destroyed
-        QPointer<QQuickItem> weakContainer(container);
-        QPointer<OpenAutoEmbedded> weakThis(this);
-        connect(container, &QQuickItem::windowChanged, this, [weakThis, weakContainer](QQuickWindow* win) {
-            // Safety check: both this and container still exist
-            if (weakThis && weakContainer && win) {
-                weakThis->setVideoContainer(weakContainer.data());
-            }
-        }, Qt::UniqueConnection);
-        return;
-    }
-
-    // Handle container destruction - use proper slot instead of lambda with this capture
-    connect(container, &QObject::destroyed, this,
-            &OpenAutoEmbedded::onContainerDestroyed, Qt::UniqueConnection);
-
+void OpenAutoEmbedded::setVideoVisible(bool visible) {
     {
         QMutexLocker locker(&m_stateMutex);
-        m_container = container;
-        m_containerWindow = window;
-        m_containerRegistered = true;
-    }
-
-    qInfo() << "[OpenAutoEmbedded] Video container registered:"
-            << "size" << container->width() << "x" << container->height()
-            << "window" << window->width() << "x" << window->height();
-
-    // Make video widget a native child window of the QML window
-    m_videoWidget->setWindowFlags(Qt::Widget | Qt::FramelessWindowHint);
-    m_videoWidget->setAttribute(Qt::WA_NativeWindow, true);
-    m_videoWidget->setAttribute(Qt::WA_DontCreateNativeAncestors, true);
-
-    // Force native window creation
-    m_videoWidget->winId();
-    QWindow* videoWindow = m_videoWidget->windowHandle();
-
-    if (videoWindow) {
-        // Parent to QML window - this embeds the widget
-        videoWindow->setParent(window);
-        qInfo() << "[OpenAutoEmbedded] Video widget parented to QML window";
-    } else {
-        qWarning() << "[OpenAutoEmbedded] Failed to get video widget window handle";
-    }
-
-    // Connect to container geometry changes (use UniqueConnection to avoid duplicates on re-registration)
-    connect(container, &QQuickItem::xChanged, this, &OpenAutoEmbedded::onContainerGeometryChanged, Qt::UniqueConnection);
-    connect(container, &QQuickItem::yChanged, this, &OpenAutoEmbedded::onContainerGeometryChanged, Qt::UniqueConnection);
-    connect(container, &QQuickItem::widthChanged, this, &OpenAutoEmbedded::onContainerGeometryChanged, Qt::UniqueConnection);
-    connect(container, &QQuickItem::heightChanged, this, &OpenAutoEmbedded::onContainerGeometryChanged, Qt::UniqueConnection);
-
-    // Initial position update
-    updateVideoWidgetPosition();
-
-    // If projection is already active, show the widget
-    bool shouldShow = false;
-    {
-        QMutexLocker locker(&m_stateMutex);
-        shouldShow = m_connected && m_videoVisible;
-    }
-    if (shouldShow) {
-        m_videoWidget->show();
-        m_videoWidget->raise();
-    }
-}
-
-void OpenAutoEmbedded::onContainerDestroyed()
-{
-    qWarning() << "[OpenAutoEmbedded] Container was destroyed";
-    {
-        QMutexLocker locker(&m_stateMutex);
-        m_container = nullptr;
-        m_containerWindow = nullptr;
-        m_containerRegistered = false;
-    }
-    if (m_videoWidget) {
-        m_videoWidget->hide();
-    }
-}
-
-void OpenAutoEmbedded::onGeometryUpdateTimeout()
-{
-    updateVideoWidgetPosition();
-}
-
-void OpenAutoEmbedded::setVideoVisible(bool visible)
-{
-    bool wasVisible;
-    bool isConnected;
-    bool isRegistered;
-
-    {
-        QMutexLocker locker(&m_stateMutex);
-        wasVisible = m_videoVisible;
         if (m_videoVisible == visible) {
             return;
         }
         m_videoVisible = visible;
-        isConnected = m_connected;
-        isRegistered = m_containerRegistered;
     }
 
     qInfo() << "[OpenAutoEmbedded] Video visibility:" << visible;
 
-    if (!isRegistered) {
-        qDebug() << "[OpenAutoEmbedded] Container not registered yet, visibility will be applied later";
-        emit videoVisibleChanged();
-        return;
-    }
-
-    if (visible) {
-        // Update position before showing
-        updateVideoWidgetPosition();
-
-        // Only show if projection is active
-        if (isConnected) {
-            m_videoWidget->show();
-            m_videoWidget->raise();
-            qInfo() << "[OpenAutoEmbedded] Video widget shown (projection active)";
-        } else {
-            qDebug() << "[OpenAutoEmbedded] Video visible but projection not active, widget hidden";
-        }
-    } else {
-        m_videoWidget->hide();
-        qInfo() << "[OpenAutoEmbedded] Video widget hidden (screen not visible)";
-    }
+    // QML VideoOutput handles visibility automatically through QML bindings
+    // We just track the state here for consistency
 
     emit videoVisibleChanged();
-}
-
-void OpenAutoEmbedded::updateVideoGeometry(int x, int y, int width, int height)
-{
-    if (!m_videoWidget) {
-        return;
-    }
-
-    // ISO 26262 defensive programming: validate all geometry parameters
-    if (!validateGeometry(x, y, width, height)) {
-        qWarning() << "[OpenAutoEmbedded] Invalid geometry rejected:"
-                   << x << y << width << "x" << height;
-        return;
-    }
-
-    // Apply safe bounds
-    const int safeX = safeCoordinate(x, 0, MAX_COORDINATE);
-    const int safeY = safeCoordinate(y, 0, MAX_COORDINATE);
-    const int safeW = safeCoordinate(width, MIN_DIMENSION, MAX_COORDINATE);
-    const int safeH = safeCoordinate(height, MIN_DIMENSION, MAX_COORDINATE);
-
-    m_videoWidget->setGeometry(safeX, safeY, safeW, safeH);
-
-    if (m_serviceFactory) {
-        m_serviceFactory->resize();
-    }
-
-    qDebug() << "[OpenAutoEmbedded] Video geometry updated:" << safeX << safeY << safeW << "x" << safeH;
-}
-
-void OpenAutoEmbedded::onContainerGeometryChanged()
-{
-    // Use debounce timer to batch rapid geometry changes (animations, resize)
-    // This prevents excessive position updates that could cause flicker
-    if (m_geometryUpdateTimer && !m_geometryUpdateTimer->isActive()) {
-        m_geometryUpdateTimer->start();
-    }
-}
-
-void OpenAutoEmbedded::updateVideoWidgetPosition()
-{
-    // Thread-safe container access
-    QPointer<QQuickItem> container;
-    {
-        QMutexLocker locker(&m_stateMutex);
-        if (!m_containerRegistered || !m_container) {
-            return;
-        }
-        container = m_container;
-    }
-
-    if (!m_videoWidget || !container) {
-        return;
-    }
-
-    // Map container position to scene coordinates
-    QPointF scenePos = container->mapToScene(QPointF(0, 0));
-
-    // ISO 26262: Validate floating point values before integer conversion
-    if (!std::isfinite(scenePos.x()) || !std::isfinite(scenePos.y()) ||
-        !std::isfinite(container->width()) || !std::isfinite(container->height())) {
-        qWarning() << "[OpenAutoEmbedded] Invalid container geometry (non-finite values)";
-        return;
-    }
-
-    // Apply safe coordinate conversion with bounds checking
-    const int x = safeCoordinate(scenePos.x(), 0, MAX_COORDINATE);
-    const int y = safeCoordinate(scenePos.y(), 0, MAX_COORDINATE);
-    const int w = safeCoordinate(container->width(), MIN_DIMENSION, MAX_COORDINATE);
-    const int h = safeCoordinate(container->height(), MIN_DIMENSION, MAX_COORDINATE);
-
-    // Final validation before applying
-    if (!validateGeometry(x, y, w, h)) {
-        qWarning() << "[OpenAutoEmbedded] Container geometry validation failed";
-        return;
-    }
-
-    m_videoWidget->setGeometry(x, y, w, h);
-
-    qDebug() << "[OpenAutoEmbedded] Video widget positioned at" << x << y << "size" << w << "x" << h;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // CONTROL METHODS
 // ═══════════════════════════════════════════════════════════════
 
-bool OpenAutoEmbedded::start()
-{
-    // Thread-safe running check
+bool OpenAutoEmbedded::start() {
+    // FIX: Thread-safe running check - set m_running BEFORE initialization
+    // to prevent race condition where two start() calls can both pass the check
     {
         QMutexLocker locker(&m_stateMutex);
         if (m_running) {
             qWarning() << "[OpenAutoEmbedded] Already running";
             return true;
         }
+        // CRITICAL: Mark as running BEFORE initialization to prevent double-init
+        m_running = true;
     }
 
     qInfo() << "[OpenAutoEmbedded] Starting...";
 
     // Initialize libusb
     if (!initializeLibusb()) {
+        // Reset running flag on failure
+        QMutexLocker locker(&m_stateMutex);
+        m_running = false;
         return false;
     }
 
     // Initialize openauto components
     if (!initializeOpenauto()) {
         cleanupLibusb();
+        // Reset running flag on failure
+        QMutexLocker locker(&m_stateMutex);
+        m_running = false;
         return false;
     }
 
-    // Thread-safe state update
+    // Clear any previous error message on successful start
     {
         QMutexLocker locker(&m_stateMutex);
-        m_running = true;
-
-        // Clear any previous error message on successful start
         if (!m_errorMessage.isEmpty()) {
             m_errorMessage.clear();
         }
@@ -451,18 +229,65 @@ bool OpenAutoEmbedded::start()
     emit runningChanged();
     emit started();
 
-    qInfo() << "[OpenAutoEmbedded] Started successfully, waiting for device...";
+    qInfo() << "[OpenAutoEmbedded] Started successfully, scheduling device wait...";
 
-    // Start waiting for USB device connection
-    if (m_app) {
-        m_app->waitForDevice(true);
+    // FIX: Capture m_app as shared_ptr snapshot to prevent use-after-free
+    // if stop() is called before the lambda executes
+    std::shared_ptr<openauto::App> appSnapshot = m_app;
+    if (appSnapshot) {
+        // FIX: Use QPointer to safely handle object destruction
+        QPointer<OpenAutoEmbedded> weakThis(this);
+        QTimer::singleShot(0, this, [weakThis, appSnapshot]() {
+            if (!weakThis) {
+                qWarning() << "[OpenAutoEmbedded] Object destroyed before device wait";
+                return;
+            }
+            // Safety: Re-check running state after deferral
+            // FIX: Use m_waitingForDevice to prevent concurrent waitForDevice() calls
+            // aasdk is NOT thread-safe for concurrent device enumeration
+            bool canWait = false;
+            {
+                QMutexLocker locker(&weakThis->m_stateMutex);
+                if (weakThis->m_running && !weakThis->m_waitingForDevice) {
+                    weakThis->m_waitingForDevice = true;  // Mark as waiting
+                    canWait                      = true;
+                }
+            }
+            if (canWait && appSnapshot) {
+                qInfo() << "[OpenAutoEmbedded] Starting device wait (deferred)";
+                appSnapshot->waitForDevice(true);
+
+                // FIX: Reset m_waitingForDevice after 10s timeout to allow future retries
+                // If waitForDevice() fails silently (e.g., no devices found), we need to
+                // allow retryDeviceDetection() to be called when phones are connected later.
+                // Without this timeout, m_waitingForDevice stays true forever blocking all retries.
+                QTimer::singleShot(10000, [weakThis]() {
+                    if (weakThis) {
+                        QMutexLocker locker(&weakThis->m_stateMutex);
+                        if (!weakThis->m_connected) {
+                            weakThis->m_waitingForDevice = false;
+                            qInfo() << "[OpenAutoEmbedded] Initial enumeration timeout - allowing "
+                                       "retries";
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    // NOTE: Removed early retry mechanism - it was causing race conditions with aasdk's
+    // Promise system. The initial waitForDevice() should handle device detection.
+    // If a device was connected before start(), waitForDevice() will find it.
+    // The m_pendingRetry flag is no longer used here.
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_pendingRetry = false;  // Clear any pending retry - initial enumeration will handle it
     }
 
     return true;
 }
 
-void OpenAutoEmbedded::stop()
-{
+void OpenAutoEmbedded::stop() {
     // Thread-safe running check
     {
         QMutexLocker locker(&m_stateMutex);
@@ -472,6 +297,11 @@ void OpenAutoEmbedded::stop()
     }
 
     qInfo() << "[OpenAutoEmbedded] Stopping...";
+
+    // Stop QML video output
+    if (m_qmlVideoOutput) {
+        m_qmlVideoOutput->stop();
+    }
 
     // Stop the app first (outside mutex to avoid deadlock with callbacks)
     if (m_app) {
@@ -487,7 +317,9 @@ void OpenAutoEmbedded::stop()
     // Thread-safe state update
     {
         QMutexLocker locker(&m_stateMutex);
-        m_running = false;
+        m_running          = false;
+        m_waitingForDevice = false;  // FIX: Reset waiting flag on stop
+        // NOTE: Don't reset m_restarting here - it's managed by restart() timing
     }
 
     setConnected(false);
@@ -497,69 +329,135 @@ void OpenAutoEmbedded::stop()
     qInfo() << "[OpenAutoEmbedded] Stopped";
 }
 
-void OpenAutoEmbedded::restart()
-{
+// MISRA 15.6 FIX: Helper function for restart attempt to reduce nesting depth
+void OpenAutoEmbedded::tryRestartAttempt(int attemptNumber, int delayMs) {
+    qInfo() << "[OpenAutoEmbedded] Scheduling restart attempt" << attemptNumber << "in" << delayMs
+            << "ms";
+    QPointer<OpenAutoEmbedded> weakThis(this);
+    QTimer::singleShot(delayMs, this, [weakThis, attemptNumber]() {
+        qInfo() << "[OpenAutoEmbedded] Restart timer fired, attempt" << attemptNumber;
+        if (!weakThis) {
+            qWarning() << "[OpenAutoEmbedded] Object destroyed before restart could complete";
+            return;
+        }
+
+        qInfo() << "[OpenAutoEmbedded] Calling start() for restart attempt" << attemptNumber;
+        if (weakThis->start()) {
+            // Success - clear restarting flag
+            QMutexLocker locker(&weakThis->m_stateMutex);
+            weakThis->m_restarting = false;
+            return;
+        }
+
+        // Start failed - handle based on attempt number
+        constexpr int MAX_RESTART_ATTEMPTS = 3;
+        if (attemptNumber >= MAX_RESTART_ATTEMPTS) {
+            qCritical() << "[OpenAutoEmbedded] Restart failed after" << MAX_RESTART_ATTEMPTS
+                        << "attempts";
+            QMutexLocker locker(&weakThis->m_stateMutex);
+            weakThis->m_restarting = false;
+            return;
+        }
+
+        // Schedule next attempt with increasing delay
+        const int nextDelay = (attemptNumber == 1) ? 5000 : 8000;
+        qWarning() << "[OpenAutoEmbedded] Restart attempt" << attemptNumber << "failed, retrying in"
+                   << nextDelay << "ms";
+        weakThis->tryRestartAttempt(attemptNumber + 1, nextDelay);
+    });
+}
+
+void OpenAutoEmbedded::restart() {
+    // FIX: Debounce restart() to prevent multiple simultaneous restarts
+    // Each click on Restart button triggers this, causing "Address already in use" errors
+    {
+        QMutexLocker locker(&m_stateMutex);
+        if (m_restarting) {
+            qWarning() << "[OpenAutoEmbedded] Restart already in progress, ignoring request";
+            return;
+        }
+        m_restarting = true;
+    }
+
     qInfo() << "[OpenAutoEmbedded] Restarting...";
+
+    // PHASE 2: Request graceful disconnect before stopping
+    // This sends disconnect to phone and waits for clean disconnection
+    // Prevents "AaSdk error code: 30" on restart by allowing phone to cleanly exit
+    constexpr int GRACEFUL_DISCONNECT_TIMEOUT_MS = 2000;
+    bool cleanDisconnect = requestGracefulDisconnect(GRACEFUL_DISCONNECT_TIMEOUT_MS);
+    if (!cleanDisconnect) {
+        qWarning()
+            << "[OpenAutoEmbedded] Graceful disconnect timed out, proceeding with forced stop";
+    }
+
     stop();
-    QTimer::singleShot(500, this, &OpenAutoEmbedded::start);
+
+    // PHASE 3: Use shorter delay since graceful disconnect already handled cleanup
+    // Reduced from 5s to 2s since phone has already been notified
+    constexpr int RESTART_DELAY_MS = 2000;
+    // MISRA 15.6 FIX: Extracted to helper function to reduce nesting depth
+    tryRestartAttempt(1, RESTART_DELAY_MS);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // INPUT HANDLING
 // ═══════════════════════════════════════════════════════════════
 
-void OpenAutoEmbedded::sendTouch(int x, int y, int action)
-{
-    // FIX #3 & #4: Thread-safe state check with early capture of widget pointer
-    // ISO 26262: Prevent TOCTOU race and ensure no memory leak
-    QWidget* videoWidgetPtr = nullptr;
+// Touch/input coordinate limits
+static constexpr int MAX_COORDINATE = 10000;
+
+void OpenAutoEmbedded::sendTouch(int x, int y, int action) {
+    // Thread-safe state check AND widget pointer capture
+    QWidget* inputWidgetPtr = nullptr;
     bool isRunning;
     bool isConnected;
-    int widgetWidth = 0;
+    int widgetWidth  = 0;
     int widgetHeight = 0;
 
     {
         QMutexLocker locker(&m_stateMutex);
-        isRunning = m_running;
+        isRunning   = m_running;
         isConnected = m_connected;
+
+        if (m_inputWidget) {
+            inputWidgetPtr = m_inputWidget.get();
+            widgetWidth    = m_inputWidget->width();
+            widgetHeight   = m_inputWidget->height();
+        }
     }
 
     if (!isRunning || !isConnected) {
         return;
     }
 
-    // Capture widget pointer and dimensions under implied single-threaded access
-    // (m_videoWidget is only modified from main thread)
-    if (!m_videoWidget) {
-        qWarning() << "[OpenAutoEmbedded] Video widget is null, cannot send touch";
+    if (!inputWidgetPtr) {
+        qWarning() << "[OpenAutoEmbedded] Input widget is null, cannot send touch";
         return;
     }
-    videoWidgetPtr = m_videoWidget.get();
-    widgetWidth = m_videoWidget->width();
-    widgetHeight = m_videoWidget->height();
 
-    // ISO 26262: Validate touch coordinates BEFORE creating any events
+    // Validate touch coordinates
     if (x < 0 || y < 0 || x > MAX_COORDINATE || y > MAX_COORDINATE) {
         qWarning() << "[OpenAutoEmbedded] Touch coordinates out of bounds:" << x << y;
         return;
     }
 
-    // The openauto InputDevice class is installed as an event filter on the video widget.
-    // It intercepts touch/mouse events and forwards them to Android Auto.
-    // We synthesize mouse events here which will be captured by the InputDevice eventFilter.
+    // Clamp coordinates to widget dimensions
+    const int maxX = widgetWidth > 0 ? widgetWidth : m_width;
+    const int maxY = widgetHeight > 0 ? widgetHeight : m_height;
 
-    // Safe coordinate clamping for extra safety
-    const int safeX = safeCoordinate(x, 0, widgetWidth);
-    const int safeY = safeCoordinate(y, 0, widgetHeight);
+    // DEBUG: Log coordinate transformation
+    if (maxX == 0 || maxY == 0) {
+        qWarning() << "[OpenAutoEmbedded] Touch clamp bounds are zero! widgetWidth:" << widgetWidth
+                   << "widgetHeight:" << widgetHeight << "m_width:" << m_width
+                   << "m_height:" << m_height;
+    }
+
+    const int safeX = qBound(0, x, maxX > 0 ? maxX : 10000);
+    const int safeY = qBound(0, y, maxY > 0 ? maxY : 10000);
 
     QPointF localPos(safeX, safeY);
-
-    // Calculate global position (only valid if widget is properly parented)
     QPointF globalPos = localPos;
-    if (m_videoWidget && m_videoWidget->parentWidget()) {
-        QPoint gp = m_videoWidget->mapToGlobal(QPoint(safeX, safeY));
-        globalPos = QPointF(gp.x(), gp.y());
-    }
 
     QEvent::Type eventType;
     Qt::MouseButton button = Qt::LeftButton;
@@ -571,19 +469,19 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
 
         switch (action) {
             case TOUCH_ACTION_PRESS:
-                eventType = QEvent::MouseButtonPress;
-                buttons = Qt::LeftButton;
+                eventType      = QEvent::MouseButtonPress;
+                buttons        = Qt::LeftButton;
                 m_touchPressed = true;
                 break;
             case TOUCH_ACTION_RELEASE:
-                eventType = QEvent::MouseButtonRelease;
-                buttons = Qt::NoButton;
+                eventType      = QEvent::MouseButtonRelease;
+                buttons        = Qt::NoButton;
                 m_touchPressed = false;
                 break;
             case TOUCH_ACTION_MOVE:
                 eventType = QEvent::MouseMove;
-                buttons = m_touchPressed ? Qt::LeftButton : Qt::NoButton;
-                button = Qt::NoButton;  // No button for move events
+                buttons   = m_touchPressed ? Qt::LeftButton : Qt::NoButton;
+                button    = Qt::NoButton;
                 break;
             default:
                 qWarning() << "[OpenAutoEmbedded] Unknown touch action:" << action;
@@ -591,71 +489,46 @@ void OpenAutoEmbedded::sendTouch(int x, int y, int action)
         }
     }
 
-    // FIX #3: Final null check before event creation (defensive programming)
-    // Only create the event if we're certain we can post it
-    if (!videoWidgetPtr) {
-        qWarning() << "[OpenAutoEmbedded] Widget became null before event post";
-        return;
-    }
+    // Create and post the mouse event to the input widget
+    // InputDevice event filter intercepts and forwards to Android Auto
+    QMouseEvent* mouseEvent =
+        new QMouseEvent(eventType, localPos, globalPos, button, buttons, Qt::NoModifier);
 
-    // Create and post the mouse event to the video widget
-    // The InputDevice eventFilter will intercept it and forward to Android Auto
-    QMouseEvent* mouseEvent = new QMouseEvent(
-        eventType,
-        localPos,
-        globalPos,
-        button,
-        buttons,
-        Qt::NoModifier
-    );
+    QCoreApplication::postEvent(inputWidgetPtr, mouseEvent);
 
-    // Post the event to the video widget (will be handled by InputDevice eventFilter)
-    // Qt takes ownership of the event - no leak possible after this call
-    QCoreApplication::postEvent(videoWidgetPtr, mouseEvent);
-
-    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action;
+    qDebug() << "[OpenAutoEmbedded] Touch event posted:" << safeX << safeY << "action:" << action
+             << "(input:" << x << y << "bounds:" << maxX << maxY << ")";
 }
 
-void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
-{
-    // FIX #3 & #4: Thread-safe state check with pointer capture
-    QWidget* videoWidgetPtr = nullptr;
+void OpenAutoEmbedded::sendKey(int keyCode, bool pressed) {
+    // Thread-safe state check AND widget pointer capture
+    QWidget* inputWidgetPtr = nullptr;
     bool isRunning;
     bool isConnected;
     {
         QMutexLocker locker(&m_stateMutex);
-        isRunning = m_running;
+        isRunning   = m_running;
         isConnected = m_connected;
+
+        if (m_inputWidget) {
+            inputWidgetPtr = m_inputWidget.get();
+        }
     }
 
     if (!isRunning || !isConnected) {
         return;
     }
 
-    // Capture widget pointer for safe use
-    if (!m_videoWidget) {
-        qWarning() << "[OpenAutoEmbedded] Video widget is null, cannot send key";
-        return;
-    }
-    videoWidgetPtr = m_videoWidget.get();
-
-    // Final null check before event creation
-    if (!videoWidgetPtr) {
-        qWarning() << "[OpenAutoEmbedded] Widget became null before key event post";
+    if (!inputWidgetPtr) {
+        qWarning() << "[OpenAutoEmbedded] Input widget is null, cannot send key";
         return;
     }
 
-    // Create and post key event to the video widget
     QEvent::Type eventType = pressed ? QEvent::KeyPress : QEvent::KeyRelease;
 
-    QKeyEvent* keyEvent = new QKeyEvent(
-        eventType,
-        keyCode,
-        Qt::NoModifier
-    );
+    QKeyEvent* keyEvent = new QKeyEvent(eventType, keyCode, Qt::NoModifier);
 
-    // Qt takes ownership of the event - no leak possible after this call
-    QCoreApplication::postEvent(videoWidgetPtr, keyEvent);
+    QCoreApplication::postEvent(inputWidgetPtr, keyEvent);
 
     qDebug() << "[OpenAutoEmbedded] Key event posted:" << keyCode << "pressed:" << pressed;
 }
@@ -664,68 +537,173 @@ void OpenAutoEmbedded::sendKey(int keyCode, bool pressed)
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 
-void OpenAutoEmbedded::setResolution(int width, int height)
-{
-    m_width = width;
-    m_height = height;
-    if (m_videoWidget) {
-        m_videoWidget->setMinimumSize(width, height);
+void OpenAutoEmbedded::setResolution(int width, int height) {
+    // MEDIUM FIX: Thread-safe resolution update
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_width  = width;
+        m_height = height;
     }
+
+    // Update input widget size (for coordinate mapping)
+    if (m_inputWidget) {
+        m_inputWidget->resize(width, height);
+    }
+
+    // Notify serviceFactory of resolution change
     if (m_serviceFactory) {
         m_serviceFactory->resize();
     }
+
     qInfo() << "[OpenAutoEmbedded] Resolution set to" << width << "x" << height;
 }
 
-void OpenAutoEmbedded::setNightMode(bool nightMode)
-{
-    m_nightMode = nightMode;
+void OpenAutoEmbedded::setNightMode(bool nightMode) {
+    // MEDIUM FIX: Thread-safe night mode update
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_nightMode = nightMode;
+    }
+
     if (m_serviceFactory) {
         m_serviceFactory->setNightMode(nightMode);
     }
+
     qInfo() << "[OpenAutoEmbedded] Night mode:" << nightMode;
+}
+
+void OpenAutoEmbedded::retryDeviceDetection() {
+    // Thread-safe state check with snapshot of m_app
+    bool isRunning;
+    bool isConnected;
+    bool isWaiting;
+    std::shared_ptr<openauto::App> appSnapshot;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        isRunning   = m_running;
+        isConnected = m_connected;
+        isWaiting   = m_waitingForDevice;
+        appSnapshot = m_app;  // Capture snapshot while locked
+    }
+
+    // FIX: If not running yet, queue the retry for when start() completes
+    // This handles the case where USB detection happens before OpenAuto is initialized
+    if (!isRunning) {
+        {
+            QMutexLocker locker(&m_stateMutex);
+            m_pendingRetry = true;
+        }
+        qInfo()
+            << "[OpenAutoEmbedded] retryDeviceDetection: Not running yet, queued for after start()";
+        return;
+    }
+
+    if (isConnected) {
+        qDebug() << "[OpenAutoEmbedded] retryDeviceDetection: Already connected, ignoring";
+        return;
+    }
+
+    if (!appSnapshot) {
+        qDebug() << "[OpenAutoEmbedded] retryDeviceDetection: m_app not initialized yet, ignoring";
+        return;
+    }
+
+    // FIX: Prevent rapid retries - aasdk's ConnectedAccessoriesEnumerator doesn't handle
+    // concurrent enumerate() calls well (returns OPERATION_IN_PROGRESS error 31).
+    // The bug in aasdk is that reset() is not called on some error paths, leaving promise_ set.
+    // Workaround: Use longer delay (5s) to give time for previous enumeration to complete/fail.
+    if (isWaiting) {
+        qInfo() << "[OpenAutoEmbedded] Retry already pending, ignoring duplicate request";
+        return;
+    }
+
+    qInfo() << "[OpenAutoEmbedded] External USB detection triggered - scheduling enumeration (5s "
+               "delay)";
+
+    // Mark as waiting immediately to prevent duplicate calls
+    {
+        QMutexLocker locker(&m_stateMutex);
+        m_waitingForDevice = true;
+    }
+
+    // FIX: Use safe captures to prevent use-after-free
+    // FIX: Use 5 second delay to give aasdk time to complete/fail previous enumeration.
+    // The aasdk ConnectedAccessoriesEnumerator has a bug where it doesn't reset state on
+    // some error paths (especially USB_LIST_DEVICES error), causing subsequent enumerate()
+    // calls to fail with OPERATION_IN_PROGRESS. A longer delay helps avoid this race condition.
+    QPointer<OpenAutoEmbedded> weakThis(this);
+    QTimer::singleShot(5000, this, [weakThis, appSnapshot]() {
+        if (!weakThis) {
+            qWarning() << "[OpenAutoEmbedded] Object destroyed before retry";
+            return;
+        }
+
+        // Check if still running and not connected
+        bool canRetry = false;
+        {
+            QMutexLocker locker(&weakThis->m_stateMutex);
+            if (weakThis->m_running && !weakThis->m_connected) {
+                canRetry = true;
+            } else {
+                // Reset waiting flag if we can't retry
+                weakThis->m_waitingForDevice = false;
+            }
+        }
+
+        if (canRetry && appSnapshot) {
+            qInfo() << "[OpenAutoEmbedded] Triggering USB device enumeration...";
+            // NOTE: waitForDevice(true) calls both USBHub::start() and enumerateDevices()
+            // USBHub::start() aborts previous promise (error 30) which is OK.
+            // enumerateDevices() may fail with error 31 if previous enumeration didn't reset.
+            appSnapshot->waitForDevice(true);
+
+            // Reset waiting flag after 10s timeout to allow future retries
+            // This handles the case where enumeration fails silently
+            QTimer::singleShot(10000, [weakThis]() {
+                if (weakThis) {
+                    QMutexLocker locker(&weakThis->m_stateMutex);
+                    if (!weakThis->m_connected) {
+                        weakThis->m_waitingForDevice = false;
+                        qInfo() << "[OpenAutoEmbedded] Enumeration timeout - allowing new retries";
+                    }
+                }
+            });
+        } else {
+            // Reset waiting flag if we didn't retry
+            QMutexLocker locker(&weakThis->m_stateMutex);
+            weakThis->m_waitingForDevice = false;
+        }
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════
 // PROJECTION LIFECYCLE
 // ═══════════════════════════════════════════════════════════════
 
-void OpenAutoEmbedded::onProjectionActive(bool active)
-{
+void OpenAutoEmbedded::onProjectionActive(bool active) {
     qInfo() << "[OpenAutoEmbedded] Projection active:" << active;
 
-    // FIX #7: Thread-safe state read for visibility decision
-    // DEADLOCK PREVENTION: Lock is released BEFORE calling setConnected() or emitting signals
-    // This ensures no deadlock can occur from signal-slot chains re-acquiring the mutex
-    // ISO 26262: All mutex operations must have bounded lock time
-    bool isVisible;
-    bool isRegistered;
     {
         QMutexLocker locker(&m_stateMutex);
-        isVisible = m_videoVisible;
-        isRegistered = m_containerRegistered;
+        if (active) {
+            m_waitingForDevice = false;
+        }
     }
-    // CRITICAL: Lock released here - safe to call methods that may re-lock
 
     if (active) {
-        setConnected(true);  // May acquire m_stateMutex internally (safe - not held here)
+        setConnected(true);
         emit projectionStarted();
 
-        // Show video widget if screen is visible
-        if (isVisible && isRegistered && m_videoWidget) {
-            updateVideoWidgetPosition();
-            m_videoWidget->show();
-            m_videoWidget->raise();
-            qInfo() << "[OpenAutoEmbedded] Video widget shown (projection started)";
-        }
+        // QMLVideoOutput will start playing automatically when data arrives
+        qInfo() << "[OpenAutoEmbedded] Projection started (QML-native video)";
     } else {
-        // Hide video widget
-        if (m_videoWidget) {
-            m_videoWidget->hide();
-        }
-
         setConnected(false);
         emit projectionStopped();
+
+        // Stop QML video output
+        if (m_qmlVideoOutput) {
+            m_qmlVideoOutput->stop();
+        }
     }
 }
 
@@ -733,8 +711,7 @@ void OpenAutoEmbedded::onProjectionActive(bool active)
 // INITIALIZATION / CLEANUP
 // ═══════════════════════════════════════════════════════════════
 
-bool OpenAutoEmbedded::initializeLibusb()
-{
+bool OpenAutoEmbedded::initializeLibusb() {
     int ret = libusb_init(&m_usbContext);
     if (ret != 0) {
         setError(QString("Failed to initialize libusb: %1").arg(libusb_error_name(ret)));
@@ -745,8 +722,7 @@ bool OpenAutoEmbedded::initializeLibusb()
     return true;
 }
 
-void OpenAutoEmbedded::cleanupLibusb()
-{
+void OpenAutoEmbedded::cleanupLibusb() {
     if (m_usbContext) {
         libusb_exit(m_usbContext);
         m_usbContext = nullptr;
@@ -754,8 +730,102 @@ void OpenAutoEmbedded::cleanupLibusb()
     }
 }
 
-bool OpenAutoEmbedded::initializeOpenauto()
-{
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1: USB WORKER SYNCHRONIZATION
+// ═══════════════════════════════════════════════════════════════
+
+void OpenAutoEmbedded::stopUsbWorkersSync() {
+    qInfo() << "[OpenAutoEmbedded] Stopping USB worker threads with synchronization...";
+
+    // Signal all workers to stop
+    m_usbWorkersRunning.store(false, std::memory_order_release);
+
+    // CRITICAL: Interrupt any threads blocked in libusb_handle_events_*()
+    // Without this, workers will remain blocked until their 1-second timeout expires
+    if (m_usbContext) {
+        libusb_interrupt_event_handler(m_usbContext);
+    }
+
+    // Wait for all workers to exit using condition_variable with timeout
+    // This prevents race condition where libusb_exit() is called while workers
+    // are still inside libusb_handle_events_timeout_completed()
+    {
+        std::unique_lock<std::mutex> lock(m_usbWorkerMutex);
+        constexpr int USB_WORKER_TIMEOUT_MS = 3000;  // 3 second timeout
+
+        bool allExited =
+            m_usbWorkerCV.wait_for(lock, std::chrono::milliseconds(USB_WORKER_TIMEOUT_MS),
+                                   [this]() { return m_usbWorkersActive.load() == 0; });
+
+        if (!allExited) {
+            qWarning() << "[OpenAutoEmbedded] USB workers did not exit in time,"
+                       << m_usbWorkersActive.load() << "still active";
+        } else {
+            qInfo() << "[OpenAutoEmbedded] All USB workers signaled exit";
+        }
+    }
+
+    // Now join the threads (should return immediately since they've exited)
+    for (auto& thread : m_usbWorkerThreads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    m_usbWorkerThreads.clear();
+
+    qInfo() << "[OpenAutoEmbedded] USB worker threads stopped and joined";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2: GRACEFUL DISCONNECT
+// ═══════════════════════════════════════════════════════════════
+
+bool OpenAutoEmbedded::requestGracefulDisconnect(int timeoutMs) {
+    // Check if we're connected
+    bool wasConnected = false;
+    {
+        QMutexLocker locker(&m_stateMutex);
+        wasConnected = m_connected;
+    }
+
+    if (!wasConnected) {
+        qInfo() << "[OpenAutoEmbedded] Not connected, no graceful disconnect needed";
+        return true;
+    }
+
+    qInfo() << "[OpenAutoEmbedded] Requesting graceful disconnect (timeout:" << timeoutMs << "ms)";
+
+    // Stop the app - this sends disconnect to the phone
+    if (m_app) {
+        m_app->stop();
+    }
+
+    // Wait for disconnect with polling (condition_variable not available for m_connected)
+    constexpr int POLL_INTERVAL_MS = 100;
+    int elapsedMs                  = 0;
+
+    while (elapsedMs < timeoutMs) {
+        {
+            QMutexLocker locker(&m_stateMutex);
+            if (!m_connected) {
+                qInfo() << "[OpenAutoEmbedded] Phone disconnected cleanly after" << elapsedMs
+                        << "ms";
+                return true;
+            }
+        }
+
+        QThread::msleep(POLL_INTERVAL_MS);
+        elapsedMs += POLL_INTERVAL_MS;
+
+        // Process Qt events to allow callbacks to fire
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    }
+
+    qWarning() << "[OpenAutoEmbedded] Graceful disconnect timeout - forcing cleanup";
+    return false;
+}
+
+bool OpenAutoEmbedded::initializeOpenauto() {
     try {
         // Create boost::asio io_service
         m_ioService = std::make_unique<boost::asio::io_service>();
@@ -772,59 +842,87 @@ bool OpenAutoEmbedded::initializeOpenauto()
         // Create USB wrapper
         m_usbWrapper = std::make_unique<aasdk::usb::USBWrapper>(m_usbContext);
 
-        // Create accessory mode query factories
-        aasdk::usb::AccessoryModeQueryFactory queryFactory(*m_usbWrapper, *m_ioService);
-        aasdk::usb::AccessoryModeQueryChainFactory queryChainFactory(*m_usbWrapper, *m_ioService, queryFactory);
+        // Create accessory mode query factories (MUST be member variables - lifetime!)
+        m_queryFactory =
+            std::make_unique<aasdk::usb::AccessoryModeQueryFactory>(*m_usbWrapper, *m_ioService);
+        m_queryChainFactory = std::make_unique<aasdk::usb::AccessoryModeQueryChainFactory>(
+            *m_usbWrapper, *m_ioService, *m_queryFactory);
 
-        // Create ServiceFactory with our video widget as the activeArea
-        // The callback will be called when projection starts/stops
-        // FIX #6: Use QPointer to safely handle callback if object is destroyed
+        // Create hidden input widget for touch event forwarding
+        // The widget needs valid geometry to avoid crash in ServiceFactory::mapActiveAreaToGlobal
+        // We set explicit size BEFORE showing/hiding to ensure valid geometry
+        m_inputWidget = std::make_unique<QWidget>();
+        m_inputWidget->setObjectName("OpenAutoInputWidget");
+        m_inputWidget->setGeometry(0, 0, m_width, m_height);  // Set valid geometry FIRST
+        m_inputWidget->setFixedSize(m_width, m_height);       // Prevent resize
+        m_inputWidget->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+        m_inputWidget->setAttribute(Qt::WA_OpaquePaintEvent, false);
+        m_inputWidget->setFocusPolicy(Qt::StrongFocus);
+        // Hide the widget - we only need it for event forwarding, not display
+        // The video is displayed via QML VideoOutput
+        m_inputWidget->hide();
+        qInfo() << "[OpenAutoEmbedded] Input widget created:" << m_width << "x" << m_height;
+
+        // Create QML-native video output
+        // This renders H.264 video to a QVideoSink that QML can display
+        // CRITICAL FIX: Do NOT pass 'this' as QObject parent when using shared_ptr!
+        // QObject parent ownership conflicts with shared_ptr ownership, causing
+        // premature destruction when Qt's object tree is modified.
+        m_qmlVideoOutput = std::make_shared<QMLVideoOutput>(m_configuration, nullptr);
+
+        // Notify QML that qmlVideoOutput is now available
+        emit qmlVideoOutputChanged();
+
+        // Projection active callback
         QPointer<OpenAutoEmbedded> weakThis(this);
         auto activeCallback = [weakThis](bool active) {
             if (weakThis) {
-                QMetaObject::invokeMethod(weakThis.data(), "onProjectionActive", Qt::QueuedConnection,
-                                          Q_ARG(bool, active));
+                QMetaObject::invokeMethod(weakThis.data(), "onProjectionActive",
+                                          Qt::QueuedConnection, Q_ARG(bool, active));
             }
         };
 
+        // CRITICAL FIX: Connect QMLVideoOutput playback signals to projection callback
+        // ServiceFactory doesn't connect activeCallback for custom video outputs,
+        // so we must do it here manually
+        connect(m_qmlVideoOutput.get(), &QMLVideoOutput::playbackStarted, this, [activeCallback]() {
+            qInfo() << "[OpenAutoEmbedded] QMLVideoOutput playback started - triggering projection "
+                       "active";
+            activeCallback(true);
+        });
+        // NOTE: Do NOT connect playbackStopped to activeCallback(false) here!
+        // onProjectionActive(false) already calls m_qmlVideoOutput->stop(), which emits
+        // playbackStopped. Connecting playbackStopped → activeCallback(false) creates an infinite
+        // loop: playbackStopped → activeCallback(false) → onProjectionActive(false) → stop() →
+        // playbackStopped
+
+        // Create ServiceFactory with custom video output
+        // Pass m_inputWidget so InputDevice event filter is installed on it (not QCoreApplication).
+        // Without this, InputDevice intercepts ALL touch events system-wide, including tab bar.
+        // mapActiveAreaToGlobal() is fixed to handle hidden widgets under EGLFS.
         m_serviceFactory = std::make_unique<openauto::service::ServiceFactory>(
-            *m_ioService,
-            m_configuration,
-            m_videoWidget.get(),  // Video renders to this widget
-            activeCallback,
-            m_nightMode
-        );
+            *m_ioService, m_configuration,
+            m_qmlVideoOutput,     // QML-native video output
+            m_inputWidget.get(),  // Input widget for event filter scope
+            activeCallback, m_nightMode);
 
         // Create AndroidAutoEntityFactory
         m_androidAutoEntityFactory = std::make_unique<openauto::service::AndroidAutoEntityFactory>(
-            *m_ioService,
-            m_configuration,
-            *m_serviceFactory
-        );
+            *m_ioService, m_configuration, *m_serviceFactory);
 
-        // Create USB hub
-        m_usbHub = std::make_shared<aasdk::usb::USBHub>(
-            *m_usbWrapper,
-            *m_ioService,
-            queryChainFactory
-        );
+        // Create USB hub (uses reference to member m_queryChainFactory)
+        m_usbHub =
+            std::make_shared<aasdk::usb::USBHub>(*m_usbWrapper, *m_ioService, *m_queryChainFactory);
 
-        // Create connected accessories enumerator
-        m_connectedAccessoriesEnumerator = std::make_shared<aasdk::usb::ConnectedAccessoriesEnumerator>(
-            *m_usbWrapper,
-            *m_ioService,
-            queryChainFactory
-        );
+        // Create connected accessories enumerator (uses reference to member m_queryChainFactory)
+        m_connectedAccessoriesEnumerator =
+            std::make_shared<aasdk::usb::ConnectedAccessoriesEnumerator>(
+                *m_usbWrapper, *m_ioService, *m_queryChainFactory);
 
         // Create the main App
-        m_app = std::make_shared<openauto::App>(
-            *m_ioService,
-            *m_usbWrapper,
-            *m_tcpWrapper,
-            *m_androidAutoEntityFactory,
-            std::move(m_usbHub),
-            std::move(m_connectedAccessoriesEnumerator)
-        );
+        m_app = std::make_shared<openauto::App>(*m_ioService, *m_usbWrapper, *m_tcpWrapper,
+                                                *m_androidAutoEntityFactory, std::move(m_usbHub),
+                                                std::move(m_connectedAccessoriesEnumerator));
 
         // Start IO worker thread
         // FIX #2: Worker lifecycle managed explicitly by unique_ptr
@@ -837,13 +935,50 @@ bool OpenAutoEmbedded::initializeOpenauto()
         // NOTE: Removed deleteLater connection - worker is deleted in cleanupOpenauto()
 
         // FIX #10: Connect fatal error signal to handle IO thread exception loop
-        connect(m_ioWorker.get(), &OpenAutoIOWorker::fatalError, this, [this](const QString& message) {
-            setError(message);
-            // Schedule stop on main thread to avoid cross-thread issues
-            QMetaObject::invokeMethod(this, "stop", Qt::QueuedConnection);
-        });
+        connect(m_ioWorker.get(), &OpenAutoIOWorker::fatalError, this,
+                [this](const QString& message) {
+                    setError(message);
+                    // Schedule stop on main thread to avoid cross-thread issues
+                    QMetaObject::invokeMethod(this, "stop", Qt::QueuedConnection);
+                });
 
         m_ioThread->start();
+
+        // CRITICAL FIX: Start USB worker threads to process libusb async transfers!
+        // Without these threads calling libusb_handle_events_timeout_completed(),
+        // USB control transfers (AOA protocol negotiation) will never complete.
+        // This was the root cause of phones not switching to AOA mode.
+        //
+        // PHASE 1 FIX: USB workers now signal when they exit using condition_variable
+        // This allows cleanupOpenauto() to wait for all workers to finish before libusb_exit()
+        m_usbWorkersRunning.store(true);
+        m_usbWorkersActive.store(0);
+        constexpr int NUM_USB_WORKERS = 4;
+        for (int i = 0; i < NUM_USB_WORKERS; ++i) {
+            m_usbWorkerThreads.emplace_back([this]() {
+                // Increment active count on entry
+                m_usbWorkersActive.fetch_add(1);
+
+                timeval libusbEventTimeout{1, 0};  // 1 second timeout
+                while (m_usbWorkersRunning.load(std::memory_order_acquire) && m_ioService &&
+                       !m_ioService->stopped()) {
+                    // Check context is still valid before using it
+                    if (m_usbContext) {
+                        libusb_handle_events_timeout_completed(m_usbContext, &libusbEventTimeout,
+                                                               nullptr);
+                    }
+                }
+
+                // Decrement active count and signal on exit
+                int remaining = m_usbWorkersActive.fetch_sub(1) - 1;
+                if (remaining == 0) {
+                    // Last worker exiting - notify waiting cleanup
+                    std::lock_guard<std::mutex> lock(m_usbWorkerMutex);
+                    m_usbWorkerCV.notify_all();
+                }
+            });
+        }
+        qInfo() << "[OpenAutoEmbedded] Started" << NUM_USB_WORKERS << "USB worker threads";
 
         qInfo() << "[OpenAutoEmbedded] OpenAuto components initialized";
         return true;
@@ -854,20 +989,71 @@ bool OpenAutoEmbedded::initializeOpenauto()
     }
 }
 
-void OpenAutoEmbedded::cleanupOpenauto()
-{
-    // FIX #2: Proper worker lifecycle management (no deleteLater, explicit ownership)
+void OpenAutoEmbedded::cleanupOpenauto() {
+    qInfo() << "[OpenAutoEmbedded] cleanupOpenauto() starting...";
 
-    // Stop IO worker first (signals worker to exit its run loop)
+    // PHASE 1: Stop USB worker threads with proper synchronization
+    // Uses condition_variable to wait for all workers to exit before continuing
+    // This prevents race condition where libusb_exit() is called while workers
+    // are still inside libusb_handle_events_timeout_completed()
+    stopUsbWorkersSync();
+
+    // Stop IO worker (signals worker to exit its run loop)
+    // NOTE: Keep io_service running - serviceFactory components need it for shutdown callbacks
     if (m_ioWorker) {
+        qInfo() << "[OpenAutoEmbedded] Stopping IO worker...";
         m_ioWorker->stop();
     }
 
-    // Release work guard to allow io_service to stop
+    // Clear app and components in reverse order of creation
+    qInfo() << "[OpenAutoEmbedded] Resetting m_app...";
+    m_app.reset();
+    qInfo() << "[OpenAutoEmbedded] m_app reset complete";
+
+    qInfo() << "[OpenAutoEmbedded] Resetting enumerator and hub...";
+    m_connectedAccessoriesEnumerator.reset();
+    m_usbHub.reset();
+
+    // Reset query factories AFTER USBHub/Enumerator (they hold references)
+    qInfo() << "[OpenAutoEmbedded] Resetting query factories...";
+    m_queryChainFactory.reset();
+    m_queryFactory.reset();
+
+    qInfo() << "[OpenAutoEmbedded] Resetting androidAutoEntityFactory...";
+    m_androidAutoEntityFactory.reset();
+
+    // CRITICAL: Reset QML video output BEFORE serviceFactory
+    // ServiceFactory holds a shared_ptr to m_qmlVideoOutput. If we reset serviceFactory
+    // while video output still has active GStreamer pipelines, the destructor may crash.
+    // Reset video output first to ensure clean GStreamer shutdown.
+    if (m_qmlVideoOutput) {
+        qInfo() << "[OpenAutoEmbedded] Stopping QML video output...";
+        m_qmlVideoOutput->stop();
+        qInfo() << "[OpenAutoEmbedded] Disconnecting QML video output signals...";
+        disconnect(m_qmlVideoOutput.get(), nullptr, this, nullptr);
+        qInfo() << "[OpenAutoEmbedded] Resetting QML video output BEFORE serviceFactory...";
+        // Note: ServiceFactory also holds a shared_ptr, so this won't destroy it yet
+        // but it will release our reference.
+        // DO NOT emit qmlVideoOutputChanged() here - it triggers QML to try reconnecting
+        // during cleanup, which can cause race conditions and crashes. QML will get a
+        // new signal when start() creates a fresh video output.
+        m_qmlVideoOutput.reset();
+        qInfo() << "[OpenAutoEmbedded] QML video output reset";
+    }
+
+    // Stop io_service BEFORE serviceFactory reset
+    // This forces async operations to be cancelled, preventing deadlock in destructors
+    qInfo() << "[OpenAutoEmbedded] Releasing work guard...";
     m_ioWork.reset();
+
+    if (m_ioService) {
+        qInfo() << "[OpenAutoEmbedded] Stopping IO service...";
+        m_ioService->stop();
+    }
 
     // Stop IO thread and wait for it to finish
     if (m_ioThread && m_ioThread->isRunning()) {
+        qInfo() << "[OpenAutoEmbedded] Stopping IO thread...";
         m_ioThread->quit();
         if (!m_ioThread->wait(3000)) {
             qWarning() << "[OpenAutoEmbedded] IO thread did not stop in time, terminating";
@@ -875,37 +1061,56 @@ void OpenAutoEmbedded::cleanupOpenauto()
             m_ioThread->wait();
         }
     }
+    qInfo() << "[OpenAutoEmbedded] IO thread stopped";
 
-    // Clear app and components in reverse order of creation
-    m_app.reset();
-    m_connectedAccessoriesEnumerator.reset();
-    m_usbHub.reset();
-    m_androidAutoEntityFactory.reset();
-    m_serviceFactory.reset();
+    qInfo() << "[OpenAutoEmbedded] Resetting serviceFactory...";
+    // ServiceFactory destructor can block if channels have pending async operations
+    // Use a future with timeout to prevent indefinite hang
+    {
+        auto serviceFactoryPtr = std::move(m_serviceFactory);
+        auto future            = std::async(std::launch::async,
+                                            [ptr = std::move(serviceFactoryPtr)]() mutable { ptr.reset(); });
+
+        constexpr int SERVICE_FACTORY_TIMEOUT_MS = 5000;
+        auto status = future.wait_for(std::chrono::milliseconds(SERVICE_FACTORY_TIMEOUT_MS));
+        if (status == std::future_status::timeout) {
+            qWarning() << "[OpenAutoEmbedded] serviceFactory reset timed out after"
+                       << SERVICE_FACTORY_TIMEOUT_MS << "ms";
+            // Detach the future - destructor will complete eventually
+            // This is a controlled leak to prevent app hang
+        } else {
+            qInfo() << "[OpenAutoEmbedded] serviceFactory reset complete";
+        }
+    }
+
+    // Reset hidden input widget
+    qInfo() << "[OpenAutoEmbedded] Resetting input widget...";
+    m_inputWidget.reset();
+
+    qInfo() << "[OpenAutoEmbedded] Resetting wrappers and configuration...";
     m_tcpWrapper.reset();
     m_usbWrapper.reset();
     m_configuration.reset();
 
-    // FIX #2: Now that thread is stopped, safe to delete worker via unique_ptr
     // Worker must be deleted AFTER thread stops but BEFORE io_service is destroyed
-    // because worker holds reference to io_service
-    m_ioWorker.reset();  // Explicit deletion, no double-free risk
+    qInfo() << "[OpenAutoEmbedded] Resetting IO worker and thread...";
+    m_ioWorker.reset();
     m_ioThread.reset();
 
     // Now safe to reset io_service (no references remain)
+    qInfo() << "[OpenAutoEmbedded] Resetting IO service...";
     m_ioService.reset();
 
     qInfo() << "[OpenAutoEmbedded] OpenAuto components cleaned up";
 }
 
-void OpenAutoEmbedded::setError(const QString& msg)
-{
+void OpenAutoEmbedded::setError(const QString& msg) {
     bool changed = false;
     {
         QMutexLocker locker(&m_stateMutex);
         if (m_errorMessage != msg) {
             m_errorMessage = msg;
-            changed = true;
+            changed        = true;
         }
     }
 
@@ -915,8 +1120,7 @@ void OpenAutoEmbedded::setError(const QString& msg)
     }
 }
 
-void OpenAutoEmbedded::setConnected(bool connected)
-{
+void OpenAutoEmbedded::setConnected(bool connected) {
     QString currentPhoneName;
     bool changed = false;
 
@@ -924,7 +1128,7 @@ void OpenAutoEmbedded::setConnected(bool connected)
         QMutexLocker locker(&m_stateMutex);
         if (m_connected != connected) {
             m_connected = connected;
-            changed = true;
+            changed     = true;
 
             if (!connected) {
                 m_phoneName.clear();
@@ -947,65 +1151,4 @@ void OpenAutoEmbedded::setConnected(bool connected)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ISO 26262 DEFENSIVE PROGRAMMING HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-int OpenAutoEmbedded::safeCoordinate(qreal value, int minVal, int maxVal) const
-{
-    // Handle non-finite values (NaN, Inf)
-    if (!std::isfinite(value)) {
-        qWarning() << "[OpenAutoEmbedded] Non-finite coordinate value detected, using minimum";
-        return minVal;
-    }
-
-    // Clamp to valid range
-    if (value < static_cast<qreal>(minVal)) {
-        return minVal;
-    }
-    if (value > static_cast<qreal>(maxVal)) {
-        return maxVal;
-    }
-
-    // Safe conversion with rounding
-    return static_cast<int>(std::round(value));
-}
-
-bool OpenAutoEmbedded::validateGeometry(int x, int y, int w, int h) const
-{
-    // ISO 26262: Comprehensive geometry validation
-
-    // Check for negative coordinates (invalid for screen position)
-    if (x < 0 || y < 0) {
-        qDebug() << "[OpenAutoEmbedded] Negative coordinate detected";
-        return false;
-    }
-
-    // Check for excessive coordinates (overflow protection)
-    if (x > MAX_COORDINATE || y > MAX_COORDINATE) {
-        qDebug() << "[OpenAutoEmbedded] Coordinate exceeds maximum";
-        return false;
-    }
-
-    // Check for invalid dimensions
-    if (w < MIN_DIMENSION || h < MIN_DIMENSION) {
-        qDebug() << "[OpenAutoEmbedded] Dimension below minimum";
-        return false;
-    }
-
-    // Check for excessive dimensions
-    if (w > MAX_COORDINATE || h > MAX_COORDINATE) {
-        qDebug() << "[OpenAutoEmbedded] Dimension exceeds maximum";
-        return false;
-    }
-
-    // Check for overflow in position + dimension calculation
-    if (x > MAX_COORDINATE - w || y > MAX_COORDINATE - h) {
-        qDebug() << "[OpenAutoEmbedded] Position + dimension would overflow";
-        return false;
-    }
-
-    return true;
-}
-
-} // namespace speeduino
+}  // namespace speeduino

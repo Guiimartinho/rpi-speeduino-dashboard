@@ -1,34 +1,34 @@
 #ifndef CAN_SERVICE_CAN_INTERFACE_HPP
 #define CAN_SERVICE_CAN_INTERFACE_HPP
 
-#include <cstdint>
 #include <array>
-#include <string>
-#include <functional>
 #include <atomic>
+#include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
 
 namespace speeduino {
 
 // Raw CAN frame structure
 struct CanFrame {
-    uint32_t id = 0;
-    uint8_t  dlc = 0;
+    uint32_t id                 = 0;
+    uint8_t dlc                 = 0;
     std::array<uint8_t, 8> data = {0};
-    uint32_t timestamp_us = 0;  // Relative timestamp
+    uint32_t timestamp_us       = 0;  // Relative timestamp
 
     // Extended frame flag
     bool is_extended = false;
-    bool is_rtr = false;
-    bool is_error = false;
+    bool is_rtr      = false;
+    bool is_error    = false;
 };
 
 // CAN interface status
 struct CanStatus {
-    bool     connected = false;
-    uint32_t rx_count = 0;
-    uint32_t tx_count = 0;
-    uint32_t error_count = 0;
+    bool connected             = false;
+    uint32_t rx_count          = 0;
+    uint32_t tx_count          = 0;
+    uint32_t error_count       = 0;
     uint32_t last_rx_timestamp = 0;
 };
 
@@ -42,7 +42,7 @@ public:
     virtual ~CanInterface() noexcept;
 
     // Non-copyable
-    CanInterface(const CanInterface&) = delete;
+    CanInterface(const CanInterface&)            = delete;
     CanInterface& operator=(const CanInterface&) = delete;
 
     // Initialize interface
@@ -85,6 +85,6 @@ private:
     std::atomic<uint32_t> m_lastRxTimestamp{0};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_CAN_INTERFACE_HPP
+#endif  // CAN_SERVICE_CAN_INTERFACE_HPP

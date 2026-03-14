@@ -128,6 +128,8 @@ repos:
         name: "clang-format"
         types_or: [c, c++]
         args: [--style=file]
+        stages: [pre-commit]
+        exclude: ^build/
 
   # =============================================================================
   # C++ STATIC ANALYSIS (quick checks for pre-commit)
@@ -137,29 +139,29 @@ repos:
       # Quick cppcheck on staged files only
       - id: cppcheck-quick
         name: "cppcheck (quick)"
-        entry: .hooks/cppcheck-quick.sh
-        language: script
+        entry: python .hooks/cppcheck-quick.py
+        language: system
         files: \.(cpp|hpp|c|h)$
         pass_filenames: true
-        stages: [commit]
+        stages: [pre-commit]
 
       # MISRA 15.6 nesting depth check
       - id: check-nesting-depth
         name: "MISRA 15.6 nesting check"
-        entry: .hooks/check-nesting.py
-        language: python
+        entry: python .hooks/check-nesting.py
+        language: system
         files: \.(cpp|hpp|c|h)$
         pass_filenames: true
-        stages: [commit]
+        stages: [pre-commit]
 
       # Check for TODO/FIXME with deadline
       - id: check-todos
         name: "check TODO markers"
-        entry: .hooks/check-todos.sh
-        language: script
+        entry: python .hooks/check-todos.py
+        language: system
         files: \.(cpp|hpp|c|h|py|sh|qml)$
         pass_filenames: true
-        stages: [commit]
+        stages: [pre-commit]
 
   # =============================================================================
   # QML LINTING
@@ -168,11 +170,24 @@ repos:
     hooks:
       - id: qmllint
         name: "qmllint"
-        entry: .hooks/qmllint-check.sh
-        language: script
+        entry: python .hooks/qmllint-check.py
+        language: system
         files: \.qml$
         pass_filenames: true
-        stages: [commit]
+        stages: [pre-commit]
+
+  # =============================================================================
+  # PRE-PUSH CHECKS
+  # =============================================================================
+  - repo: local
+    hooks:
+      - id: pre-push-checks
+        name: "pre-push validation"
+        entry: python .hooks/pre-push.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
 
 # =============================================================================
 # CI CONFIGURATION

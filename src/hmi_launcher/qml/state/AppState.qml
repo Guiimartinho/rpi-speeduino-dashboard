@@ -29,6 +29,7 @@ QtObject {
 
     readonly property int overlayNone: 0
     readonly property int overlayReverseCamera: 1
+    readonly property int overlaySplash: 2
 
     signal screenChanged(int newScreen, int oldScreen)
     signal overlayChanged(int newOverlay, int oldOverlay)
@@ -60,6 +61,8 @@ QtObject {
     function showReverseCamera() { currentOverlay = overlayReverseCamera }
     function hideReverseCamera() { currentOverlay = overlayNone }
     function hideOverlay() { currentOverlay = overlayNone }
+    function showSplash() { currentOverlay = overlaySplash }
+    function hideSplash() { currentOverlay = overlayNone }
     function setReverseEngaged(engaged) { reverseEngaged = engaged }
     function updateSystemMode() { }
     function setOpenAutoRunning(running) { openAutoRunning = running }

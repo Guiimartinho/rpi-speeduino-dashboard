@@ -50,6 +50,7 @@ QtObject {
 
     // Surface colors
     readonly property color surfaceCard: "#1e1e1e"
+    readonly property color surfaceAlt: "#252525"
     readonly property color surfacePressed: "#444444"
     readonly property color surfaceHover: "#3a3a3a"
 

@@ -2,14 +2,15 @@
 #define CAN_SERVICE_OBD_HANDLER_HPP
 
 #include "can_service/can_interface.hpp"
-#include <cstdint>
-#include <string>
-#include <vector>
-#include <optional>
-#include <variant>
-#include <functional>
+
 #include <chrono>
+#include <cstdint>
+#include <functional>
 #include <mutex>
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace speeduino {
 
@@ -33,63 +34,63 @@ namespace speeduino {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 namespace obd {
-    // CAN IDs
-    constexpr uint32_t REQUEST_BROADCAST = 0x7DF;   // Broadcast request
-    constexpr uint32_t REQUEST_ECU       = 0x7E0;   // ECU-specific request
-    constexpr uint32_t RESPONSE_ECU      = 0x7E8;   // ECU response
+// CAN IDs
+constexpr uint32_t REQUEST_BROADCAST = 0x7DF;  // Broadcast request
+constexpr uint32_t REQUEST_ECU       = 0x7E0;  // ECU-specific request
+constexpr uint32_t RESPONSE_ECU      = 0x7E8;  // ECU response
 
-    // OBD-II Modes
-    constexpr uint8_t MODE_01_LIVE_DATA      = 0x01;
-    constexpr uint8_t MODE_02_FREEZE_FRAME   = 0x02;
-    constexpr uint8_t MODE_03_READ_DTCS      = 0x03;
-    constexpr uint8_t MODE_04_CLEAR_DTCS     = 0x04;
-    constexpr uint8_t MODE_05_O2_TEST        = 0x05;
-    constexpr uint8_t MODE_06_TEST_RESULTS   = 0x06;
-    constexpr uint8_t MODE_07_PENDING_DTCS   = 0x07;
-    constexpr uint8_t MODE_09_VEHICLE_INFO   = 0x09;
-    constexpr uint8_t MODE_22_CUSTOM         = 0x22;  // Enhanced diagnostics
+// OBD-II Modes
+constexpr uint8_t MODE_01_LIVE_DATA    = 0x01;
+constexpr uint8_t MODE_02_FREEZE_FRAME = 0x02;
+constexpr uint8_t MODE_03_READ_DTCS    = 0x03;
+constexpr uint8_t MODE_04_CLEAR_DTCS   = 0x04;
+constexpr uint8_t MODE_05_O2_TEST      = 0x05;
+constexpr uint8_t MODE_06_TEST_RESULTS = 0x06;
+constexpr uint8_t MODE_07_PENDING_DTCS = 0x07;
+constexpr uint8_t MODE_09_VEHICLE_INFO = 0x09;
+constexpr uint8_t MODE_22_CUSTOM       = 0x22;  // Enhanced diagnostics
 
-    // Mode 01 PIDs (Live Data)
-    constexpr uint8_t PID_SUPPORTED_01_20    = 0x00;
-    constexpr uint8_t PID_ENGINE_LOAD        = 0x04;
-    constexpr uint8_t PID_COOLANT_TEMP       = 0x05;
-    constexpr uint8_t PID_FUEL_TRIM_SHORT    = 0x06;
-    constexpr uint8_t PID_FUEL_TRIM_LONG     = 0x07;
-    constexpr uint8_t PID_FUEL_PRESSURE      = 0x0A;
-    constexpr uint8_t PID_MAP                = 0x0B;
-    constexpr uint8_t PID_RPM                = 0x0C;
-    constexpr uint8_t PID_SPEED              = 0x0D;
-    constexpr uint8_t PID_TIMING_ADVANCE     = 0x0E;
-    constexpr uint8_t PID_INTAKE_TEMP        = 0x0F;
-    constexpr uint8_t PID_MAF                = 0x10;
-    constexpr uint8_t PID_TPS                = 0x11;
-    constexpr uint8_t PID_O2_VOLTAGE         = 0x14;
-    constexpr uint8_t PID_OBD_STANDARD       = 0x1C;
-    constexpr uint8_t PID_RUNTIME            = 0x1F;
-    constexpr uint8_t PID_DISTANCE_MIL       = 0x21;
-    constexpr uint8_t PID_FUEL_LEVEL         = 0x2F;
-    constexpr uint8_t PID_BARO_PRESSURE      = 0x33;
-    constexpr uint8_t PID_CONTROL_VOLTAGE    = 0x42;
-    constexpr uint8_t PID_AMBIENT_TEMP       = 0x46;
-    constexpr uint8_t PID_OIL_TEMP           = 0x5C;
+// Mode 01 PIDs (Live Data)
+constexpr uint8_t PID_SUPPORTED_01_20 = 0x00;
+constexpr uint8_t PID_ENGINE_LOAD     = 0x04;
+constexpr uint8_t PID_COOLANT_TEMP    = 0x05;
+constexpr uint8_t PID_FUEL_TRIM_SHORT = 0x06;
+constexpr uint8_t PID_FUEL_TRIM_LONG  = 0x07;
+constexpr uint8_t PID_FUEL_PRESSURE   = 0x0A;
+constexpr uint8_t PID_MAP             = 0x0B;
+constexpr uint8_t PID_RPM             = 0x0C;
+constexpr uint8_t PID_SPEED           = 0x0D;
+constexpr uint8_t PID_TIMING_ADVANCE  = 0x0E;
+constexpr uint8_t PID_INTAKE_TEMP     = 0x0F;
+constexpr uint8_t PID_MAF             = 0x10;
+constexpr uint8_t PID_TPS             = 0x11;
+constexpr uint8_t PID_O2_VOLTAGE      = 0x14;
+constexpr uint8_t PID_OBD_STANDARD    = 0x1C;
+constexpr uint8_t PID_RUNTIME         = 0x1F;
+constexpr uint8_t PID_DISTANCE_MIL    = 0x21;
+constexpr uint8_t PID_FUEL_LEVEL      = 0x2F;
+constexpr uint8_t PID_BARO_PRESSURE   = 0x33;
+constexpr uint8_t PID_CONTROL_VOLTAGE = 0x42;
+constexpr uint8_t PID_AMBIENT_TEMP    = 0x46;
+constexpr uint8_t PID_OIL_TEMP        = 0x5C;
 
-    // Mode 09 PIDs (Vehicle Info)
-    constexpr uint8_t PID_VIN                = 0x02;
-    constexpr uint8_t PID_ECU_NAME           = 0x0A;
+// Mode 09 PIDs (Vehicle Info)
+constexpr uint8_t PID_VIN      = 0x02;
+constexpr uint8_t PID_ECU_NAME = 0x0A;
 
-    // Mode 22 Custom PIDs (Speeduino/SCG-ECU)
-    constexpr uint8_t CUSTOM_AUX_PREFIX      = 0x77;
-    constexpr uint8_t CUSTOM_STATUS_PREFIX   = 0x78;
-}
+// Mode 22 Custom PIDs (Speeduino/SCG-ECU)
+constexpr uint8_t CUSTOM_AUX_PREFIX    = 0x77;
+constexpr uint8_t CUSTOM_STATUS_PREFIX = 0x78;
+}  // namespace obd
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DTC (Diagnostic Trouble Code) Structure
 // ═══════════════════════════════════════════════════════════════════════════════
 
 struct DTC {
-    std::string code;           // P0XXX, C0XXX, B0XXX, U0XXX
-    std::string description;    // Human-readable description
-    bool isPending = false;     // Pending vs confirmed
+    std::string code;         // P0XXX, C0XXX, B0XXX, U0XXX
+    std::string description;  // Human-readable description
+    bool isPending = false;   // Pending vs confirmed
 
     // Parse DTC from 2 bytes (ISO 15031-6)
     static DTC fromBytes(uint8_t high, uint8_t low);
@@ -103,7 +104,7 @@ struct DTC {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 struct OBDLiveData {
-    uint8_t pid = 0;
+    uint8_t pid  = 0;
     double value = 0.0;
     std::string unit;
 };
@@ -116,17 +117,14 @@ struct OBDVehicleInfo {
 struct OBDDTCList {
     std::vector<DTC> confirmed;
     std::vector<DTC> pending;
-    bool milOn = false;
+    bool milOn       = false;
     uint8_t dtcCount = 0;
 };
 
 // Response variant
-using OBDResponse = std::variant<
-    OBDLiveData,
-    OBDVehicleInfo,
-    OBDDTCList,
-    bool  // For clear DTCs success/fail
->;
+using OBDResponse = std::variant<OBDLiveData, OBDVehicleInfo, OBDDTCList,
+                                 bool  // For clear DTCs success/fail
+                                 >;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // OBD-II Handler Class
@@ -146,7 +144,7 @@ public:
 
     // Request multiple PIDs (batched)
     std::vector<OBDLiveData> requestPIDs(const std::vector<uint8_t>& pids,
-                                          uint32_t timeout_ms = 100);
+                                         uint32_t timeout_ms = 100);
 
     // Get supported PIDs (queries PID 0x00)
     std::vector<uint8_t> getSupportedPIDs();
@@ -206,8 +204,7 @@ private:
     CanFrame buildRequest(uint8_t mode, uint8_t pid1 = 0, uint8_t pid2 = 0);
 
     // Send request and wait for response
-    std::optional<CanFrame> sendAndReceive(const CanFrame& request,
-                                            uint32_t timeout_ms = 0);
+    std::optional<CanFrame> sendAndReceive(const CanFrame& request, uint32_t timeout_ms = 0);
 
     // Parse response for Mode 01
     OBDLiveData parseLiveData(uint8_t pid, const CanFrame& response);
@@ -220,13 +217,13 @@ private:
 
     CanInterface& m_interface;
     uint32_t m_timeout_ms = 100;
-    uint8_t m_retryCount = 3;
-    bool m_useBroadcast = true;
+    uint8_t m_retryCount  = 3;
+    bool m_useBroadcast   = true;
 
     // Statistics
     uint32_t m_requestCount = 0;
     uint32_t m_timeoutCount = 0;
-    uint32_t m_errorCount = 0;
+    uint32_t m_errorCount   = 0;
 
     std::mutex m_mutex;
 };
@@ -260,6 +257,6 @@ private:
 //   P0563 - System voltage high
 //   P1000 - OBD system readiness not complete
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_OBD_HANDLER_HPP
+#endif  // CAN_SERVICE_OBD_HANDLER_HPP

@@ -11,11 +11,13 @@
  * ISO 26262 ASIL-B: Comprehensive testing for safety-critical CAN interface
  */
 
-#include <gtest/gtest.h>
 #include "can_service/can_interface.hpp"
-#include <thread>
-#include <chrono>
+
+#include <gtest/gtest.h>
+
 #include <array>
+#include <chrono>
+#include <thread>
 
 using namespace speeduino;
 
@@ -23,10 +25,10 @@ using namespace speeduino;
 // Test Constants - Matching production code constants
 // ═══════════════════════════════════════════════════════════════════════════════
 namespace test_constants {
-    constexpr uint8_t CAN_CLASSIC_MAX_DLC = 8;
-    constexpr uint32_t CAN_STD_ID_MAX = 0x7FF;
-    constexpr uint32_t CAN_EXT_ID_MAX = 0x1FFFFFFF;
-}
+constexpr uint8_t CAN_CLASSIC_MAX_DLC = 8;
+constexpr uint32_t CAN_STD_ID_MAX     = 0x7FF;
+constexpr uint32_t CAN_EXT_ID_MAX     = 0x1FFFFFFF;
+}  // namespace test_constants
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CanFrame Tests - Structure validation
@@ -54,7 +56,7 @@ TEST_F(CanFrameTest, DefaultConstruction) {
 
 TEST_F(CanFrameTest, StandardIdRange) {
     // Valid standard ID
-    frame.id = 0x123;
+    frame.id          = 0x123;
     frame.is_extended = false;
     EXPECT_LE(frame.id, test_constants::CAN_STD_ID_MAX);
 
@@ -65,7 +67,7 @@ TEST_F(CanFrameTest, StandardIdRange) {
 
 TEST_F(CanFrameTest, ExtendedIdRange) {
     // Valid extended ID
-    frame.id = 0x12345678;
+    frame.id          = 0x12345678;
     frame.is_extended = true;
     EXPECT_LE(frame.id, test_constants::CAN_EXT_ID_MAX);
 
@@ -84,7 +86,7 @@ TEST_F(CanFrameTest, DlcValidRange) {
 
 TEST_F(CanFrameTest, DataPayload) {
     // Set data payload
-    frame.dlc = 8;
+    frame.dlc  = 8;
     frame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     EXPECT_EQ(frame.data[0], 0x01U);
@@ -94,8 +96,8 @@ TEST_F(CanFrameTest, DataPayload) {
 TEST_F(CanFrameTest, Flags) {
     // Test flag combinations
     frame.is_extended = true;
-    frame.is_rtr = true;
-    frame.is_error = false;
+    frame.is_rtr      = true;
+    frame.is_error    = false;
 
     EXPECT_TRUE(frame.is_extended);
     EXPECT_TRUE(frame.is_rtr);
@@ -120,8 +122,8 @@ TEST_F(CanStatusTest, DefaultConstruction) {
 }
 
 TEST_F(CanStatusTest, CounterIncrement) {
-    status.rx_count = 100;
-    status.tx_count = 50;
+    status.rx_count    = 100;
+    status.tx_count    = 50;
     status.error_count = 5;
 
     EXPECT_EQ(status.rx_count, 100U);
@@ -186,8 +188,8 @@ TEST_F(CanInterfaceTest, DoubleClose) {
 TEST_F(CanInterfaceTest, SendWithoutOpen) {
     // Send should fail if not connected
     CanFrame frame;
-    frame.id = 0x123;
-    frame.dlc = 8;
+    frame.id   = 0x123;
+    frame.dlc  = 8;
     frame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     bool result = interface.send(frame);
@@ -208,7 +210,7 @@ TEST_F(CanInterfaceTest, SetCallback) {
 
     interface.setCallback([&](const CanFrame& frame) {
         callbackCalled = true;
-        receivedFrame = frame;
+        receivedFrame  = frame;
     });
 
     // Callback is set but won't be called without receive
@@ -235,7 +237,7 @@ protected:
     CanFrame frame;
 
     void SetUp() override {
-        frame.id = 0x123;
+        frame.id   = 0x123;
         frame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     }
 };
@@ -272,14 +274,14 @@ protected:
     CanFrame frame;
 
     void SetUp() override {
-        frame.dlc = 8;
+        frame.dlc  = 8;
         frame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
     }
 };
 
 TEST_F(CanInterfaceIdValidationTest, ValidStandardId) {
     frame.is_extended = false;
-    frame.id = 0x7FF;  // Max standard ID
+    frame.id          = 0x7FF;  // Max standard ID
 
     // Will fail because not connected, but ID is valid
     EXPECT_FALSE(interface.send(frame));
@@ -287,7 +289,7 @@ TEST_F(CanInterfaceIdValidationTest, ValidStandardId) {
 
 TEST_F(CanInterfaceIdValidationTest, ValidExtendedId) {
     frame.is_extended = true;
-    frame.id = 0x1FFFFFFF;  // Max extended ID
+    frame.id          = 0x1FFFFFFF;  // Max extended ID
 
     // Will fail because not connected, but ID is valid
     EXPECT_FALSE(interface.send(frame));
@@ -364,7 +366,7 @@ TEST(CanInterfacePerformanceTest, StatusAccessLatency) {
         (void)status;
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end      = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
     // 10000 status reads should complete in < 100ms
@@ -376,13 +378,13 @@ TEST(CanInterfacePerformanceTest, FrameConstructionLatency) {
 
     for (int i = 0; i < 10000; ++i) {
         CanFrame frame;
-        frame.id = 0x123;
-        frame.dlc = 8;
+        frame.id   = 0x123;
+        frame.dlc  = 8;
         frame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
         (void)frame;
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end      = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
     // 10000 frame constructions should complete in < 50ms
@@ -418,7 +420,7 @@ TEST(CanInterfaceRaiiTest, MoveConstruction) {
 TEST(CanInterfaceEdgeCaseTest, ZeroDlcFrame) {
     CanInterface interface;
     CanFrame frame;
-    frame.id = 0x123;
+    frame.id  = 0x123;
     frame.dlc = 0;  // Valid: zero data bytes
 
     // Will fail because not connected, but frame is valid
@@ -428,8 +430,8 @@ TEST(CanInterfaceEdgeCaseTest, ZeroDlcFrame) {
 TEST(CanInterfaceEdgeCaseTest, RtrFrame) {
     CanInterface interface;
     CanFrame frame;
-    frame.id = 0x123;
-    frame.dlc = 8;
+    frame.id     = 0x123;
+    frame.dlc    = 8;
     frame.is_rtr = true;  // Remote Transmission Request
 
     // Will fail because not connected
@@ -446,9 +448,9 @@ TEST(CanInterfaceEdgeCaseTest, ErrorFrame) {
 TEST(CanInterfaceEdgeCaseTest, ReceiveTimeout) {
     CanInterface interface;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start  = std::chrono::high_resolution_clock::now();
     auto result = interface.receive(1);  // 1ms timeout
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end    = std::chrono::high_resolution_clock::now();
 
     EXPECT_FALSE(result.has_value());
 
@@ -472,14 +474,13 @@ protected:
         vcanAvailable = interface.open("vcan0");
     }
 
-    void TearDown() override {
-        interface.close();
-    }
+    void TearDown() override { interface.close(); }
 };
 
 TEST_F(CanInterfaceVcanTest, OpenVcan) {
     if (!vcanAvailable) {
-        GTEST_SKIP() << "vcan0 not available - run: modprobe vcan && ip link add vcan0 type vcan && ip link set vcan0 up";
+        GTEST_SKIP() << "vcan0 not available - run: modprobe vcan && ip link add vcan0 type vcan "
+                        "&& ip link set vcan0 up";
     }
 
     EXPECT_TRUE(interface.isConnected());
@@ -493,8 +494,8 @@ TEST_F(CanInterfaceVcanTest, SendReceiveLoopback) {
 
     // Send a frame
     CanFrame txFrame;
-    txFrame.id = 0x123;
-    txFrame.dlc = 8;
+    txFrame.id   = 0x123;
+    txFrame.dlc  = 8;
     txFrame.data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     bool sendResult = interface.send(txFrame);
@@ -520,8 +521,8 @@ TEST_F(CanInterfaceVcanTest, StatusAfterSend) {
     auto statusBefore = interface.getStatus();
 
     CanFrame frame;
-    frame.id = 0x456;
-    frame.dlc = 4;
+    frame.id   = 0x456;
+    frame.dlc  = 4;
     frame.data = {0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x00, 0x00};
 
     interface.send(frame);
@@ -531,7 +532,7 @@ TEST_F(CanInterfaceVcanTest, StatusAfterSend) {
     EXPECT_GT(statusAfter.tx_count, statusBefore.tx_count);
 }
 
-#endif // __linux__
+#endif  // __linux__
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);

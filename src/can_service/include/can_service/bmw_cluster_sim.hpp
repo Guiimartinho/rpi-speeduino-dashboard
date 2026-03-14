@@ -2,10 +2,11 @@
 #define CAN_SERVICE_BMW_CLUSTER_SIM_HPP
 
 #include "can_service/can_interface.hpp"
-#include <cstdint>
+
 #include <atomic>
-#include <thread>
+#include <cstdint>
 #include <mutex>
+#include <thread>
 
 namespace speeduino {
 
@@ -31,43 +32,43 @@ namespace speeduino {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 namespace bmw {
-    // ASC (Traction Control)
-    constexpr uint32_t ASC1_ID = 0x153;  // ASC status
-    constexpr uint32_t ASC2_ID = 0x154;  // ASC wheel speeds
+// ASC (Traction Control)
+constexpr uint32_t ASC1_ID = 0x153;  // ASC status
+constexpr uint32_t ASC2_ID = 0x154;  // ASC wheel speeds
 
-    // EGS (Automatic Transmission)
-    constexpr uint32_t EGS_ID  = 0x43F;  // Gear position, sport mode
+// EGS (Automatic Transmission)
+constexpr uint32_t EGS_ID = 0x43F;  // Gear position, sport mode
 
-    // SAS (Steering Angle)
-    constexpr uint32_t SAS_ID  = 0x1D2;  // Steering angle
+// SAS (Steering Angle)
+constexpr uint32_t SAS_ID = 0x1D2;  // Steering angle
 
-    // ABS (Wheel Speeds)
-    constexpr uint32_t ABS1_ID = 0x1F0;  // Front wheel speeds
-    constexpr uint32_t ABS2_ID = 0x1F5;  // Rear wheel speeds
+// ABS (Wheel Speeds)
+constexpr uint32_t ABS1_ID = 0x1F0;  // Front wheel speeds
+constexpr uint32_t ABS2_ID = 0x1F5;  // Rear wheel speeds
 
-    // Transmission rates
-    constexpr uint32_t ASC_RATE_HZ = 10;
-    constexpr uint32_t EGS_RATE_HZ = 10;
-    constexpr uint32_t SAS_RATE_HZ = 50;
-    constexpr uint32_t ABS_RATE_HZ = 20;
-}
+// Transmission rates
+constexpr uint32_t ASC_RATE_HZ = 10;
+constexpr uint32_t EGS_RATE_HZ = 10;
+constexpr uint32_t SAS_RATE_HZ = 50;
+constexpr uint32_t ABS_RATE_HZ = 20;
+}  // namespace bmw
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Gear Position Enum
 // ═══════════════════════════════════════════════════════════════════════════════
 
 enum class BMWGear : uint8_t {
-    PARK     = 0x50,  // 'P'
-    REVERSE  = 0x52,  // 'R'
-    NEUTRAL  = 0x4E,  // 'N'
-    DRIVE    = 0x44,  // 'D'
-    GEAR_1   = 0x31,  // '1'
-    GEAR_2   = 0x32,  // '2'
-    GEAR_3   = 0x33,  // '3'
-    GEAR_4   = 0x34,  // '4'
-    GEAR_5   = 0x35,  // '5'
-    GEAR_6   = 0x36,  // '6'
-    MANUAL   = 0x4D,  // 'M' (manual mode)
+    PARK    = 0x50,  // 'P'
+    REVERSE = 0x52,  // 'R'
+    NEUTRAL = 0x4E,  // 'N'
+    DRIVE   = 0x44,  // 'D'
+    GEAR_1  = 0x31,  // '1'
+    GEAR_2  = 0x32,  // '2'
+    GEAR_3  = 0x33,  // '3'
+    GEAR_4  = 0x34,  // '4'
+    GEAR_5  = 0x35,  // '5'
+    GEAR_6  = 0x36,  // '6'
+    MANUAL  = 0x4D,  // 'M' (manual mode)
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -211,6 +212,6 @@ private:
     std::atomic<uint32_t> m_framesFailed{0};
 };
 
-} // namespace speeduino
+}  // namespace speeduino
 
-#endif // CAN_SERVICE_BMW_CLUSTER_SIM_HPP
+#endif  // CAN_SERVICE_BMW_CLUSTER_SIM_HPP

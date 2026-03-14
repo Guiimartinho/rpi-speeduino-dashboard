@@ -1,9 +1,10 @@
 #include "can_service/obd_handler.hpp"
+
 #include "common/logger.hpp"
 
 #include <algorithm>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 #include <thread>
 #include <unordered_map>
 
@@ -21,26 +22,33 @@ DTC DTC::fromBytes(uint8_t high, uint8_t low) {
     // Remaining 12 bits are the code
     char category;
     switch ((high >> 6) & 0x03) {
-        case 0: category = 'P'; break;  // Powertrain
-        case 1: category = 'C'; break;  // Chassis
-        case 2: category = 'B'; break;  // Body
-        case 3: category = 'U'; break;  // Network
-        default: category = 'P';
+        case 0:
+            category = 'P';
+            break;  // Powertrain
+        case 1:
+            category = 'C';
+            break;  // Chassis
+        case 2:
+            category = 'B';
+            break;  // Body
+        case 3:
+            category = 'U';
+            break;  // Network
+        default:
+            category = 'P';
     }
 
-    uint8_t firstDigit = (high >> 4) & 0x03;
+    uint8_t firstDigit  = (high >> 4) & 0x03;
     uint8_t secondDigit = high & 0x0F;
-    uint8_t thirdDigit = (low >> 4) & 0x0F;
+    uint8_t thirdDigit  = (low >> 4) & 0x0F;
     uint8_t fourthDigit = low & 0x0F;
 
     std::ostringstream oss;
-    oss << category << static_cast<int>(firstDigit)
-        << std::hex << std::uppercase
-        << static_cast<int>(secondDigit)
-        << static_cast<int>(thirdDigit)
+    oss << category << static_cast<int>(firstDigit) << std::hex << std::uppercase
+        << static_cast<int>(secondDigit) << static_cast<int>(thirdDigit)
         << static_cast<int>(fourthDigit);
 
-    dtc.code = oss.str();
+    dtc.code        = oss.str();
     dtc.description = getDescription(dtc.code);
 
     return dtc;
@@ -49,91 +57,91 @@ DTC DTC::fromBytes(uint8_t high, uint8_t low) {
 std::string DTC::getDescription(const std::string& code) {
     // Known DTCs from SCG-ECU 2.0 documentation
     static const std::unordered_map<std::string, std::string> dtcDatabase = {
-        // MAP Sensor
-        {"P0105", "MAP sensor malfunction"},
-        {"P0107", "MAP sensor low input"},
-        {"P0108", "MAP sensor high input"},
+  // MAP Sensor
+        {"P0105",                           "MAP sensor malfunction"},
+        {"P0107",                             "MAP sensor low input"},
+        {"P0108",                            "MAP sensor high input"},
 
-        // IAT Sensor
-        {"P0110", "IAT sensor circuit malfunction"},
-        {"P0112", "IAT sensor low input"},
-        {"P0113", "IAT sensor high input"},
+ // IAT Sensor
+        {"P0110",                   "IAT sensor circuit malfunction"},
+        {"P0112",                             "IAT sensor low input"},
+        {"P0113",                            "IAT sensor high input"},
 
-        // CLT Sensor
-        {"P0115", "CLT sensor circuit malfunction"},
-        {"P0117", "CLT sensor low input"},
-        {"P0118", "CLT sensor high input"},
+ // CLT Sensor
+        {"P0115",                   "CLT sensor circuit malfunction"},
+        {"P0117",                             "CLT sensor low input"},
+        {"P0118",                            "CLT sensor high input"},
 
-        // TPS
-        {"P0120", "TPS circuit malfunction"},
-        {"P0121", "TPS range/performance problem"},
-        {"P0122", "TPS low input"},
-        {"P0123", "TPS high input"},
+ // TPS
+        {"P0120",                          "TPS circuit malfunction"},
+        {"P0121",                    "TPS range/performance problem"},
+        {"P0122",                                    "TPS low input"},
+        {"P0123",                                   "TPS high input"},
 
-        // O2 Sensor
-        {"P0130", "O2 sensor circuit malfunction (Bank 1 Sensor 1)"},
-        {"P0131", "O2 sensor low voltage (Bank 1 Sensor 1)"},
-        {"P0132", "O2 sensor high voltage (Bank 1 Sensor 1)"},
-        {"P0133", "O2 sensor slow response (Bank 1 Sensor 1)"},
+ // O2 Sensor
+        {"P0130",  "O2 sensor circuit malfunction (Bank 1 Sensor 1)"},
+        {"P0131",          "O2 sensor low voltage (Bank 1 Sensor 1)"},
+        {"P0132",         "O2 sensor high voltage (Bank 1 Sensor 1)"},
+        {"P0133",        "O2 sensor slow response (Bank 1 Sensor 1)"},
 
-        // Fuel System
-        {"P0171", "System too lean (Bank 1)"},
-        {"P0172", "System too rich (Bank 1)"},
-        {"P0174", "System too lean (Bank 2)"},
-        {"P0175", "System too rich (Bank 2)"},
+ // Fuel System
+        {"P0171",                         "System too lean (Bank 1)"},
+        {"P0172",                         "System too rich (Bank 1)"},
+        {"P0174",                         "System too lean (Bank 2)"},
+        {"P0175",                         "System too rich (Bank 2)"},
 
-        // Engine Protection
-        {"P0217", "Engine overtemp condition"},
-        {"P0219", "Engine overspeed condition"},
+ // Engine Protection
+        {"P0217",                        "Engine overtemp condition"},
+        {"P0219",                       "Engine overspeed condition"},
 
-        // Fuel Pump
-        {"P0230", "Fuel pump primary circuit malfunction"},
-        {"P0231", "Fuel pump secondary circuit low"},
-        {"P0232", "Fuel pump secondary circuit high"},
+ // Fuel Pump
+        {"P0230",            "Fuel pump primary circuit malfunction"},
+        {"P0231",                  "Fuel pump secondary circuit low"},
+        {"P0232",                 "Fuel pump secondary circuit high"},
 
-        // Crankshaft Position Sensor
-        {"P0335", "Crankshaft position sensor A circuit"},
-        {"P0336", "Crankshaft position sensor A range/performance"},
-        {"P0337", "Crankshaft position sensor A low input"},
-        {"P0338", "Crankshaft position sensor A high input"},
+ // Crankshaft Position Sensor
+        {"P0335",             "Crankshaft position sensor A circuit"},
+        {"P0336",   "Crankshaft position sensor A range/performance"},
+        {"P0337",           "Crankshaft position sensor A low input"},
+        {"P0338",          "Crankshaft position sensor A high input"},
 
-        // Camshaft Position Sensor
-        {"P0340", "Camshaft position sensor A circuit (Bank 1)"},
-        {"P0341", "Camshaft position sensor A range/performance"},
-        {"P0342", "Camshaft position sensor A low input"},
-        {"P0343", "Camshaft position sensor A high input"},
+ // Camshaft Position Sensor
+        {"P0340",      "Camshaft position sensor A circuit (Bank 1)"},
+        {"P0341",     "Camshaft position sensor A range/performance"},
+        {"P0342",             "Camshaft position sensor A low input"},
+        {"P0343",            "Camshaft position sensor A high input"},
 
-        // Ignition
-        {"P0351", "Ignition coil A primary/secondary circuit"},
-        {"P0352", "Ignition coil B primary/secondary circuit"},
-        {"P0353", "Ignition coil C primary/secondary circuit"},
-        {"P0354", "Ignition coil D primary/secondary circuit"},
+ // Ignition
+        {"P0351",        "Ignition coil A primary/secondary circuit"},
+        {"P0352",        "Ignition coil B primary/secondary circuit"},
+        {"P0353",        "Ignition coil C primary/secondary circuit"},
+        {"P0354",        "Ignition coil D primary/secondary circuit"},
 
-        // Oil Pressure
-        {"P0520", "Engine oil pressure sensor/switch circuit"},
-        {"P0521", "Engine oil pressure sensor range/performance"},
-        {"P0522", "Engine oil pressure sensor low voltage"},
-        {"P0523", "Engine oil pressure sensor high voltage"},
-        {"P0524", "Engine oil pressure too low"},
+ // Oil Pressure
+        {"P0520",        "Engine oil pressure sensor/switch circuit"},
+        {"P0521",     "Engine oil pressure sensor range/performance"},
+        {"P0522",           "Engine oil pressure sensor low voltage"},
+        {"P0523",          "Engine oil pressure sensor high voltage"},
+        {"P0524",                      "Engine oil pressure too low"},
 
-        // System Voltage
-        {"P0560", "System voltage malfunction"},
-        {"P0562", "System voltage low"},
-        {"P0563", "System voltage high"},
+ // System Voltage
+        {"P0560",                       "System voltage malfunction"},
+        {"P0562",                               "System voltage low"},
+        {"P0563",                              "System voltage high"},
 
-        // Idle Control
-        {"P0505", "Idle air control system malfunction"},
-        {"P0506", "Idle air control system RPM lower than expected"},
+ // Idle Control
+        {"P0505",              "Idle air control system malfunction"},
+        {"P0506",  "Idle air control system RPM lower than expected"},
         {"P0507", "Idle air control system RPM higher than expected"},
 
-        // Knock Sensor
-        {"P0325", "Knock sensor 1 circuit (Bank 1)"},
-        {"P0326", "Knock sensor 1 range/performance"},
-        {"P0327", "Knock sensor 1 low input"},
-        {"P0328", "Knock sensor 1 high input"},
+ // Knock Sensor
+        {"P0325",                  "Knock sensor 1 circuit (Bank 1)"},
+        {"P0326",                 "Knock sensor 1 range/performance"},
+        {"P0327",                         "Knock sensor 1 low input"},
+        {"P0328",                        "Knock sensor 1 high input"},
 
-        // Manufacturer Specific
-        {"P1000", "OBD system readiness not complete"},
+ // Manufacturer Specific
+        {"P1000",                "OBD system readiness not complete"},
     };
 
     auto it = dtcDatabase.find(code);
@@ -147,14 +155,11 @@ std::string DTC::getDescription(const std::string& code) {
 // OBDHandler Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-OBDHandler::OBDHandler(CanInterface& interface)
-    : m_interface(interface)
-{
-}
+OBDHandler::OBDHandler(CanInterface& interface) : m_interface(interface) {}
 
 CanFrame OBDHandler::buildRequest(uint8_t mode, uint8_t pid1, uint8_t pid2) {
     CanFrame frame;
-    frame.id = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
+    frame.id  = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
     frame.dlc = 8;
     frame.data.fill(0x00);
 
@@ -179,8 +184,7 @@ CanFrame OBDHandler::buildRequest(uint8_t mode, uint8_t pid1, uint8_t pid2) {
     return frame;
 }
 
-std::optional<CanFrame> OBDHandler::sendAndReceive(const CanFrame& request,
-                                                    uint32_t timeout_ms) {
+std::optional<CanFrame> OBDHandler::sendAndReceive(const CanFrame& request, uint32_t timeout_ms) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
     if (timeout_ms == 0) {
@@ -213,7 +217,7 @@ std::optional<CanFrame> OBDHandler::sendAndReceive(const CanFrame& request,
             // Check if it's an OBD-II response
             if (response.id == obd::RESPONSE_ECU) {
                 uint8_t requestMode = request.data[1];
-                uint8_t pciType = (response.data[0] >> 4) & 0x0F;
+                uint8_t pciType     = (response.data[0] >> 4) & 0x0F;
 
                 if (pciType == 0x0) {
                     // Single Frame: mode is at data[1]
@@ -221,8 +225,7 @@ std::optional<CanFrame> OBDHandler::sendAndReceive(const CanFrame& request,
                     if (responseMode == (requestMode + 0x40)) {
                         return response;
                     }
-                }
-                else if (pciType == 0x1) {
+                } else if (pciType == 0x1) {
                     // First Frame (ISO-TP multi-frame): mode is at data[2]
                     uint8_t responseMode = response.data[2];
                     if (responseMode == (requestMode + 0x40)) {
@@ -248,7 +251,7 @@ std::optional<OBDLiveData> OBDHandler::requestPID(uint8_t pid, uint32_t timeout_
 }
 
 std::vector<OBDLiveData> OBDHandler::requestPIDs(const std::vector<uint8_t>& pids,
-                                                  uint32_t timeout_ms) {
+                                                 uint32_t timeout_ms) {
     std::vector<OBDLiveData> results;
     results.reserve(pids.size());
 
@@ -273,7 +276,7 @@ std::vector<uint8_t> OBDHandler::getSupportedPIDs() {
 
     while (rangePID <= 0xE0) {  // Max range is 0xE0 (PIDs E1-FF)
         CanFrame request = buildRequest(obd::MODE_01_LIVE_DATA, rangePID);
-        auto response = sendAndReceive(request);
+        auto response    = sendAndReceive(request);
 
         if (!response) {
             break;  // No response, stop querying
@@ -285,7 +288,7 @@ std::vector<uint8_t> OBDHandler::getSupportedPIDs() {
             break;  // Invalid response
         }
 
-        const uint8_t* bitmap = &response->data[3];
+        const uint8_t* bitmap   = &response->data[3];
         bool nextRangeSupported = false;
 
         // Parse bitmap: 4 bytes, 8 bits each = 32 PIDs per range
@@ -324,7 +327,7 @@ OBDLiveData OBDHandler::parseLiveData(uint8_t pid, const CanFrame& response) {
 
     // Response format: [length, mode+0x40, pid, A, B, C, D, ...]
     const uint8_t* values = &response.data[3];
-    uint8_t len = response.data[0] - 2;  // Subtract mode and PID bytes
+    uint8_t len           = response.data[0] - 2;  // Subtract mode and PID bytes
 
     data.value = decodePID(pid, values, len);
 
@@ -466,7 +469,7 @@ OBDDTCList OBDHandler::readDTCs() {
     OBDDTCList dtcList;
 
     CanFrame request = buildRequest(obd::MODE_03_READ_DTCS);
-    auto response = sendAndReceive(request);
+    auto response    = sendAndReceive(request);
 
     if (!response) {
         return dtcList;
@@ -479,12 +482,12 @@ OBDDTCList OBDHandler::readDTCs() {
     }
 
     dtcList.dtcCount = response->data[2];
-    dtcList.milOn = (dtcList.dtcCount > 0);
+    dtcList.milOn    = (dtcList.dtcCount > 0);
 
     // Parse DTCs (up to 3 per frame)
     for (int i = 0; i < std::min(static_cast<int>(dtcList.dtcCount), 3); i++) {
         uint8_t high = response->data[3 + i * 2];
-        uint8_t low = response->data[4 + i * 2];
+        uint8_t low  = response->data[4 + i * 2];
 
         if (high != 0 || low != 0) {
             DTC dtc = DTC::fromBytes(high, low);
@@ -500,7 +503,7 @@ std::vector<DTC> OBDHandler::readPendingDTCs() {
     std::vector<DTC> pending;
 
     CanFrame request = buildRequest(obd::MODE_07_PENDING_DTCS);
-    auto response = sendAndReceive(request);
+    auto response    = sendAndReceive(request);
 
     if (!response) {
         return pending;
@@ -516,10 +519,10 @@ std::vector<DTC> OBDHandler::readPendingDTCs() {
 
     for (int i = 0; i < std::min(static_cast<int>(count), 3); i++) {
         uint8_t high = response->data[3 + i * 2];
-        uint8_t low = response->data[4 + i * 2];
+        uint8_t low  = response->data[4 + i * 2];
 
         if (high != 0 || low != 0) {
-            DTC dtc = DTC::fromBytes(high, low);
+            DTC dtc       = DTC::fromBytes(high, low);
             dtc.isPending = true;
             pending.push_back(dtc);
         }
@@ -530,7 +533,7 @@ std::vector<DTC> OBDHandler::readPendingDTCs() {
 
 bool OBDHandler::clearDTCs() {
     CanFrame request = buildRequest(obd::MODE_04_CLEAR_DTCS);
-    auto response = sendAndReceive(request);
+    auto response    = sendAndReceive(request);
 
     if (!response) {
         return false;
@@ -550,7 +553,7 @@ bool OBDHandler::clearDTCs() {
 
 std::optional<std::string> OBDHandler::getVIN() {
     CanFrame request = buildRequest(obd::MODE_09_VEHICLE_INFO, obd::PID_VIN);
-    auto response = sendAndReceive(request, 500);  // Longer timeout for multi-frame
+    auto response    = sendAndReceive(request, 500);  // Longer timeout for multi-frame
 
     if (!response) {
         return std::nullopt;
@@ -578,8 +581,7 @@ std::optional<std::string> OBDHandler::getVIN() {
                 vin += static_cast<char>(response->data[i]);
             }
         }
-    }
-    else if (pciType == 0x1) {
+    } else if (pciType == 0x1) {
         // First Frame - multi-frame VIN response
         // Format: [0x10 | len_high, len_low, 0x49, 0x02, count, VIN chars...]
         uint16_t totalLen = ((response->data[0] & 0x0F) << 8) | response->data[1];
@@ -600,8 +602,8 @@ std::optional<std::string> OBDHandler::getVIN() {
         // Send Flow Control to request remaining frames
         // FC format: [0x30, BlockSize=0 (no limit), STmin=0 (no delay)]
         CanFrame flowControl;
-        flowControl.id = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
-        flowControl.dlc = 8;
+        flowControl.id   = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
+        flowControl.dlc  = 8;
         flowControl.data = {0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
         if (!m_interface.send(flowControl)) {
@@ -610,8 +612,8 @@ std::optional<std::string> OBDHandler::getVIN() {
         }
 
         // Receive Consecutive Frames (need 2 more frames for remaining 14 VIN chars)
-        uint8_t expectedSeq = 1;
-        auto cfStart = std::chrono::steady_clock::now();
+        uint8_t expectedSeq         = 1;
+        auto cfStart                = std::chrono::steady_clock::now();
         constexpr int CF_TIMEOUT_MS = 1000;
 
         while (vin.length() < 17) {
@@ -638,8 +640,8 @@ std::optional<std::string> OBDHandler::getVIN() {
 
             uint8_t seqNum = cfResponse->data[0] & 0x0F;
             if (seqNum != (expectedSeq & 0x0F)) {
-                LOG_WARN("OBD-II: VIN sequence mismatch, expected " +
-                         std::to_string(expectedSeq) + " got " + std::to_string(seqNum));
+                LOG_WARN("OBD-II: VIN sequence mismatch, expected " + std::to_string(expectedSeq) +
+                         " got " + std::to_string(seqNum));
                 continue;
             }
 
@@ -657,13 +659,11 @@ std::optional<std::string> OBDHandler::getVIN() {
         if (vin.length() == 17) {
             LOG_INFO("OBD-II: VIN received: " + vin);
         } else {
-            LOG_WARN("OBD-II: Incomplete VIN received (" +
-                     std::to_string(vin.length()) + "/17 chars)");
+            LOG_WARN("OBD-II: Incomplete VIN received (" + std::to_string(vin.length()) +
+                     "/17 chars)");
         }
-    }
-    else {
-        LOG_WARN("OBD-II: Unexpected PCI type in VIN response: " +
-                 std::to_string(pciType));
+    } else {
+        LOG_WARN("OBD-II: Unexpected PCI type in VIN response: " + std::to_string(pciType));
         return std::nullopt;
     }
 
@@ -672,7 +672,7 @@ std::optional<std::string> OBDHandler::getVIN() {
 
 std::optional<std::string> OBDHandler::getECUName() {
     CanFrame request = buildRequest(obd::MODE_09_VEHICLE_INFO, obd::PID_ECU_NAME);
-    auto response = sendAndReceive(request, 500);
+    auto response    = sendAndReceive(request, 500);
 
     if (!response) {
         return std::nullopt;
@@ -690,8 +690,7 @@ std::optional<std::string> OBDHandler::getECUName() {
         for (int i = 4; i < 8 && response->data[i] != 0; i++) {
             name += static_cast<char>(response->data[i]);
         }
-    }
-    else if (pciType == 0x1) {
+    } else if (pciType == 0x1) {
         // First Frame - multi-frame ECU name response
         if (response->data[2] != 0x49 || response->data[3] != obd::PID_ECU_NAME) {
             return std::nullopt;
@@ -704,8 +703,8 @@ std::optional<std::string> OBDHandler::getECUName() {
 
         // Send Flow Control
         CanFrame flowControl;
-        flowControl.id = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
-        flowControl.dlc = 8;
+        flowControl.id   = m_useBroadcast ? obd::REQUEST_BROADCAST : obd::REQUEST_ECU;
+        flowControl.dlc  = 8;
         flowControl.data = {0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
         if (!m_interface.send(flowControl)) {
@@ -713,9 +712,9 @@ std::optional<std::string> OBDHandler::getECUName() {
         }
 
         // Receive Consecutive Frames
-        uint8_t expectedSeq = 1;
-        auto cfStart = std::chrono::steady_clock::now();
-        constexpr int CF_TIMEOUT_MS = 1000;
+        uint8_t expectedSeq               = 1;
+        auto cfStart                      = std::chrono::steady_clock::now();
+        constexpr int CF_TIMEOUT_MS       = 1000;
         constexpr size_t MAX_ECU_NAME_LEN = 20;
 
         while (name.length() < MAX_ECU_NAME_LEN) {
@@ -758,7 +757,8 @@ std::optional<std::string> OBDHandler::getECUName() {
                     break;
                 }
             }
-            if (foundNull) break;
+            if (foundNull)
+                break;
         }
     }
 
@@ -768,7 +768,7 @@ std::optional<std::string> OBDHandler::getECUName() {
 std::optional<double> OBDHandler::readAuxChannel(uint8_t channel) {
     // Mode 22 with 0x77XX for AUX channels
     CanFrame request = buildRequest(obd::MODE_22_CUSTOM, channel, obd::CUSTOM_AUX_PREFIX);
-    auto response = sendAndReceive(request);
+    auto response    = sendAndReceive(request);
 
     if (!response) {
         return std::nullopt;
@@ -786,7 +786,7 @@ std::optional<double> OBDHandler::readAuxChannel(uint8_t channel) {
 std::optional<double> OBDHandler::readStatusField(uint8_t fieldIndex) {
     // Mode 22 with 0x78XX for currentStatus fields
     CanFrame request = buildRequest(obd::MODE_22_CUSTOM, fieldIndex, obd::CUSTOM_STATUS_PREFIX);
-    auto response = sendAndReceive(request);
+    auto response    = sendAndReceive(request);
 
     if (!response) {
         return std::nullopt;
@@ -801,4 +801,4 @@ std::optional<double> OBDHandler::readStatusField(uint8_t fieldIndex) {
     return static_cast<double>(raw);
 }
 
-} // namespace speeduino
+}  // namespace speeduino

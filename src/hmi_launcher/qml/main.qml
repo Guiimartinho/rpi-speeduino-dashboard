@@ -32,18 +32,14 @@ ApplicationWindow {
     color: Styles.Theme.backgroundPrimary
 
     // ═══════════════════════════════════════════════════════════════
-    // C++ CONTEXT PROPERTIES (injected by main.cpp, null in preview)
+    // C++ CONTEXT PROPERTIES (injected by main.cpp)
+    // CRITICAL: Do NOT declare local properties with same names - they shadow C++ context!
     // ═══════════════════════════════════════════════════════════════
-    property var dataProvider: null
-    property var systemMonitor: null
-    property var cameraController: null
-    property var openAutoController: null
-    property var canService: null
+    // Context properties from C++: dataProvider, cameraController, openAutoEmbedded,
+    //                              brandingManager, systemMonitor, isFullscreen
+    // These are automatically available from main.cpp setContextProperty calls.
 
-    // Fullscreen property
-    property bool isFullscreen: false
-
-    // Fullscreen mode (can be toggled)
+    // Fullscreen mode (controlled by C++ isFullscreen property)
     visibility: isFullscreen ? Window.FullScreen : Window.Windowed
 
     // Update Theme with window dimensions for responsive scaling
@@ -51,6 +47,27 @@ ApplicationWindow {
         Styles.Theme.windowWidth = Qt.binding(function() { return window.width })
         Styles.Theme.windowHeight = Qt.binding(function() { return window.height })
         console.log("Main: Window initialized", window.width, "x", window.height)
+
+        // Initialize camera state using timer (context properties need a frame to settle)
+        cameraInitTimer.start()
+    }
+
+    // Timer to initialize camera state after QML is fully loaded
+    // (the availableChanged signal may fire before QML Connections are set up)
+    Timer {
+        id: cameraInitTimer
+        interval: 100  // 100ms delay
+        repeat: false
+        onTriggered: {
+            if (cameraController) {
+                State.AppState.cameraAvailable = cameraController.available
+                State.AppState.cameraActive = cameraController.active
+                console.log("Main: Camera state initialized - available:", cameraController.available,
+                            "active:", cameraController.active, "testMode:", cameraController.testMode)
+            } else {
+                console.log("Main: cameraController not available")
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -74,6 +91,17 @@ ApplicationWindow {
         property bool canOk: dataProvider ? dataProvider.canConnected : false
         property bool celOn: dataProvider ? dataProvider.celOn : false
         property bool overheat: dataProvider ? dataProvider.overheat : false
+        // Additional properties for DashScreen
+        property real batteryVoltage: dataProvider ? dataProvider.batteryVoltage : 12.0
+        property real oilPressure: dataProvider ? dataProvider.oilPressure : 0
+        property real oilTemp: dataProvider ? dataProvider.oilTemp : 0
+        property real boostPsi: dataProvider ? dataProvider.boostPsi : 0
+        property real veValue: dataProvider ? dataProvider.veValue : 0
+        property real sparkDwell: dataProvider ? dataProvider.sparkDwell : 0
+        property int loopsPerSec: dataProvider ? dataProvider.loopsPerSec : 0
+        property int freeRam: dataProvider ? dataProvider.freeRam : 0
+        property real targetAfr: dataProvider ? dataProvider.targetAfr : 14.7
+        property real afrCorrection: dataProvider ? dataProvider.afrCorrection : 0
     }
 
     // System info object with reactive properties
@@ -118,54 +146,79 @@ ApplicationWindow {
     // Sync with CameraController
     Connections {
         target: cameraController
-        enabled: cameraController !== undefined
+        enabled: cameraController !== undefined && cameraController !== null
 
-        function onCameraAvailableChanged() {
-            State.AppState.cameraAvailable = cameraController.cameraAvailable
+        function onAvailableChanged() {
+            State.AppState.cameraAvailable = cameraController.available
             State.AppState.updateSystemMode()
         }
 
-        function onCameraActiveChanged() {
-            State.AppState.cameraActive = cameraController.cameraActive
+        function onActiveChanged() {
+            State.AppState.cameraActive = cameraController.active
+        }
+
+        function onCameraReady() {
+            console.log("Main: Camera ready")
+        }
+
+        function onCameraError(message) {
+            console.log("Main: Camera error -", message)
+            notificationPopup.show("Camera Error", message, Components.NotificationPopup.Warning)
+        }
+
+        function onCameraDisconnected() {
+            console.log("Main: Camera disconnected")
         }
     }
 
-    // Sync with OpenAutoController
+    // Sync with OpenAutoEmbedded (ALWAYS used - process-based OpenAutoController was removed)
+    // ISO 26262: Maintain consistent state between embedded mode and AppState
     Connections {
-        target: openAutoController
-        enabled: openAutoController !== undefined
+        target: typeof openAutoEmbedded !== "undefined" ? openAutoEmbedded : null
+        enabled: typeof openAutoEmbedded !== "undefined" && openAutoEmbedded !== null
 
         function onRunningChanged() {
-            State.AppState.setOpenAutoRunning(openAutoController.running)
+            console.log("Main: OpenAutoEmbedded running changed to", openAutoEmbedded.running)
+            State.AppState.setOpenAutoRunning(openAutoEmbedded.running)
         }
 
         function onConnectedChanged() {
-            State.AppState.setOpenAutoConnected(openAutoController.connected)
+            console.log("Main: OpenAutoEmbedded connected changed to", openAutoEmbedded.connected)
+            State.AppState.setOpenAutoConnected(openAutoEmbedded.connected)
         }
 
         function onPhoneNameChanged() {
-            State.AppState.setOpenAutoPhoneName(openAutoController.phoneName)
-        }
-
-        function onConnectionTypeChanged() {
-            State.AppState.setOpenAutoConnectionType(openAutoController.connectionType)
+            console.log("Main: OpenAutoEmbedded phone name changed to", openAutoEmbedded.phoneName)
+            State.AppState.setOpenAutoPhoneName(openAutoEmbedded.phoneName)
         }
 
         function onPhoneConnected(deviceName) {
-            console.log("Main: Phone connected -", deviceName)
+            console.log("Main: OpenAutoEmbedded phone connected -", deviceName)
             State.AppState.setOpenAutoPhoneName(deviceName)
             State.AppState.setOpenAutoConnected(true)
+            notificationPopup.show("Android Auto", "Phone connected: " + (deviceName || "Unknown"))
         }
 
         function onPhoneDisconnected() {
-            console.log("Main: Phone disconnected")
+            console.log("Main: OpenAutoEmbedded phone disconnected")
             State.AppState.setOpenAutoPhoneName("")
             State.AppState.setOpenAutoConnected(false)
+            notificationPopup.show("Android Auto", "Phone disconnected")
         }
 
-        function onShowNotification(title, message) {
-            console.log("Main: OpenAuto notification -", title, ":", message)
-            notificationPopup.show(title, message)
+        function onErrorChanged() {
+            if (openAutoEmbedded.errorMessage !== "") {
+                console.log("Main: OpenAutoEmbedded error -", openAutoEmbedded.errorMessage)
+                notificationPopup.show("OpenAuto Error", openAutoEmbedded.errorMessage, Components.NotificationPopup.Critical)
+            }
+        }
+
+        function onProjectionStarted() {
+            console.log("Main: OpenAutoEmbedded projection started")
+        }
+
+        function onProjectionStopped() {
+            console.log("Main: OpenAutoEmbedded projection stopped")
         }
     }
 
@@ -276,6 +329,12 @@ ApplicationWindow {
             anchors.fill: parent
             z: 999
         }
+
+        // Splash Screen Overlay (highest priority on startup)
+        Components.SplashScreen {
+            id: splashScreen
+            anchors.fill: parent
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -308,13 +367,14 @@ ApplicationWindow {
 
             onRestartOpenAuto: {
                 console.log("Main: Restart OpenAuto requested")
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
-                    openAutoEmbedded.restart()
-                } else if (openAutoController) {
-                    openAutoController.stop()
-                    openAutoController.start()
-                }
+                // CRITICAL: Use Qt.callLater() to defer restart
+                // This allows the QML signal handler to complete before
+                // cleanup destroys objects, avoiding "destroyed while signal in progress" error
+                Qt.callLater(function() {
+                    if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                        openAutoEmbedded.restart()
+                    }
+                })
             }
 
             onTestCamera: {
@@ -333,34 +393,36 @@ ApplicationWindow {
         id: openAutoScreenComponent
         Screens.OpenAutoScreen {
             onRequestStart: {
-                console.log("Main: OpenAuto start requested")
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                console.log("Main: OpenAuto start requested (embedded mode)")
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                    console.log("Main: Starting embedded OpenAuto")
                     openAutoEmbedded.start()
-                } else if (openAutoController) {
-                    openAutoController.start()
+                } else {
+                    console.log("Main: ERROR - openAutoEmbedded not available!")
                 }
             }
 
             onRequestStop: {
                 console.log("Main: OpenAuto stop requested")
-                // Use embedded OpenAuto by default, fall back to process-based
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
                     openAutoEmbedded.stop()
-                } else if (openAutoController) {
-                    openAutoController.stop()
                 }
             }
 
+            onRequestRestart: {
+                console.log("Main: OpenAuto restart requested")
+                // CRITICAL: Use Qt.callLater() to defer restart (same as ConfigScreen)
+                Qt.callLater(function() {
+                    if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
+                        openAutoEmbedded.restart()
+                    }
+                })
+            }
+
             onTouchEvent: function(x, y, type) {
-                // Forward touch events to OpenAuto
-                // CRITICAL: Route to openAutoEmbedded when in embedded mode
-                // (Note: OpenAutoScreen.qml already calls sendTouch directly,
-                //  this is for backwards compatibility with process mode)
-                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded && !useProcessOpenAuto) {
+                // Forward touch events to embedded OpenAuto
+                if (typeof openAutoEmbedded !== "undefined" && openAutoEmbedded) {
                     openAutoEmbedded.sendTouch(x, y, type)
-                } else if (openAutoController) {
-                    openAutoController.sendTouch(x, y, type)
                 }
             }
         }

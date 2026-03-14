@@ -1,109 +1,31 @@
 [Unit]
 Description=Speeduino HMI Launcher (Dashboard UI)
-Documentation=https://github.com/speeduino/speeduino-ui
-After=graphical.target can_service.service reverse_service.service
-Wants=can_service.service reverse_service.service
-Requires=graphical.target
-StartLimitIntervalSec=60
-StartLimitBurst=5
+# Note: Uses EGLFS (direct framebuffer rendering), no X11/Wayland desktop needed
+# Therefore depends on multi-user.target, not graphical.target
+After=multi-user.target can_service.service
+Requires=multi-user.target can_service.service
+Wants=reverse_service.service
 
 [Service]
-Type=notify
-NotifyAccess=main
-User=pi
-Group=pi
+Type=simple
+User=raspui
+Group=raspui
 
-# Environment for Qt/Wayland/EGLFS
+# Environment for Qt/EGLFS
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_HIDECURSOR=1
 Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
 Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
-Environment=QT_LOGGING_RULES=qt.qpa.*=false
 Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=QML_DISK_CACHE_PATH=/tmp/qml_cache
-
-# Performance optimizations for Qt
-Environment=QSG_RENDER_LOOP=threaded
-Environment=QT_QUICK_BACKEND=software
+Environment=QSG_RENDER_LOOP=basic
+Environment=LP_NUM_THREADS=1
 
 ExecStart=/usr/local/bin/hmi_launcher --fullscreen --config=/etc/speeduino-ui
 Restart=always
 RestartSec=3
-TimeoutStartSec=60
-TimeoutStopSec=10
 
-# Watchdog support
-WatchdogSec=15
-
-# Allow access to display and input devices
-SupplementaryGroups=video input render audio
-
-# Security hardening - filesystem (relaxed for GUI)
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=true
-PrivateDevices=false
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectKernelLogs=true
-ProtectControlGroups=true
-ReadOnlyPaths=/
-ReadWritePaths=/tmp /run /var/tmp
-
-# Security hardening - network
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-PrivateNetwork=false
-
-# Security hardening - capabilities
-CapabilityBoundingSet=CAP_SYS_NICE
-AmbientCapabilities=CAP_SYS_NICE
-
-# Security hardening - syscall filtering (relaxed for graphics)
-SystemCallFilter=@system-service @network-io @ipc
-SystemCallArchitectures=native
-
-# Security hardening - misc
-RestrictRealtime=false
-RestrictSUIDSGID=true
-LockPersonality=true
-RemoveIPC=true
-UMask=0022
-
-# Device access for display and input
-DevicePolicy=auto
-DeviceAllow=/dev/dri/* rw
-DeviceAllow=/dev/input/* rw
-DeviceAllow=/dev/tty* rw
-DeviceAllow=/dev/fb* rw
-DeviceAllow=/dev/video* rw
-DeviceAllow=/dev/null rw
-DeviceAllow=/dev/urandom r
-DeviceAllow=/dev/snd/* rw
-
-# IPC paths for ZeroMQ
-ReadWritePaths=/tmp/speeduino_data.ipc
-ReadWritePaths=/tmp/speeduino_cmd.ipc
-ReadWritePaths=/tmp/reverse_trigger.ipc
-ReadWritePaths=/tmp/steering_events.ipc
-ReadWritePaths=/tmp/qml_cache
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=hmi_launcher
-
-# Resource limits (higher for UI)
-MemoryMax=512M
-MemoryHigh=384M
-CPUQuota=80%
-TasksMax=64
-LimitNOFILE=4096
-IOWeight=100
-
-# Scheduling (lower priority than CAN service)
-Nice=0
-CPUAffinity=0 1
+# Groups for hardware access
+SupplementaryGroups=video input render audio plugdev bluetooth
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target

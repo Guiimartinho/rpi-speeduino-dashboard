@@ -6,7 +6,7 @@ Projete e gere uma solução completa (arquitetura + código esqueleto + serviç
 ## 0) Contexto do sistema
 - ECU: **Speeduino em STM32F407VE**
 - Barramento: **CAN 2.0 @ 500 kbit/s**
-- SBC: **Raspberry Pi 5 (16 GB)** ou equivalente (Linux embarcado)
+- SBC: **Raspberry Pi 4 (4 GB)** ou equivalente (Linux embarcado)
 - Display: **5" ou 7" touchscreen** (HDMI ou DSI)
 - Android Auto: **com fio (USB)**
 - Requisitos extras:
@@ -128,7 +128,7 @@ Defina interfaces claras entre eles.
 - Estratégia para volante (CAN e analógico)
 - Estratégia para câmera (pipeline, fallback)
 - Estrutura de diretórios do projeto (monorepo)
-- Plano de bring-up (passo a passo) no Raspberry Pi 5
+- Plano de bring-up (passo a passo) no Raspberry Pi 4
 
 ### 5.2 Código (esqueleto funcional)
 Forneça:
@@ -173,6 +173,6 @@ Inclua uma lista objetiva de “feito quando”:
 - Use Markdown bem organizado.
 - Inclua blocos de código completos.
 - Não use placeholders vagos. Se algo for suposição, declare como suposição e forneça alternativa.
-- Foque em algo que eu consigo compilar e rodar como MVP no Raspberry Pi 5.
+- Foque em algo que eu consigo compilar e rodar como MVP no Raspberry Pi 4.
 
 Agora gere a solução completa seguindo tudo acima.
