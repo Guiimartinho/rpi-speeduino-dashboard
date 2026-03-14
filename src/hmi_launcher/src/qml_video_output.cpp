@@ -303,26 +303,13 @@ bool QMLVideoOutput::init() {
 }
 
 void QMLVideoOutput::write(uint64_t timestamp, const aasdk::common::DataConstBuffer& buffer) {
-    // DEBUG: Log EVERY write call to diagnose why no data is arriving
-    static int totalWriteCalls = 0;
-    totalWriteCalls++;
-    if (totalWriteCalls <= 5 || totalWriteCalls % 100 == 0) {
-        qInfo() << "[QMLVideoOutput] write() called #" << totalWriteCalls
-                << " size:" << buffer.size << " opened:" << m_opened.load()
-                << " appSrc:" << (m_appSrc != nullptr);
+    static int writeCount = 0;
+    if (++writeCount <= 3 || writeCount % 300 == 0) {
+        qInfo() << "[QMLVideoOutput] write() #" << writeCount << " size:" << buffer.size;
     }
 
     if (!m_opened.load() || !m_appSrc) {
-        qWarning() << "[QMLVideoOutput] write() SKIPPED: opened=" << m_opened.load()
-                   << " appSrc=" << (m_appSrc != nullptr);
         return;
-    }
-
-    // Debug: log every 30th frame to avoid spam
-    static int writeCount = 0;
-    if (++writeCount % 30 == 1) {
-        qDebug() << "[QMLVideoOutput] write() processing, size:" << buffer.size << "bytes, frame#"
-                 << writeCount;
     }
 
     // Create GStreamer buffer
@@ -453,27 +440,17 @@ void QMLVideoOutput::doStopPlayback() {
 }
 
 void QMLVideoOutput::processFrames() {
-    // Debug: log why we're not processing
-    static int skipCount = 0;
-    if (!m_playing.load()) {
-        if (++skipCount % 100 == 1) {
-            qDebug() << "[QMLVideoOutput] processFrames() skipped - not playing";
-        }
+    if (!m_playing.load() || !m_appSink) {
         return;
     }
-    if (!m_appSink) {
-        if (++skipCount % 100 == 1) {
-            qDebug() << "[QMLVideoOutput] processFrames() skipped - no appSink";
+
+    // Check video sink under mutex to avoid race with setVideoSink()
+    {
+        QMutexLocker locker(&m_mutex);
+        if (!m_videoSink) {
+            return;
         }
-        return;
     }
-    if (!m_videoSink) {
-        if (++skipCount % 100 == 1) {
-            qDebug() << "[QMLVideoOutput] processFrames() skipped - no videoSink";
-        }
-        return;
-    }
-    skipCount = 0;  // Reset when we can actually process
 
     // Try to pull a sample (non-blocking)
     GstSample* sample = gst_app_sink_try_pull_sample(m_appSink, 0);
@@ -484,25 +461,15 @@ void QMLVideoOutput::processFrames() {
         }
         handleDecodedFrame(sample);
         gst_sample_unref(sample);
-    } else {
-        // Debug: check if there's data pending in appsink
-        static int noSampleCount = 0;
-        if (++noSampleCount % 300 == 1) {  // Every 5 seconds approx
-            qDebug() << "[QMLVideoOutput] processFrames() no sample available yet, check#"
-                     << noSampleCount;
-            // Check pipeline state
-            if (m_pipeline) {
-                GstState state, pending;
-                gst_element_get_state(m_pipeline, &state, &pending, 0);
-                qDebug() << "[QMLVideoOutput] Pipeline state:" << gst_element_state_get_name(state)
-                         << "pending:" << gst_element_state_get_name(pending);
-            }
-        }
     }
 }
 
 void QMLVideoOutput::handleDecodedFrame(GstSample* sample) {
-    if (!sample || !m_videoSink) {
+    static int handleCount = 0;
+    ++handleCount;
+
+    if (!sample) {
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: null sample";
         return;
     }
 
@@ -510,48 +477,64 @@ void QMLVideoOutput::handleDecodedFrame(GstSample* sample) {
     GstCaps* caps     = gst_sample_get_caps(sample);
 
     if (!buffer || !caps) {
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: null buffer or caps"
+                   << "buffer:" << (void*)buffer << "caps:" << (void*)caps;
         return;
     }
 
     // Get video info from caps
     GstVideoInfo videoInfo;
     if (!gst_video_info_from_caps(&videoInfo, caps)) {
-        qWarning() << "[QMLVideoOutput] Failed to get video info from caps";
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: failed to parse video info from caps";
         return;
     }
 
     int width  = GST_VIDEO_INFO_WIDTH(&videoInfo);
     int height = GST_VIDEO_INFO_HEIGHT(&videoInfo);
 
+    if (handleCount <= 3 || handleCount % 300 == 0) {
+        qInfo() << "[QMLVideoOutput] handleDecodedFrame #" << handleCount << "resolution:" << width
+                << "x" << height;
+    }
+
     // Map buffer for reading
     GstMapInfo map;
     if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-        qWarning() << "[QMLVideoOutput] Failed to map buffer";
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: failed to map buffer";
         return;
     }
 
-    // Create QImage from the RGB data
-    // Note: We need to copy the data because QImage doesn't take ownership
+    // Create QImage from the RGB data and deep copy before unmapping
     QImage image(map.data, width, height, GST_VIDEO_INFO_PLANE_STRIDE(&videoInfo, 0),
                  QImage::Format_RGB888);
-
-    // Create a deep copy so we can unmap the GStreamer buffer
     QImage frameCopy = image.copy();
-
     gst_buffer_unmap(buffer, &map);
+
+    if (frameCopy.isNull()) {
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: QImage copy is null!";
+        return;
+    }
 
     // Create QVideoFrame from the image
     QVideoFrame frame(frameCopy);
 
-    // Debug: log frame delivery
-    static int deliveredCount = 0;
-    if (++deliveredCount % 30 == 1) {
-        qDebug() << "[QMLVideoOutput] Delivering frame to sink, size:" << width << "x" << height
-                 << "frame#" << deliveredCount;
+    if (!frame.isValid()) {
+        qWarning() << "[QMLVideoOutput] handleDecodedFrame: QVideoFrame is invalid!";
+        return;
     }
 
-    // Send frame to video sink
-    m_videoSink->setVideoFrame(frame);
+    // Send frame to video sink under mutex protection
+    QMutexLocker locker(&m_mutex);
+    if (m_videoSink) {
+        m_videoSink->setVideoFrame(frame);
+        if (handleCount <= 3) {
+            qInfo() << "[QMLVideoOutput] Frame sent to sink, size:" << width << "x" << height;
+        }
+    } else {
+        if (handleCount <= 3) {
+            qWarning() << "[QMLVideoOutput] handleDecodedFrame: no video sink!";
+        }
+    }
 }
 
 }  // namespace speeduino
