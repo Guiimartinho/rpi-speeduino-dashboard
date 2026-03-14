@@ -244,10 +244,8 @@ Item {
                 // Check if touch is within the rendered video bounds
                 if (touchX < offsetX || touchX > offsetX + renderedWidth ||
                     touchY < offsetY || touchY > offsetY + renderedHeight) {
-                    // Touch is in the letterbox/pillarbox area - ignore or clamp
-                    // For now, clamp to video bounds
-                    touchX = Math.max(offsetX, Math.min(touchX, offsetX + renderedWidth))
-                    touchY = Math.max(offsetY, Math.min(touchY, offsetY + renderedHeight))
+                    // Touch is in the letterbox/pillarbox area - reject
+                    return null
                 }
 
                 // Transform from container space to video space
@@ -263,29 +261,35 @@ Item {
 
             function validateAndSendTouch(mouseX, mouseY, action) {
                 if (!isFinite(mouseX) || !isFinite(mouseY)) {
-                    console.warn("OpenAutoScreen: Invalid touch coordinates (non-finite)")
                     return
                 }
 
                 // Transform coordinates from container to video space
                 var coords = transformCoordinates(mouseX, mouseY)
                 if (!coords) {
-                    console.warn("OpenAutoScreen: Could not transform coordinates")
                     return
                 }
 
+                // Log touch details for debugging
+                if (action === 0) {  // Only log press, not move/release
+                    console.log("OpenAutoScreen: touch PRESS at container(" +
+                               Math.round(mouseX) + "," + Math.round(mouseY) +
+                               ") -> video(" + coords.x + "," + coords.y +
+                               ") container:" + touchArea.width + "x" + touchArea.height)
+                }
+
                 // Send touch directly to embedded OpenAuto
-                // NOTE: Do NOT emit touchEvent signal - it was causing duplicate events
-                // because main.qml and MainContent.qml both had handlers calling sendTouch again
                 if (useEmbedded && openAutoEmbedded) {
                     openAutoEmbedded.sendTouch(coords.x, coords.y, action)
                 }
             }
 
             onPressed: function(mouse) {
+                mouse.accepted = true  // Consume event - don't propagate
                 validateAndSendTouch(mouse.x, mouse.y, 0)  // 0 = press
             }
             onReleased: function(mouse) {
+                mouse.accepted = true
                 validateAndSendTouch(mouse.x, mouse.y, 1)  // 1 = release
             }
             onPositionChanged: function(mouse) {
